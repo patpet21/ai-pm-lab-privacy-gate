@@ -1,6 +1,6 @@
 #define MyAppName "AI PM LAB Privacy Gate"
-#define MyAppVersion "0.2.1"
-#define MyAppPublisher "AI PM LAB"
+#define MyAppVersion "0.3.0"
+#define MyAppPublisher "AI PM LAB by Trigosat Consulting"
 #define MyAppExeName "AI PM LAB Privacy Gate.exe"
 #define MyAppId "{{2F5D4173-04C2-46F2-BE8D-3FC0FBC2EE17}"
 
@@ -29,6 +29,7 @@ OutputBaseFilename=AI_PM_LAB_Privacy_Gate_Setup_{#MyAppVersion}
 Compression=zip
 SolidCompression=no
 WizardStyle=modern
+SetupIconFile=..\..\resources\branding\privacy-gate.ico
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 CloseApplications=yes
@@ -39,6 +40,8 @@ VersionInfoCompany={#MyAppPublisher}
 VersionInfoDescription={#MyAppName} installer
 VersionInfoProductName={#MyAppName}
 VersionInfoProductVersion={#MyAppVersion}
+AppPublisherURL=https://www.linkedin.com/in/pietro-forestieri/
+AppSupportURL=mailto:peter@propertydex.xyz
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"

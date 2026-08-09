@@ -10,10 +10,10 @@
 <body>
   <header class="topbar">
     <a class="brand" href="#top" aria-label="AI PM LAB Privacy Gate home">
-      <img src="assets/privacy-gate-logo.png" alt="AI PM LAB Privacy Gate logo">
+      <img src="assets/privacy-gate-icon.png" alt="AI PM LAB Privacy Gate logo">
       <span><strong>AI PM LAB</strong><small>PRIVACY GATE</small></span>
     </a>
-    <nav><a href="#demo">Live demo</a><a href="#automations">Automations</a><a href="#guide">Guide</a><a href="#contact">Contact</a><a class="nav-download" href="#download">Download</a></nav>
+    <nav><a href="#demo">Live demo</a><a href="#how-it-works">How it works</a><a href="#automations">Automations</a><a href="#guide">Guide</a><a href="#contact">Contact</a><a class="nav-download" href="#download">Download</a></nav>
   </header>
 
   <main id="top">
@@ -31,6 +31,13 @@
         <h2>Your sample stays here.</h2>
         <p>This page has no API connection. The downloadable Windows app adds the full Microsoft Presidio engine, PDF support, encrypted memory, and restore.</p>
       </aside>
+    </section>
+
+    <section class="proof-strip" aria-label="Privacy Gate product facts">
+      <div><strong>3</strong><span>industry profiles</span></div>
+      <div><strong>2</strong><span>input formats</span></div>
+      <div><strong>0</strong><span>mandatory cloud services</span></div>
+      <div><strong>1</strong><span>encrypted local library</span></div>
     </section>
 
     <section class="demo-section" id="demo">
@@ -56,7 +63,7 @@
             <textarea id="input" spellcheck="false" placeholder="Paste a sample email, tenant note, offer, or contractor message..."></textarea>
           </label>
           <label class="editor">Protected preview
-            <textarea id="output" readonly placeholder="Protected text will appear here."></textarea>
+            <div id="output" class="protected-output is-empty" role="textbox" aria-readonly="true">Protected text will appear here.</div>
           </label>
         </div>
         <div class="results">
@@ -66,7 +73,22 @@
           <button class="button secondary" id="copy" type="button" disabled>Copy protected text</button>
         </div>
       </div>
-      <p class="disclaimer">Demo limitation: browser rules are illustrative and may miss context. Do not use this web preview as the final compliance check for real customer records.</p>
+      <p class="disclaimer"><strong>Why name detection is different here:</strong> this browser preview uses lightweight patterns, including a basic two-word-name illustration. The Windows app uses Microsoft Presidio with NLP context for names and other entities. Browser rules may still miss or misclassify context; do not use this preview as the final compliance check for real customer records.</p>
+    </section>
+
+    <section class="workflow-section" id="how-it-works">
+      <div class="section-heading">
+        <div><p class="eyebrow">HOW PRIVACY GATE WORKS</p><h2>Protect first. Use AI second.</h2></div>
+        <p>The original document stays on your PC. Privacy Gate creates a protected working copy for AI, then restores approved results locally when reversible placeholders are used.</p>
+      </div>
+      <div class="workflow-visual">
+        <img src="assets/workflow-how-privacy-gate-works.png" alt="Diagram comparing an unsafe direct AI upload with the recommended Privacy Gate workflow">
+      </div>
+      <div class="capability-compare">
+        <article><span>BROWSER DEMO</span><h3>Fast product preview</h3><ul><li>Text pasted in your browser</li><li>Illustrative structured rules</li><li>No upload and no account</li><li>No document memory</li></ul></article>
+        <article class="featured"><span>WINDOWS APP</span><h3>Complete local workspace</h3><ul><li>Microsoft Presidio + NLP context</li><li>Text and text-based PDF files</li><li>Encrypted library and labels</li><li>Reversible restore after AI</li></ul></article>
+        <article><span>OPTIONAL SERVICES</span><h3>Automation when needed</h3><ul><li>Local API and n8n roadmap</li><li>MCP, email, and cloud options</li><li>Customer-controlled connections</li><li>Implementation consulting</li></ul></article>
+      </div>
     </section>
 
     <section class="desktop-section" id="desktop">
@@ -108,12 +130,12 @@
     <section class="download-section" id="download">
       <div>
         <p class="eyebrow">WINDOWS 10 / 11</p>
-        <h2>Download Privacy Gate 0.2.1</h2>
+        <h2>Download Privacy Gate 0.3.0</h2>
         <p>Full local Presidio engine, PDF support, encrypted library, and reversible restore. No subscription or cloud account required for the core app.</p>
         <p class="download-note">The current installer is unsigned. Windows or antivirus software may show an unknown-publisher reputation warning.</p>
       </div>
       <div class="download-actions">
-        <a class="button primary large" href="https://github.com/patpet21/ai-pm-lab-privacy-gate-downloads/releases/download/v0.2.1/AI_PM_LAB_Privacy_Gate_Setup_0.2.1.exe">Download installer</a>
+        <a class="button primary large" href="https://github.com/patpet21/ai-pm-lab-privacy-gate-downloads/releases/download/v0.3.0/AI_PM_LAB_Privacy_Gate_Setup_0.3.0.exe">Download installer</a>
         <a class="button secondary large" href="https://github.com/patpet21/ai-pm-lab-privacy-gate-downloads">Release notes &amp; checksums</a>
         <a class="text-link center" href="#contact">Questions or automation consulting? Contact us →</a>
       </div>

@@ -1,4 +1,4 @@
-# AI PM LAB Privacy Gate 0.2.1 — Build Information
+# AI PM LAB Privacy Gate 0.3.0 — Build Information
 
 Build date: 2026-08-09
 Target: Windows x64
@@ -15,25 +15,29 @@ Packaging: PyInstaller onedir + Inno Setup installer
 - three real-estate operations profiles;
 - no mandatory cloud, account, telemetry, n8n, or LLM connection;
 - browser-only pasted-text demo for Netlify.
+- collapsible desktop navigation and a two-column review workspace;
+- color-coded protected placeholders in desktop and browser previews;
+- branded Windows EXE, installer, shortcuts, and website icon;
+- expanded website workflow, capability comparison, and product facts.
 
 ## Runtime verification
 
 The distribution contains `python312.dll`, `vcruntime140.dll`, `vcruntime140_1.dll`, and `msvcp140.dll` under `_internal`. The unpacked EXE and the installed EXE were both launched on the build PC; each produced a responsive window titled `AI PM LAB Privacy Gate`.
 
-The installer completed with exit code `0`. A repeat update left the local library unchanged, verified by identical SHA-256 hashes before and after installation. Customer data is stored under `%LOCALAPPDATA%\AI PM LAB Privacy Gate\Data`, outside the application directory.
+The installer completed with exit code `0` after its temporary extraction directory was moved into the AVG-excluded local project folder. A repeat update left the local library unchanged: one local database file remained exactly `73,728` bytes before and after installation. Customer data is stored under `%LOCALAPPDATA%\AI PM LAB Privacy Gate\Data`, outside the application directory.
 
 ## Artifact integrity
 
 Portable EXE SHA-256:
 
 ```text
-C9DBF2F572749266FEEF812CDDB3BDDD83B8AFF7DB4DC8EB60E8EBB3E7188D08
+0770711457E53445D762C3AE21591DFADF0BA2930573B1872DC5EF3DE112E01B
 ```
 
-Installer 0.2.1 SHA-256:
+Installer 0.3.0 SHA-256:
 
 ```text
-1AD487761AAF745AE757F4A68AD42CC302660D424C050147A1E5609D3CF2E4CF
+7397E19BA1B70BC2A93A999B405D0745683D1BAC0BC8F454DFCEFC58865093D1
 ```
 
 The installer is not Authenticode-signed. Windows or endpoint protection can therefore show an unknown-publisher or reputation warning until a commercial code-signing certificate is added.

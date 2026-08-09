@@ -91,6 +91,7 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
+    icon=str(project_dir / "resources" / "branding" / "privacy-gate.ico"),
 )
 
 coll = COLLECT(

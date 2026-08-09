@@ -5,6 +5,7 @@ const chips = document.querySelector('#chips');
 const copy = document.querySelector('#copy');
 
 const rules = [
+  ['PERSON', /\b[A-Z][a-z]{1,24}(?:\s+[A-Z]\.)?\s+[A-Z][a-z]{1,24}\b/g],
   ['US_SSN', /\b\d{3}-\d{2}-\d{4}\b/g],
   ['EMAIL_ADDRESS', /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi],
   ['PHONE_NUMBER', /(?<!\d)(?:\+?1[-.\s]?)?(?:\(\d{3}\)|\d{3})[-.\s]\d{3}[-.\s]\d{4}(?!\d)/g],
@@ -34,24 +35,46 @@ function protectText(text) {
   return {protectedText, findings: accepted};
 }
 
+function renderProtectedText(text) {
+  output.replaceChildren();
+  output.classList.toggle('is-empty', !text);
+  output.dataset.raw = text;
+  if (!text) {
+    output.textContent = 'Protected text will appear here.';
+    return;
+  }
+  const tokenPattern = /\[\[PG_([A-Z0-9_]+)_\d{3}\]\]/g;
+  let cursor = 0;
+  for (const match of text.matchAll(tokenPattern)) {
+    output.append(document.createTextNode(text.slice(cursor, match.index)));
+    const token = document.createElement('span');
+    token.className = `pii-token token-${match[1].toLowerCase()}`;
+    token.textContent = match[0];
+    token.title = match[1].replaceAll('_', ' ');
+    output.append(token);
+    cursor = match.index + match[0].length;
+  }
+  output.append(document.createTextNode(text.slice(cursor)));
+}
+
 document.querySelector('#sample').addEventListener('click', () => {
   input.value = `Tenant: Michael Johnson\nEmail: michael.johnson@example.com\nPhone: (212) 555-0184\nSSN: 123-45-6789\nProperty ZIP: 10001\nAccess device: 192.168.10.25`;
 });
 
 document.querySelector('#protect').addEventListener('click', () => {
   const result = protectText(input.value);
-  output.value = result.protectedText;
+  renderProtectedText(result.protectedText);
   count.textContent = result.findings.length;
   const totals = result.findings.reduce((all, finding) => ({...all, [finding.type]:(all[finding.type]||0)+1}), {});
   chips.replaceChildren(...Object.entries(totals).map(([type,total]) => {
     const chip = document.createElement('span'); chip.textContent = `${type} ${total}`; return chip;
   }));
   if (!result.findings.length) { const chip=document.createElement('span'); chip.textContent='No structured identifiers detected'; chips.append(chip); }
-  copy.disabled = !output.value;
+  copy.disabled = !result.protectedText;
 });
 
 copy.addEventListener('click', async () => {
-  await navigator.clipboard.writeText(output.value);
+  await navigator.clipboard.writeText(output.dataset.raw || '');
   const old = copy.textContent; copy.textContent = 'Copied'; setTimeout(() => copy.textContent = old, 1200);
 });
 

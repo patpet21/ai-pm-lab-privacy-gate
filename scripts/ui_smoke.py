@@ -17,6 +17,7 @@ from ai_pm_lab_privacy_gate.ui.styles import APP_STYLE
 
 def main() -> int:
     output = Path("tmp/ui/privacy_gate_main.png")
+    collapsed_output = Path("tmp/ui/privacy_gate_collapsed.png")
     output.parent.mkdir(parents=True, exist_ok=True)
     app = QApplication([])
     install_app_font(app)
@@ -35,7 +36,16 @@ def main() -> int:
     app.processEvents()
     if not window.grab().save(str(output)):
         raise RuntimeError("Unable to save UI screenshot")
-    print(f"UI_OK {output.resolve()} {len(findings)} findings")
+    window._toggle_sidebar()
+    app.processEvents()
+    if window.sidebar.width() != 76:
+        raise RuntimeError("Sidebar did not collapse to the expected width")
+    if not window.grab().save(str(collapsed_output)):
+        raise RuntimeError("Unable to save collapsed UI screenshot")
+    print(
+        f"UI_OK {output.resolve()} {collapsed_output.resolve()} "
+        f"{len(findings)} findings sidebar={window.sidebar.width()}"
+    )
     window.close()
     return 0
 

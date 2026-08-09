@@ -1,13 +1,15 @@
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 from PySide6.QtCore import QUrl, Qt, QThreadPool, Signal
-from PySide6.QtGui import QColor, QDesktopServices
+from PySide6.QtGui import QColor, QDesktopServices, QFont, QTextCharFormat, QTextCursor
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QApplication,
     QComboBox,
+    QDialog,
     QFileDialog,
     QFrame,
     QHBoxLayout,
@@ -39,6 +41,21 @@ from ai_pm_lab_privacy_gate.ui.workers import FunctionWorker
 class ProtectionPage(QWidget):
     library_changed = Signal(str)
     open_connections = Signal()
+    TOKEN_COLORS = {
+        "PERSON": "#DDE7FF",
+        "EMAIL_ADDRESS": "#D9F3EE",
+        "PHONE_NUMBER": "#FFE8CC",
+        "US_SSN": "#FFDDE2",
+        "US_ZIP_CODE": "#E8DFFF",
+        "IP_ADDRESS": "#D8EEFF",
+        "LOCATION": "#FFF1BD",
+        "DATE_TIME": "#E3F2D7",
+        "CREDIT_CARD": "#F8DDF1",
+        "US_BANK_NUMBER": "#F5E0D3",
+        "PROPERTY_IDENTIFIER": "#D9F0F3",
+        "CUSTOM": "#E7E9ED",
+        "REDACTED": "#D8DEE5",
+    }
 
     def __init__(self, service: PrivacyGateService, library: LibraryRepository) -> None:
         super().__init__()
@@ -71,8 +88,19 @@ class ProtectionPage(QWidget):
         title_row.addWidget(self.local_badge)
         root.addLayout(title_row)
 
-        setup_card = QFrame(objectName="Card")
-        setup = QVBoxLayout(setup_card)
+        setup_bar = QHBoxLayout()
+        self.setup_toggle = QToolButton()
+        self.setup_toggle.setText("Document setup  -")
+        self.setup_toggle.setObjectName("SecondaryTool")
+        self.setup_toggle.setCheckable(True)
+        self.setup_toggle.setChecked(True)
+        setup_bar.addWidget(self.setup_toggle)
+        setup_bar.addStretch(1)
+        setup_bar.addWidget(QLabel("Load text or PDF, choose a profile, then scan.", objectName="Muted"))
+        root.addLayout(setup_bar)
+
+        self.setup_card = QFrame(objectName="Card")
+        setup = QVBoxLayout(self.setup_card)
         setup.setContentsMargins(18, 16, 18, 16)
         setup.setSpacing(10)
         profile_row = QHBoxLayout()
@@ -105,6 +133,7 @@ class ProtectionPage(QWidget):
         text_layout.setContentsMargins(0, 10, 0, 0)
         self.text_input = QPlainTextEdit()
         self.text_input.setMinimumHeight(115)
+        self.text_input.setMaximumHeight(155)
         self.text_input.setPlaceholderText(
             "Paste an email, lease excerpt, offer, contractor proposal or other business text."
         )
@@ -135,7 +164,7 @@ class ProtectionPage(QWidget):
         scan_row.addWidget(self.clear_button)
         scan_row.addStretch(1)
         setup.addLayout(scan_row)
-        root.addWidget(setup_card)
+        root.addWidget(self.setup_card)
 
         metrics = QHBoxLayout()
         self.findings_metric = QLabel("0 findings", objectName="Metric")
@@ -147,10 +176,14 @@ class ProtectionPage(QWidget):
         metrics.addStretch(1)
         root.addLayout(metrics)
 
-        workspace = QSplitter(Qt.Orientation.Horizontal)
-        categories_card = QFrame(objectName="Card")
-        categories_layout = QVBoxLayout(categories_card)
+        self.categories_dialog = QDialog(self)
+        self.categories_dialog.setWindowTitle("Protection categories")
+        self.categories_dialog.resize(380, 520)
+        categories_layout = QVBoxLayout(self.categories_dialog)
         categories_layout.addWidget(QLabel("Protection categories", objectName="SectionTitle"))
+        categories_layout.addWidget(
+            QLabel("Choose which detected categories will be protected.", objectName="Muted")
+        )
         category_actions = QHBoxLayout()
         self.select_all_button = QPushButton("All", objectName="Tiny")
         self.select_none_button = QPushButton("None", objectName="Tiny")
@@ -159,14 +192,19 @@ class ProtectionPage(QWidget):
         category_actions.addStretch(1)
         categories_layout.addLayout(category_actions)
         self.category_list = QListWidget()
-        self.category_list.setMinimumWidth(190)
         categories_layout.addWidget(self.category_list, 1)
+        close_categories = QPushButton("Done", objectName="Primary")
+        close_categories.clicked.connect(self.categories_dialog.accept)
+        categories_layout.addWidget(close_categories)
 
+        workspace = QSplitter(Qt.Orientation.Horizontal)
         findings_card = QFrame(objectName="Card")
         findings_layout = QVBoxLayout(findings_card)
         filter_row = QHBoxLayout()
         filter_row.addWidget(QLabel("Detected items", objectName="SectionTitle"))
         filter_row.addStretch(1)
+        self.categories_button = QPushButton("Categories", objectName="Secondary")
+        filter_row.addWidget(self.categories_button)
         self.filter_input = QLineEdit()
         self.filter_input.setPlaceholderText("Filter findings")
         self.filter_input.setMaximumWidth(220)
@@ -187,12 +225,20 @@ class ProtectionPage(QWidget):
         header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
         header.setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)
         findings_layout.addWidget(self.findings_table, 1)
+        findings_actions = QHBoxLayout()
         self.add_sensitive_button = QPushButton("+ Add sensitive item", objectName="Secondary")
-        findings_layout.addWidget(self.add_sensitive_button)
+        findings_actions.addWidget(self.add_sensitive_button)
+        findings_actions.addStretch(1)
+        findings_actions.addWidget(QLabel("Click a row to review context", objectName="Muted"))
+        findings_layout.addLayout(findings_actions)
 
         preview_card = QFrame(objectName="Card")
         preview_layout = QVBoxLayout(preview_card)
-        preview_layout.addWidget(QLabel("Protected preview", objectName="SectionTitle"))
+        preview_header = QHBoxLayout()
+        preview_header.addWidget(QLabel("Protected preview", objectName="SectionTitle"))
+        preview_header.addStretch(1)
+        preview_header.addWidget(QLabel("Color-coded by protected category", objectName="TokenHint"))
+        preview_layout.addLayout(preview_header)
         self.preview = QPlainTextEdit()
         self.preview.setReadOnly(True)
         self.preview.setPlaceholderText("Run a scan to generate the protected preview.")
@@ -201,10 +247,10 @@ class ProtectionPage(QWidget):
         self.labels_input.setPlaceholderText("Library labels, comma separated (e.g. Lease, Property 014)")
         preview_layout.addWidget(self.labels_input)
 
-        workspace.addWidget(categories_card)
         workspace.addWidget(findings_card)
         workspace.addWidget(preview_card)
-        workspace.setSizes([210, 560, 520])
+        workspace.setChildrenCollapsible(False)
+        workspace.setSizes([650, 650])
         root.addWidget(workspace, 1)
 
         action_bar = QFrame(objectName="ActionBar")
@@ -238,6 +284,7 @@ class ProtectionPage(QWidget):
         return menu
 
     def _connect_signals(self) -> None:
+        self.setup_toggle.toggled.connect(self._toggle_setup)
         self.profile_combo.currentIndexChanged.connect(self._update_profile_description)
         self.mode_combo.currentIndexChanged.connect(self._refresh_preview)
         self.browse_button.clicked.connect(self._browse_pdf)
@@ -247,11 +294,21 @@ class ProtectionPage(QWidget):
         self.category_list.itemChanged.connect(self._category_changed)
         self.select_all_button.clicked.connect(lambda: self._set_all_categories(True))
         self.select_none_button.clicked.connect(lambda: self._set_all_categories(False))
+        self.categories_button.clicked.connect(self._open_categories)
         self.filter_input.textChanged.connect(self._apply_filter)
         self.add_sensitive_button.clicked.connect(self._add_sensitive_item)
         self.copy_button.clicked.connect(self._copy_result)
         self.save_copy_button.clicked.connect(self._save_and_copy)
         self.save_download_button.clicked.connect(self._save_and_download)
+
+    def _toggle_setup(self, visible: bool) -> None:
+        self.setup_card.setVisible(visible)
+        self.setup_toggle.setText("Document setup  -" if visible else "Document setup  +")
+
+    def _open_categories(self) -> None:
+        self.categories_dialog.show()
+        self.categories_dialog.raise_()
+        self.categories_dialog.activateWindow()
 
     def _update_profile_description(self) -> None:
         self.profile_description.setText(get_profile(self.profile_combo.currentData()).description)
@@ -290,6 +347,7 @@ class ProtectionPage(QWidget):
         self.current_document, self.current_findings = payload
         self._populate_findings()
         self._refresh_preview()
+        self.setup_toggle.setChecked(False)
 
     def _populate_findings(self) -> None:
         self.findings_table.blockSignals(True)
@@ -300,7 +358,9 @@ class ProtectionPage(QWidget):
             checkbox.setCheckState(Qt.CheckState.Checked)
             checkbox.setData(Qt.ItemDataRole.UserRole, finding.finding_id)
             self.findings_table.setItem(row, 0, checkbox)
-            self.findings_table.setItem(row, 1, QTableWidgetItem(finding.entity_type))
+            entity_item = QTableWidgetItem(finding.entity_type)
+            entity_item.setBackground(QColor(self._entity_color(finding.entity_type)))
+            self.findings_table.setItem(row, 1, entity_item)
             value = QTableWidgetItem(finding.text)
             value.setToolTip(finding.context)
             self.findings_table.setItem(row, 2, value)
@@ -365,8 +425,30 @@ class ProtectionPage(QWidget):
             self._selected_findings(),
             replacement_mode=self.mode_combo.currentData(),
         )
-        self.preview.setPlainText(self.current_result.combined_text)
+        self._render_preview(self.current_result.combined_text)
         self._set_result_actions(True)
+
+    def _entity_color(self, entity_type: str) -> str:
+        if entity_type in self.TOKEN_COLORS:
+            return self.TOKEN_COLORS[entity_type]
+        palette = ("#DCEAF7", "#E4E0F7", "#DFF1E3", "#F7E7D8", "#F3DDE6", "#E8EDD5")
+        return palette[sum(ord(character) for character in entity_type) % len(palette)]
+
+    def _render_preview(self, text: str) -> None:
+        self.preview.setPlainText(text)
+        pattern = re.compile(
+            r"\[\[PG_([A-Z0-9_]+)_\d{3}\]\]|<([A-Z][A-Z0-9_]+)>|\[REDACTED\]"
+        )
+        for match in pattern.finditer(text):
+            entity_type = match.group(1) or match.group(2) or "REDACTED"
+            cursor = QTextCursor(self.preview.document())
+            cursor.setPosition(match.start())
+            cursor.setPosition(match.end(), QTextCursor.MoveMode.KeepAnchor)
+            token_format = QTextCharFormat()
+            token_format.setBackground(QColor(self._entity_color(entity_type)))
+            token_format.setForeground(QColor("#102A43"))
+            token_format.setFontWeight(int(QFont.Weight.DemiBold))
+            cursor.mergeCharFormat(token_format)
 
     def _apply_filter(self, term: str) -> None:
         value = term.casefold().strip()
@@ -500,3 +582,4 @@ class ProtectionPage(QWidget):
         self.types_metric.setText("0 categories")
         self.pages_metric.setText("0 pages")
         self._set_result_actions(False)
+        self.setup_toggle.setChecked(True)

@@ -36,10 +36,14 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("AI PM LAB Privacy Gate")
         self.resize(1460, 920)
         self.setMinimumSize(1120, 720)
+        icon_path = resource_path("resources", "branding", "privacy-gate.ico")
+        display_logo_path = resource_path("resources", "branding", "privacy-gate-icon.png")
         logo_path = resource_path("resources", "branding", "privacy-gate-logo.png")
-        if logo_path.exists():
+        if icon_path.exists():
+            self.setWindowIcon(QIcon(str(icon_path)))
+        elif logo_path.exists():
             self.setWindowIcon(QIcon(str(logo_path)))
-        self._build_ui(logo_path)
+        self._build_ui(display_logo_path if display_logo_path.exists() else logo_path)
         self.statusBar().showMessage(f"Local library: {self.library.data_dir}")
 
     def _build_ui(self, logo_path) -> None:
@@ -48,48 +52,59 @@ class MainWindow(QMainWindow):
         shell.setContentsMargins(0, 0, 0, 0)
         shell.setSpacing(0)
 
-        sidebar = QFrame(objectName="Sidebar")
-        sidebar.setFixedWidth(238)
-        side = QVBoxLayout(sidebar)
-        side.setContentsMargins(18, 20, 18, 18)
-        side.setSpacing(8)
+        self.sidebar_expanded = True
+        self.sidebar = QFrame(objectName="Sidebar")
+        self.sidebar.setFixedWidth(238)
+        self.side_layout = QVBoxLayout(self.sidebar)
+        self.side_layout.setContentsMargins(18, 16, 18, 18)
+        self.side_layout.setSpacing(8)
+
+        self.sidebar_toggle = QPushButton("‹", objectName="SidebarToggle")
+        self.sidebar_toggle.setToolTip("Collapse navigation")
+        self.sidebar_toggle.clicked.connect(self._toggle_sidebar)
+        self.side_layout.addWidget(self.sidebar_toggle, alignment=Qt.AlignmentFlag.AlignRight)
 
         brand = QFrame(objectName="BrandPanel")
         brand_layout = QVBoxLayout(brand)
         brand_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        logo = QLabel()
+        self.sidebar_logo = QLabel()
         if logo_path.exists():
             pixmap = QPixmap(str(logo_path))
-            logo.setPixmap(pixmap.scaled(92, 92, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
-        logo.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        brand_layout.addWidget(logo)
-        brand_layout.addWidget(QLabel("AI PM LAB", objectName="SidebarBrand"), alignment=Qt.AlignmentFlag.AlignCenter)
-        brand_layout.addWidget(QLabel("PRIVACY GATE", objectName="SidebarProduct"), alignment=Qt.AlignmentFlag.AlignCenter)
-        side.addWidget(brand)
-        side.addSpacing(14)
+            self.sidebar_logo.setPixmap(pixmap.scaled(92, 92, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
+        self.sidebar_logo.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        brand_layout.addWidget(self.sidebar_logo)
+        self.brand_name = QLabel("AI PM LAB", objectName="SidebarBrand")
+        self.brand_product = QLabel("PRIVACY GATE", objectName="SidebarProduct")
+        brand_layout.addWidget(self.brand_name, alignment=Qt.AlignmentFlag.AlignCenter)
+        brand_layout.addWidget(self.brand_product, alignment=Qt.AlignmentFlag.AlignCenter)
+        self.side_layout.addWidget(brand)
+        self.side_layout.addSpacing(14)
 
         self.nav_group = QButtonGroup(self)
         self.nav_group.setExclusive(True)
         self.nav_buttons: list[QPushButton] = []
+        self.nav_labels: list[tuple[str, str]] = []
         navigation = [
-            ("Protect", 0),
-            ("Library", 1),
-            ("Restore", 2),
-            ("Local Automation / n8n", 3),
-            ("Cloud / MCP / Email", 4),
+            ("Protect", "P", 0),
+            ("Library", "L", 1),
+            ("Restore", "R", 2),
+            ("Local Automation / n8n", "A", 3),
+            ("Cloud / MCP / Email", "C", 4),
         ]
-        for label, page_index in navigation:
+        for label, compact_label, page_index in navigation:
             button = QPushButton(label, objectName="NavButton")
             button.setCheckable(True)
+            button.setToolTip(label)
             button.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
             button.clicked.connect(lambda _checked=False, page=page_index: self._show_page(page))
             self.nav_group.addButton(button)
             self.nav_buttons.append(button)
-            side.addWidget(button)
-        side.addStretch(1)
-        privacy = QLabel("LOCAL-FIRST\nNo mandatory cloud", objectName="SidebarNote")
-        privacy.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        side.addWidget(privacy)
+            self.nav_labels.append((label, compact_label))
+            self.side_layout.addWidget(button)
+        self.side_layout.addStretch(1)
+        self.privacy_note = QLabel("LOCAL-FIRST\nNo mandatory cloud", objectName="SidebarNote")
+        self.privacy_note.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.side_layout.addWidget(self.privacy_note)
 
         content = QFrame(objectName="Content")
         content_layout = QVBoxLayout(content)
@@ -110,7 +125,7 @@ class MainWindow(QMainWindow):
             self.pages.addWidget(page)
         content_layout.addWidget(self.pages)
 
-        shell.addWidget(sidebar)
+        shell.addWidget(self.sidebar)
         shell.addWidget(content, 1)
         self.setCentralWidget(central)
 
@@ -119,6 +134,42 @@ class MainWindow(QMainWindow):
         self.library_page.restore_requested.connect(self._open_restore)
         self.nav_buttons[0].setChecked(True)
         self._show_page(0)
+
+    def _toggle_sidebar(self) -> None:
+        self.sidebar_expanded = not self.sidebar_expanded
+        if self.sidebar_expanded:
+            self.sidebar.setFixedWidth(238)
+            self.side_layout.setContentsMargins(18, 16, 18, 18)
+            self.sidebar_toggle.setText("‹")
+            self.sidebar_toggle.setToolTip("Collapse navigation")
+            self.brand_name.show()
+            self.brand_product.show()
+            self.privacy_note.show()
+            logo_size = 92
+        else:
+            self.sidebar.setFixedWidth(76)
+            self.side_layout.setContentsMargins(10, 16, 10, 18)
+            self.sidebar_toggle.setText("›")
+            self.sidebar_toggle.setToolTip("Expand navigation")
+            self.brand_name.hide()
+            self.brand_product.hide()
+            self.privacy_note.hide()
+            logo_size = 44
+        logo_path = resource_path("resources", "branding", "privacy-gate-icon.png")
+        if not logo_path.exists():
+            logo_path = resource_path("resources", "branding", "privacy-gate-logo.png")
+        if logo_path.exists():
+            pixmap = QPixmap(str(logo_path))
+            self.sidebar_logo.setPixmap(
+                pixmap.scaled(
+                    logo_size,
+                    logo_size,
+                    Qt.AspectRatioMode.KeepAspectRatio,
+                    Qt.TransformationMode.SmoothTransformation,
+                )
+            )
+        for button, (full_label, compact_label) in zip(self.nav_buttons, self.nav_labels):
+            button.setText(full_label if self.sidebar_expanded else compact_label)
 
     def _show_page(self, index: int) -> None:
         self.pages.setCurrentIndex(index)
