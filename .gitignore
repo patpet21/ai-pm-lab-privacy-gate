@@ -1,0 +1,16 @@
+.venv/
+build/
+dist/
+*.egg-info/
+__pycache__/
+.pytest_cache/
+.coverage
+output/pdf/*.pdf
+release/
+installer-temp/
+tmp/
+*.db
+*.db-shm
+*.db-wal
+*.log
+.env

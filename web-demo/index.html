@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Try AI PM LAB Privacy Gate with pasted sample text. Processing stays in your browser.">
+  <title>AI PM LAB Privacy Gate — Local-first PII protection</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="#top" aria-label="AI PM LAB Privacy Gate home">
+      <img src="assets/privacy-gate-logo.png" alt="AI PM LAB Privacy Gate logo">
+      <span><strong>AI PM LAB</strong><small>PRIVACY GATE</small></span>
+    </a>
+    <nav><a href="#demo">Live demo</a><a href="#desktop">Desktop app</a></nav>
+  </header>
+
+  <main id="top">
+    <section class="hero">
+      <div class="hero-copy">
+        <p class="eyebrow">LOCAL-FIRST PRIVACY FOR REAL ESTATE OPERATIONS</p>
+        <h1>Protect sensitive data <span>before AI sees it.</span></h1>
+        <p class="lead">Review, replace, and safely reuse property-management, brokerage, and renovation documents—without sending the original data to a cloud scanner.</p>
+        <div class="hero-actions"><a class="button primary" href="#demo">Try pasted text</a><a class="button secondary" href="#desktop">Explore Windows app</a></div>
+        <div class="trust"><span>Browser-only demo</span><span>No account</span><span>No upload</span></div>
+      </div>
+      <aside class="privacy-card">
+        <p class="card-kicker">PRIVACY STATUS</p>
+        <div class="shield">LOCAL</div>
+        <h2>Your sample stays here.</h2>
+        <p>This page has no API connection. The downloadable Windows app adds the full Microsoft Presidio engine, PDF support, encrypted memory, and restore.</p>
+      </aside>
+    </section>
+
+    <section class="demo-section" id="demo">
+      <div class="section-heading">
+        <div><p class="eyebrow">SAFE INTERACTIVE PREVIEW</p><h2>Test it with pasted text</h2></div>
+        <p>This lightweight browser demonstration recognizes common structured U.S. identifiers. The Windows app performs the full Presidio analysis.</p>
+      </div>
+
+      <div class="demo-shell">
+        <div class="demo-toolbar">
+          <label>Industry profile
+            <select id="profile">
+              <option>Property Management</option>
+              <option>Realtor / Brokerage</option>
+              <option>Projects & Renovations</option>
+            </select>
+          </label>
+          <button class="text-button" id="sample" type="button">Load safe sample</button>
+          <span class="local-pill">LOCAL | Browser</span>
+        </div>
+        <div class="editors">
+          <label class="editor">Original text
+            <textarea id="input" spellcheck="false" placeholder="Paste a sample email, tenant note, offer, or contractor message..."></textarea>
+          </label>
+          <label class="editor">Protected preview
+            <textarea id="output" readonly placeholder="Protected text will appear here."></textarea>
+          </label>
+        </div>
+        <div class="results">
+          <div><strong id="count">0</strong><span>findings</span></div>
+          <div class="chips" id="chips"><span>No sensitive values detected yet</span></div>
+          <button class="button primary" id="protect" type="button">Protect text</button>
+          <button class="button secondary" id="copy" type="button" disabled>Copy protected text</button>
+        </div>
+      </div>
+      <p class="disclaimer">Demo limitation: browser rules are illustrative and may miss context. Do not use this web preview as the final compliance check for real customer records.</p>
+    </section>
+
+    <section class="desktop-section" id="desktop">
+      <div><p class="eyebrow">THE COMPLETE WINDOWS WORKFLOW</p><h2>A working privacy desk—not another upload portal.</h2></div>
+      <div class="features">
+        <article><span>01</span><h3>Presidio detection</h3><p>Review U.S. PII, turn categories on or off, and add sensitive values manually.</p></article>
+        <article><span>02</span><h3>Encrypted library</h3><p>Keep protected documents and reversible mappings secured for your Windows user.</p></article>
+        <article><span>03</span><h3>Restore results</h3><p>Paste an AI answer back into Privacy Gate and locally restore the original identities.</p></article>
+      </div>
+    </section>
+  </main>
+
+  <footer><span>AI PM LAB Privacy Gate</span><span>by Trigosat Consulting</span></footer>
+  <script src="app.js"></script>
+</body>
+</html>
+

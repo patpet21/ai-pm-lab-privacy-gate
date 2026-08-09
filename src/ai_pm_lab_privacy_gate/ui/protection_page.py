@@ -1,0 +1,502 @@
+from __future__ import annotations
+
+from pathlib import Path
+
+from PySide6.QtCore import QUrl, Qt, QThreadPool, Signal
+from PySide6.QtGui import QColor, QDesktopServices
+from PySide6.QtWidgets import (
+    QAbstractItemView,
+    QApplication,
+    QComboBox,
+    QFileDialog,
+    QFrame,
+    QHBoxLayout,
+    QHeaderView,
+    QInputDialog,
+    QLabel,
+    QLineEdit,
+    QListWidget,
+    QListWidgetItem,
+    QMessageBox,
+    QPlainTextEdit,
+    QPushButton,
+    QSplitter,
+    QTabWidget,
+    QTableWidget,
+    QTableWidgetItem,
+    QToolButton,
+    QVBoxLayout,
+    QWidget,
+)
+
+from ai_pm_lab_privacy_gate.application.privacy_service import PrivacyGateService
+from ai_pm_lab_privacy_gate.domain.models import AnalysisDocument, Finding, ProtectionResult
+from ai_pm_lab_privacy_gate.domain.profiles import get_profile, list_profiles
+from ai_pm_lab_privacy_gate.infrastructure.storage.library_repository import LibraryRepository
+from ai_pm_lab_privacy_gate.ui.workers import FunctionWorker
+
+
+class ProtectionPage(QWidget):
+    library_changed = Signal(str)
+    open_connections = Signal()
+
+    def __init__(self, service: PrivacyGateService, library: LibraryRepository) -> None:
+        super().__init__()
+        self.service = service
+        self.library = library
+        self.thread_pool = QThreadPool.globalInstance()
+        self.current_document: AnalysisDocument | None = None
+        self.current_findings: tuple[Finding, ...] = ()
+        self.current_result: ProtectionResult | None = None
+        self._active_worker: FunctionWorker | None = None
+        self._category_sync = False
+        self._build_ui()
+        self._connect_signals()
+        self._update_profile_description()
+
+    def _build_ui(self) -> None:
+        root = QVBoxLayout(self)
+        root.setContentsMargins(24, 22, 24, 18)
+        root.setSpacing(14)
+
+        title_row = QHBoxLayout()
+        headings = QVBoxLayout()
+        headings.addWidget(QLabel("Protect a document", objectName="PageTitle"))
+        headings.addWidget(
+            QLabel("Review every detected item before anything leaves this PC.", objectName="Muted")
+        )
+        title_row.addLayout(headings)
+        title_row.addStretch(1)
+        self.local_badge = QLabel("LOCAL  |  Protected", objectName="SafeBadge")
+        title_row.addWidget(self.local_badge)
+        root.addLayout(title_row)
+
+        setup_card = QFrame(objectName="Card")
+        setup = QVBoxLayout(setup_card)
+        setup.setContentsMargins(18, 16, 18, 16)
+        setup.setSpacing(10)
+        profile_row = QHBoxLayout()
+        profile_col = QVBoxLayout()
+        profile_col.addWidget(QLabel("Industry profile", objectName="FieldLabel"))
+        self.profile_combo = QComboBox()
+        for profile in list_profiles():
+            self.profile_combo.addItem(profile.name, profile.key)
+        profile_col.addWidget(self.profile_combo)
+        self.profile_description = QLabel(objectName="Muted")
+        profile_description = self.profile_description
+        profile_description.setWordWrap(True)
+        profile_col.addWidget(profile_description)
+        mode_col = QVBoxLayout()
+        mode_col.addWidget(QLabel("Protection mode", objectName="FieldLabel"))
+        self.mode_combo = QComboBox()
+        self.mode_combo.addItem("Reversible placeholders", "reversible")
+        self.mode_combo.addItem("Generic placeholders", "generic")
+        self.mode_combo.addItem("Permanent redaction", "redact")
+        mode_col.addWidget(self.mode_combo)
+        mode_col.addWidget(QLabel("Reversible mode enables local restore.", objectName="Muted"))
+        profile_row.addLayout(profile_col, 2)
+        profile_row.addSpacing(16)
+        profile_row.addLayout(mode_col, 1)
+        setup.addLayout(profile_row)
+
+        self.input_tabs = QTabWidget()
+        text_tab = QWidget()
+        text_layout = QVBoxLayout(text_tab)
+        text_layout.setContentsMargins(0, 10, 0, 0)
+        self.text_input = QPlainTextEdit()
+        self.text_input.setMinimumHeight(115)
+        self.text_input.setPlaceholderText(
+            "Paste an email, lease excerpt, offer, contractor proposal or other business text."
+        )
+        text_layout.addWidget(self.text_input)
+        self.input_tabs.addTab(text_tab, "Paste text")
+
+        pdf_tab = QWidget()
+        pdf_layout = QVBoxLayout(pdf_tab)
+        pdf_layout.setContentsMargins(0, 14, 0, 6)
+        pdf_row = QHBoxLayout()
+        self.pdf_path = QLineEdit()
+        self.pdf_path.setReadOnly(True)
+        self.pdf_path.setPlaceholderText("Choose a PDF with selectable text")
+        self.browse_button = QPushButton("Browse PDF", objectName="Secondary")
+        pdf_row.addWidget(self.pdf_path, 1)
+        pdf_row.addWidget(self.browse_button)
+        pdf_layout.addLayout(pdf_row)
+        pdf_layout.addWidget(
+            QLabel("Image-only PDFs require OCR, which is planned for a later build.", objectName="Muted")
+        )
+        self.input_tabs.addTab(pdf_tab, "PDF file")
+        setup.addWidget(self.input_tabs)
+
+        scan_row = QHBoxLayout()
+        self.scan_button = QPushButton("Scan for sensitive data", objectName="Primary")
+        self.clear_button = QPushButton("Clear", objectName="Secondary")
+        scan_row.addWidget(self.scan_button)
+        scan_row.addWidget(self.clear_button)
+        scan_row.addStretch(1)
+        setup.addLayout(scan_row)
+        root.addWidget(setup_card)
+
+        metrics = QHBoxLayout()
+        self.findings_metric = QLabel("0 findings", objectName="Metric")
+        self.types_metric = QLabel("0 categories", objectName="Metric")
+        self.pages_metric = QLabel("0 pages", objectName="Metric")
+        metrics.addWidget(self.findings_metric)
+        metrics.addWidget(self.types_metric)
+        metrics.addWidget(self.pages_metric)
+        metrics.addStretch(1)
+        root.addLayout(metrics)
+
+        workspace = QSplitter(Qt.Orientation.Horizontal)
+        categories_card = QFrame(objectName="Card")
+        categories_layout = QVBoxLayout(categories_card)
+        categories_layout.addWidget(QLabel("Protection categories", objectName="SectionTitle"))
+        category_actions = QHBoxLayout()
+        self.select_all_button = QPushButton("All", objectName="Tiny")
+        self.select_none_button = QPushButton("None", objectName="Tiny")
+        category_actions.addWidget(self.select_all_button)
+        category_actions.addWidget(self.select_none_button)
+        category_actions.addStretch(1)
+        categories_layout.addLayout(category_actions)
+        self.category_list = QListWidget()
+        self.category_list.setMinimumWidth(190)
+        categories_layout.addWidget(self.category_list, 1)
+
+        findings_card = QFrame(objectName="Card")
+        findings_layout = QVBoxLayout(findings_card)
+        filter_row = QHBoxLayout()
+        filter_row.addWidget(QLabel("Detected items", objectName="SectionTitle"))
+        filter_row.addStretch(1)
+        self.filter_input = QLineEdit()
+        self.filter_input.setPlaceholderText("Filter findings")
+        self.filter_input.setMaximumWidth(220)
+        filter_row.addWidget(self.filter_input)
+        findings_layout.addLayout(filter_row)
+        self.findings_table = QTableWidget(0, 5)
+        self.findings_table.setHorizontalHeaderLabels(
+            ["Protect", "Type", "Value", "Page", "Confidence"]
+        )
+        self.findings_table.setAlternatingRowColors(True)
+        self.findings_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self.findings_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.findings_table.verticalHeader().setVisible(False)
+        header = self.findings_table.horizontalHeader()
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)
+        findings_layout.addWidget(self.findings_table, 1)
+        self.add_sensitive_button = QPushButton("+ Add sensitive item", objectName="Secondary")
+        findings_layout.addWidget(self.add_sensitive_button)
+
+        preview_card = QFrame(objectName="Card")
+        preview_layout = QVBoxLayout(preview_card)
+        preview_layout.addWidget(QLabel("Protected preview", objectName="SectionTitle"))
+        self.preview = QPlainTextEdit()
+        self.preview.setReadOnly(True)
+        self.preview.setPlaceholderText("Run a scan to generate the protected preview.")
+        preview_layout.addWidget(self.preview, 1)
+        self.labels_input = QLineEdit()
+        self.labels_input.setPlaceholderText("Library labels, comma separated (e.g. Lease, Property 014)")
+        preview_layout.addWidget(self.labels_input)
+
+        workspace.addWidget(categories_card)
+        workspace.addWidget(findings_card)
+        workspace.addWidget(preview_card)
+        workspace.setSizes([210, 560, 520])
+        root.addWidget(workspace, 1)
+
+        action_bar = QFrame(objectName="ActionBar")
+        actions = QHBoxLayout(action_bar)
+        self.copy_button = QPushButton("Copy protected text", objectName="Secondary")
+        self.save_copy_button = QPushButton("Save + Copy", objectName="Primary")
+        self.save_download_button = QPushButton("Save + Download", objectName="Gold")
+        self.ai_button = QToolButton()
+        self.ai_button.setText("Open with AI")
+        self.ai_button.setObjectName("SecondaryTool")
+        self.ai_button.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
+        ai_menu = self._build_ai_menu()
+        self.ai_button.setMenu(ai_menu)
+        actions.addWidget(self.copy_button)
+        actions.addStretch(1)
+        actions.addWidget(self.save_copy_button)
+        actions.addWidget(self.save_download_button)
+        actions.addWidget(self.ai_button)
+        root.addWidget(action_bar)
+        self._set_result_actions(False)
+
+    def _build_ai_menu(self):
+        from PySide6.QtWidgets import QMenu
+
+        menu = QMenu(self)
+        manual = menu.addAction("Copy & Open ChatGPT")
+        manual.triggered.connect(self._copy_and_open_chatgpt)
+        menu.addSeparator()
+        connections = menu.addAction("Configure connections…")
+        connections.triggered.connect(self.open_connections.emit)
+        return menu
+
+    def _connect_signals(self) -> None:
+        self.profile_combo.currentIndexChanged.connect(self._update_profile_description)
+        self.mode_combo.currentIndexChanged.connect(self._refresh_preview)
+        self.browse_button.clicked.connect(self._browse_pdf)
+        self.scan_button.clicked.connect(self._start_analysis)
+        self.clear_button.clicked.connect(self.clear)
+        self.findings_table.itemChanged.connect(self._refresh_preview)
+        self.category_list.itemChanged.connect(self._category_changed)
+        self.select_all_button.clicked.connect(lambda: self._set_all_categories(True))
+        self.select_none_button.clicked.connect(lambda: self._set_all_categories(False))
+        self.filter_input.textChanged.connect(self._apply_filter)
+        self.add_sensitive_button.clicked.connect(self._add_sensitive_item)
+        self.copy_button.clicked.connect(self._copy_result)
+        self.save_copy_button.clicked.connect(self._save_and_copy)
+        self.save_download_button.clicked.connect(self._save_and_download)
+
+    def _update_profile_description(self) -> None:
+        self.profile_description.setText(get_profile(self.profile_combo.currentData()).description)
+
+    def _browse_pdf(self) -> None:
+        path, _ = QFileDialog.getOpenFileName(self, "Choose PDF", "", "PDF files (*.pdf)")
+        if path:
+            self.pdf_path.setText(path)
+            self.input_tabs.setCurrentIndex(1)
+
+    def _start_analysis(self) -> None:
+        profile = get_profile(self.profile_combo.currentData())
+        tab = self.input_tabs.currentIndex()
+        text = self.text_input.toPlainText().strip()
+        pdf_path = self.pdf_path.text().strip()
+        if tab == 0 and not text:
+            QMessageBox.information(self, "Nothing to scan", "Paste text before starting the scan.")
+            return
+        if tab == 1 and not pdf_path:
+            QMessageBox.information(self, "No PDF selected", "Choose a PDF before starting the scan.")
+            return
+
+        def task():
+            document = self.service.document_from_text(text) if tab == 0 else self.service.document_from_pdf(pdf_path)
+            return document, self.service.analyze(document, profile)
+
+        self._set_busy(True)
+        worker = FunctionWorker(task)
+        self._active_worker = worker
+        worker.signals.result.connect(self._analysis_ready)
+        worker.signals.error.connect(lambda message: QMessageBox.critical(self, "Unable to scan", message))
+        worker.signals.finished.connect(lambda: self._set_busy(False))
+        self.thread_pool.start(worker)
+
+    def _analysis_ready(self, payload: object) -> None:
+        self.current_document, self.current_findings = payload
+        self._populate_findings()
+        self._refresh_preview()
+
+    def _populate_findings(self) -> None:
+        self.findings_table.blockSignals(True)
+        self.findings_table.setRowCount(len(self.current_findings))
+        for row, finding in enumerate(self.current_findings):
+            checkbox = QTableWidgetItem()
+            checkbox.setFlags(Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsUserCheckable)
+            checkbox.setCheckState(Qt.CheckState.Checked)
+            checkbox.setData(Qt.ItemDataRole.UserRole, finding.finding_id)
+            self.findings_table.setItem(row, 0, checkbox)
+            self.findings_table.setItem(row, 1, QTableWidgetItem(finding.entity_type))
+            value = QTableWidgetItem(finding.text)
+            value.setToolTip(finding.context)
+            self.findings_table.setItem(row, 2, value)
+            page = str(finding.page_number) if self.current_document and self.current_document.source_kind == "pdf" else "Text"
+            self.findings_table.setItem(row, 3, QTableWidgetItem(page))
+            confidence = QTableWidgetItem(f"{finding.score:.0%}")
+            if finding.score < 0.6:
+                confidence.setForeground(QColor("#B7791F"))
+            self.findings_table.setItem(row, 4, confidence)
+        self.findings_table.blockSignals(False)
+        self._populate_categories()
+        types = len({item.entity_type for item in self.current_findings})
+        pages = len(self.current_document.pages) if self.current_document else 0
+        self.findings_metric.setText(f"{len(self.current_findings)} findings")
+        self.types_metric.setText(f"{types} categories")
+        self.pages_metric.setText(f"{pages} page{'s' if pages != 1 else ''}")
+
+    def _populate_categories(self) -> None:
+        counts: dict[str, int] = {}
+        for finding in self.current_findings:
+            counts[finding.entity_type] = counts.get(finding.entity_type, 0) + 1
+        self._category_sync = True
+        self.category_list.clear()
+        for entity_type, count in sorted(counts.items()):
+            item = QListWidgetItem(f"{entity_type.replace('_', ' ').title()}   {count}")
+            item.setData(Qt.ItemDataRole.UserRole, entity_type)
+            item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
+            item.setCheckState(Qt.CheckState.Checked)
+            self.category_list.addItem(item)
+        self._category_sync = False
+
+    def _category_changed(self, item: QListWidgetItem) -> None:
+        if self._category_sync:
+            return
+        entity_type = item.data(Qt.ItemDataRole.UserRole)
+        checked = item.checkState()
+        self.findings_table.blockSignals(True)
+        for row in range(self.findings_table.rowCount()):
+            if self.findings_table.item(row, 1).text() == entity_type:
+                self.findings_table.item(row, 0).setCheckState(checked)
+        self.findings_table.blockSignals(False)
+        self._refresh_preview()
+
+    def _set_all_categories(self, checked: bool) -> None:
+        state = Qt.CheckState.Checked if checked else Qt.CheckState.Unchecked
+        for index in range(self.category_list.count()):
+            self.category_list.item(index).setCheckState(state)
+
+    def _selected_findings(self) -> tuple[Finding, ...]:
+        selected_ids = {
+            self.findings_table.item(row, 0).data(Qt.ItemDataRole.UserRole)
+            for row in range(self.findings_table.rowCount())
+            if self.findings_table.item(row, 0).checkState() == Qt.CheckState.Checked
+        }
+        return tuple(item for item in self.current_findings if item.finding_id in selected_ids)
+
+    def _refresh_preview(self, *_args) -> None:
+        if self.current_document is None:
+            return
+        self.current_result = self.service.protect(
+            self.current_document,
+            self._selected_findings(),
+            replacement_mode=self.mode_combo.currentData(),
+        )
+        self.preview.setPlainText(self.current_result.combined_text)
+        self._set_result_actions(True)
+
+    def _apply_filter(self, term: str) -> None:
+        value = term.casefold().strip()
+        for row in range(self.findings_table.rowCount()):
+            haystack = " ".join(
+                self.findings_table.item(row, column).text()
+                for column in range(1, self.findings_table.columnCount())
+            ).casefold()
+            self.findings_table.setRowHidden(row, bool(value and value not in haystack))
+
+    def _add_sensitive_item(self) -> None:
+        if self.current_document is None:
+            return
+        value, ok = QInputDialog.getText(self, "Add sensitive item", "Exact text to protect:")
+        if not ok or not value:
+            return
+        entity_type, ok = QInputDialog.getItem(
+            self,
+            "Sensitive category",
+            "Category:",
+            ["PERSON", "EMAIL_ADDRESS", "PHONE_NUMBER", "LOCATION", "US_SSN", "US_BANK_NUMBER", "PROPERTY_IDENTIFIER", "CUSTOM"],
+            editable=True,
+        )
+        if not ok or not entity_type:
+            return
+        additions: list[Finding] = []
+        for page in self.current_document.pages:
+            start = 0
+            while True:
+                index = page.text.find(value, start)
+                if index < 0:
+                    break
+                additions.append(
+                    Finding(
+                        finding_id=f"manual-{page.page_number}-{index}-{len(additions)}",
+                        entity_type=entity_type.strip().upper().replace(" ", "_"),
+                        text=value,
+                        start=index,
+                        end=index + len(value),
+                        score=1.0,
+                        page_number=page.page_number,
+                        context=page.text[max(0, index - 34) : index + len(value) + 34],
+                    )
+                )
+                start = index + len(value)
+        if not additions:
+            QMessageBox.information(self, "Text not found", "That exact text was not found in the document.")
+            return
+        self.current_findings = self.current_findings + tuple(additions)
+        self._populate_findings()
+        self._refresh_preview()
+
+    def _derive_title(self) -> str:
+        if self.current_document and self.current_document.source_path:
+            return self.current_document.source_path.stem
+        for line in self.text_input.toPlainText().splitlines():
+            if line.strip():
+                return line.strip()[:80]
+        return "Protected document"
+
+    def _save_to_library(self):
+        if self.current_document is None or self.current_result is None:
+            return None
+        title, ok = QInputDialog.getText(self, "Save to local library", "Document title:", text=self._derive_title())
+        if not ok:
+            return None
+        source_name = self.current_document.source_path.name if self.current_document.source_path else "Pasted text"
+        labels = tuple(part.strip() for part in self.labels_input.text().split(",") if part.strip())
+        document = self.library.save(
+            title=title,
+            source_kind=self.current_document.source_kind,
+            source_name=source_name,
+            profile_key=self.profile_combo.currentData(),
+            result=self.current_result,
+            labels=labels,
+        )
+        self.library_changed.emit(document.document_id)
+        return document
+
+    def _copy_result(self) -> None:
+        if self.current_result:
+            QApplication.clipboard().setText(self.current_result.combined_text)
+
+    def _save_and_copy(self) -> None:
+        document = self._save_to_library()
+        if document:
+            self._copy_result()
+            QMessageBox.information(self, "Saved locally", "The protected text was saved and copied.")
+
+    def _save_and_download(self) -> None:
+        document = self._save_to_library()
+        if not document or not self.current_result or not self.current_document:
+            return
+        if self.current_document.source_kind == "pdf":
+            suggested = f"{document.title}_protected.pdf"
+            path, _ = QFileDialog.getSaveFileName(self, "Save protected PDF", suggested, "PDF files (*.pdf)")
+            if path:
+                self.service.save_protected_pdf(self.current_result, path if path.lower().endswith(".pdf") else path + ".pdf")
+        else:
+            suggested = f"{document.title}_protected.txt"
+            path, _ = QFileDialog.getSaveFileName(self, "Save protected text", suggested, "Text files (*.txt)")
+            if path:
+                self.service.save_protected_text(self.current_result, path if path.lower().endswith(".txt") else path + ".txt")
+
+    def _copy_and_open_chatgpt(self) -> None:
+        self._copy_result()
+        QDesktopServices.openUrl(QUrl("https://chatgpt.com/"))
+
+    def _set_result_actions(self, enabled: bool) -> None:
+        for widget in (self.copy_button, self.save_copy_button, self.save_download_button, self.ai_button):
+            widget.setEnabled(enabled)
+
+    def _set_busy(self, busy: bool) -> None:
+        self.scan_button.setEnabled(not busy)
+        self.browse_button.setEnabled(not busy)
+        self.profile_combo.setEnabled(not busy)
+        if not busy:
+            self._active_worker = None
+
+    def clear(self) -> None:
+        self.text_input.clear()
+        self.pdf_path.clear()
+        self.preview.clear()
+        self.findings_table.setRowCount(0)
+        self.category_list.clear()
+        self.labels_input.clear()
+        self.current_document = None
+        self.current_findings = ()
+        self.current_result = None
+        self.findings_metric.setText("0 findings")
+        self.types_metric.setText("0 categories")
+        self.pages_metric.setText("0 pages")
+        self._set_result_actions(False)
