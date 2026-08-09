@@ -71,13 +71,18 @@ class MainWindow(QMainWindow):
         self.nav_group = QButtonGroup(self)
         self.nav_group.setExclusive(True)
         self.nav_buttons: list[QPushButton] = []
-        for index, label in enumerate(
-            ["Protect", "Library", "Restore", "Connections"]
-        ):
+        navigation = [
+            ("Protect", 0),
+            ("Library", 1),
+            ("Restore", 2),
+            ("Local Automation / n8n", 3),
+            ("Cloud / MCP / Email", 4),
+        ]
+        for label, page_index in navigation:
             button = QPushButton(label, objectName="NavButton")
             button.setCheckable(True)
             button.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-            button.clicked.connect(lambda _checked=False, page=index: self._show_page(page))
+            button.clicked.connect(lambda _checked=False, page=page_index: self._show_page(page))
             self.nav_group.addButton(button)
             self.nav_buttons.append(button)
             side.addWidget(button)
@@ -93,8 +98,15 @@ class MainWindow(QMainWindow):
         self.protection_page = ProtectionPage(self.service, self.library)
         self.library_page = LibraryPage(self.library)
         self.restore_page = RestorePage(self.service, self.library)
-        self.connections_page = ConnectionsPage()
-        for page in (self.protection_page, self.library_page, self.restore_page, self.connections_page):
+        self.local_automation_page = ConnectionsPage("local")
+        self.cloud_automation_page = ConnectionsPage("cloud")
+        for page in (
+            self.protection_page,
+            self.library_page,
+            self.restore_page,
+            self.local_automation_page,
+            self.cloud_automation_page,
+        ):
             self.pages.addWidget(page)
         content_layout.addWidget(self.pages)
 
@@ -103,7 +115,7 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(central)
 
         self.protection_page.library_changed.connect(self._library_changed)
-        self.protection_page.open_connections.connect(lambda: self._show_page(3))
+        self.protection_page.open_connections.connect(lambda: self._show_page(4))
         self.library_page.restore_requested.connect(self._open_restore)
         self.nav_buttons[0].setChecked(True)
         self._show_page(0)

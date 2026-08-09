@@ -6,25 +6,36 @@ from PySide6.QtWidgets import QFrame, QGridLayout, QHBoxLayout, QLabel, QMessage
 
 
 class ConnectionsPage(QWidget):
-    def __init__(self) -> None:
+    def __init__(self, section: str = "local") -> None:
         super().__init__()
+        self.section = section
         root = QVBoxLayout(self)
         root.setContentsMargins(24, 22, 24, 18)
         root.setSpacing(14)
-        root.addWidget(QLabel("Connections", objectName="PageTitle"))
-        root.addWidget(
-            QLabel("Privacy Gate works free without connections. Add automation only when your workflow needs it.", objectName="Muted")
+        title = "Local Automation" if section == "local" else "Cloud, MCP & Email"
+        subtitle = (
+            "Free-ready architecture for n8n and a future opt-in localhost API. Nothing is running yet."
+            if section == "local"
+            else "Optional customer-owned or managed integrations. Privacy Gate remains useful without them."
         )
+        root.addWidget(QLabel(title, objectName="PageTitle"))
+        root.addWidget(QLabel(subtitle, objectName="Muted"))
         grid = QGridLayout()
         grid.setSpacing(14)
-        cards = [
-            ("Manual AI", "Ready", "Copy protected content and open ChatGPT or another AI manually.", "Open ChatGPT", self._open_chatgpt),
-            ("Local Automation", "Not connected", "Local API, n8n and folder-based workflows without mandatory cloud services.", "View options", self._not_ready),
-            ("Cloud Automation", "Not connected", "Connect an LLM provider using the customer’s account or API key.", "Configure", self._not_ready),
-            ("Email & Communication", "Not connected", "Create protected email drafts or automate approved delivery workflows.", "Configure", self._not_ready),
-            ("ChatGPT & MCP", "Planned", "Let ChatGPT search and retrieve protected documents from the local library.", "Learn more", self._not_ready),
-            ("Workflow Assistance", "AI PM LAB", "Request help designing n8n, MCP, email or cloud workflows.", "Contact us", self._not_ready),
-        ]
+        if section == "local":
+            cards = [
+                ("Manual workflow", "Ready", "Copy protected content, use any AI chat, then restore the response locally.", "Open ChatGPT", self._open_chatgpt),
+                ("n8n Local Automation", "Planned", "Send text to Privacy Gate on localhost, receive protected text, then continue in an n8n workflow.", "View roadmap", self._not_ready),
+                ("Privacy Gate Local API", "Prepared", "The project already reserves local API contracts for an opt-in service bound to this PC.", "View roadmap", self._not_ready),
+                ("Watched folders", "Planned", "Protect approved files placed in a local folder without a mandatory cloud service.", "View roadmap", self._not_ready),
+            ]
+        else:
+            cards = [
+                ("Cloud AI", "Optional", "Connect an LLM with the customer’s own account or API key.", "Not configured", self._not_ready),
+                ("ChatGPT & MCP", "Planned", "Allow an approved AI client to retrieve protected documents from the local library.", "View roadmap", self._not_ready),
+                ("Email Automation", "Planned", "Create protected email drafts or approved delivery workflows.", "View roadmap", self._not_ready),
+                ("Workflow Assistance", "AI PM LAB", "Get help designing n8n, MCP, email, or cloud workflows for your business.", "Contact AI PM LAB", self._contact),
+            ]
         for index, card in enumerate(cards):
             grid.addWidget(self._card(*card), index // 2, index % 2)
         root.addLayout(grid)
@@ -57,4 +68,10 @@ class ConnectionsPage(QWidget):
             "Connection not configured",
             "This integration is visible in the product roadmap but is not enabled in this local build. "
             "Manual copy, download, library and restore remain available without a cloud connection.",
+        )
+
+    @staticmethod
+    def _contact() -> None:
+        QDesktopServices.openUrl(
+            QUrl("mailto:peter@propertydex.xyz?subject=AI%20PM%20LAB%20Privacy%20Gate%20automation")
         )
