@@ -8,5 +8,4 @@
     X-Frame-Options = "DENY"
     Referrer-Policy = "no-referrer"
     Permissions-Policy = "camera=(), microphone=(), geolocation=()"
-    Content-Security-Policy = "default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; connect-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'"
-
+    Content-Security-Policy = "default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; connect-src https://formspree.io; frame-ancestors 'none'; base-uri 'none'; form-action https://formspree.io"

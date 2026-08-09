@@ -54,3 +54,33 @@ copy.addEventListener('click', async () => {
   await navigator.clipboard.writeText(output.value);
   const old = copy.textContent; copy.textContent = 'Copied'; setTimeout(() => copy.textContent = old, 1200);
 });
+
+const contactForm = document.querySelector('#contact-form');
+const formStatus = document.querySelector('#form-status');
+
+contactForm.addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const submitButton = contactForm.querySelector('button[type="submit"]');
+  submitButton.disabled = true;
+  submitButton.textContent = 'Sending...';
+  formStatus.textContent = '';
+  formStatus.className = 'form-status';
+
+  try {
+    const response = await fetch(contactForm.action, {
+      method: 'POST',
+      body: new FormData(contactForm),
+      headers: {Accept: 'application/json'}
+    });
+    if (!response.ok) throw new Error('Form submission failed');
+    contactForm.reset();
+    formStatus.textContent = 'Thank you. Your message has been sent.';
+    formStatus.classList.add('success');
+  } catch (error) {
+    formStatus.textContent = 'The message could not be sent. Please email peter@propertydex.xyz.';
+    formStatus.classList.add('error');
+  } finally {
+    submitButton.disabled = false;
+    submitButton.textContent = 'Send message';
+  }
+});
