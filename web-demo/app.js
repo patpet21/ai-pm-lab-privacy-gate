@@ -4,23 +4,59 @@ const count = document.querySelector('#count');
 const chips = document.querySelector('#chips');
 const copy = document.querySelector('#copy');
 
+// The browser demo intentionally uses deterministic, local rules. The desktop
+// app performs the fuller Presidio analysis, but both surfaces cover the
+// critical government, financial and real-estate identifiers below.
 const rules = [
-  ['PERSON', /\b[A-Z][a-z]{1,24}(?:\s+[A-Z]\.)?\s+[A-Z][a-z]{1,24}\b/g],
-  ['US_SSN', /\b\d{3}-\d{2}-\d{4}\b/g],
-  ['EMAIL_ADDRESS', /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi],
-  ['PHONE_NUMBER', /(?<!\d)(?:\+?1[-.\s]?)?(?:\(\d{3}\)|\d{3})[-.\s]\d{3}[-.\s]\d{4}(?!\d)/g],
-  ['CREDIT_CARD', /\b(?:\d[ -]*?){13,16}\b/g],
-  ['IP_ADDRESS', /\b(?:\d{1,3}\.){3}\d{1,3}\b/g],
-  ['US_ZIP_CODE', /\b\d{5}(?:-\d{4})?\b/g]
+  {type:'PERSON', regex:/\b(?:tenant|owner|buyer|seller|realtor|broker|contractor|vendor|applicant|client|contact)(?:\s+name)?\s*[:#-]\s*([A-Z][A-Za-z'-]+(?:\s+[A-Z](?:\.|[A-Za-z'-]+)){1,3})/g, group:1, priority:100},
+  {type:'US_SSN', regex:/\b\d{3}-\d{2}-\d{4}\b/g, priority:95},
+  {type:'US_DRIVER_LICENSE', regex:/\b(?:driver(?:'s|s)?\s+licen[cs]e|driver\s+licen[cs]e|DL)\s*(?::|#|number|no\.?)?\s*([A-Z0-9][A-Z0-9 -]{5,17}[A-Z0-9])\b/gi, group:1, priority:100},
+  {type:'US_PASSPORT', regex:/\bpassport(?:\s+(?:number|no\.?))?\s*(?::|#)?\s*([A-Z0-9]{6,12})\b/gi, group:1, priority:100},
+  {type:'US_ROUTING_NUMBER', regex:/\b(?:(?:ABA\s+)?routing(?:\s+number)?)\s*(?::|#)?\s*(\d{9})\b/gi, group:1, priority:100},
+  {type:'US_BANK_NUMBER', regex:/\b(?:bank|checking|savings)\s+account(?:\s+(?:number|no\.?))?\s*(?::|#)?\s*(\d{6,17})\b/gi, group:1, priority:100},
+  {type:'TENANT_ID', regex:/\btenant\s+(?:ID|identifier)\s*(?::|#)?\s*([A-Z0-9][A-Z0-9-]{3,30})\b/gi, group:1, priority:100},
+  {type:'LEASE_ID', regex:/\blease\s+(?:ID|identifier|number|no\.?)\s*(?::|#)?\s*([A-Z0-9][A-Z0-9-]{3,30})\b/gi, group:1, priority:100},
+  {type:'NYC_BBL', regex:/\b(?:NYC\s+)?BBL\s*(?::|#)?\s*([1-5]-?\d{5}-?\d{4})\b/gi, group:1, priority:100},
+  {type:'NYC_BIN', regex:/\b(?:NYC\s+)?BIN\s*(?::|#)?\s*(\d{7})\b/gi, group:1, priority:100},
+  {type:'VENDOR_ACCOUNT_ID', regex:/\bvendor\s+(?:account\s+)?(?:ID|identifier|number|no\.?)\s*(?::|#)?\s*([A-Z0-9][A-Z0-9-]{3,30})\b/gi, group:1, priority:100},
+  {type:'WORK_ORDER_ID', regex:/\bwork\s+order(?:\s+(?:ID|number|no\.?))?\s*(?::|#)?\s*([A-Z0-9][A-Z0-9-]{3,30})\b/gi, group:1, priority:100},
+  {type:'PROPOSAL_ID', regex:/\bproposal(?:\s+(?:ID|number|no\.?))?\s*(?::|#)?\s*([A-Z0-9][A-Z0-9-]{3,30})\b/gi, group:1, priority:100},
+  {type:'INSURANCE_POLICY_ID', regex:/\b(?:insurance\s+)?policy(?:\s+(?:ID|number|no\.?))?\s*(?::|#)?\s*([A-Z0-9][A-Z0-9-]{3,30})\b/gi, group:1, priority:100},
+  {type:'PREAPPROVAL_ID', regex:/\bpre-?approval(?:\s+(?:ID|reference|number|no\.?))?\s*(?::|#)?\s*([A-Z0-9][A-Z0-9-]{3,30})\b/gi, group:1, priority:100},
+  {type:'MORTGAGE_REFERENCE', regex:/\bmortgage(?:\s+(?:ID|reference|number|no\.?))?\s*(?::|#)?\s*([A-Z0-9][A-Z0-9-]{3,30})\b/gi, group:1, priority:100},
+  {type:'TENANT_ID', regex:/\bTEN-[A-Z0-9-]{4,30}\b/g, priority:95},
+  {type:'LEASE_ID', regex:/\bLEASE-[A-Z0-9-]{4,30}\b/g, priority:95},
+  {type:'VENDOR_ACCOUNT_ID', regex:/\bVND-[A-Z0-9-]{4,30}\b/g, priority:95},
+  {type:'WORK_ORDER_ID', regex:/\bWO-[A-Z0-9-]{4,30}\b/g, priority:95},
+  {type:'PROPOSAL_ID', regex:/\bPROP-[A-Z0-9-]{4,30}\b/g, priority:95},
+  {type:'INSURANCE_POLICY_ID', regex:/\bCGL-[A-Z0-9-]{4,30}\b/g, priority:95},
+  {type:'PREAPPROVAL_ID', regex:/\bPA-[A-Z0-9-]{4,30}\b/g, priority:95},
+  {type:'MORTGAGE_REFERENCE', regex:/\bMTG-[A-Z0-9-]{4,30}\b/g, priority:95},
+  {type:'NYC_BBL', regex:/\b[1-5]-\d{5}-\d{4}\b/g, priority:95},
+  {type:'EMAIL_ADDRESS', regex:/\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi, priority:90},
+  {type:'PHONE_NUMBER', regex:/(?<!\d)(?:\+?1[\s.()-]*)?(?:\(\s*\d{3}\s*\)|\d{3})[\s.()-]+\d{3}[\s.-]+\d{4}(?!\d)/g, priority:90},
+  {type:'CREDIT_CARD', regex:/\b(?:\d[ -]*?){13,16}\b/g, priority:80},
+  {type:'IP_ADDRESS', regex:/\b(?:\d{1,3}\.){3}\d{1,3}\b/g, priority:90},
+  {type:'US_ZIP_CODE', regex:/\b\d{5}(?:-\d{4})?\b/g, priority:50},
+  {type:'PERSON', regex:/\b[A-Z][a-z'-]{1,24}(?:\s+[A-Z]\.)?\s+[A-Z][a-z'-]{1,24}\b/g, priority:40}
 ];
 
 function protectText(text) {
   const matches = [];
-  rules.forEach(([type, regex]) => {
-    for (const match of text.matchAll(regex)) matches.push({type, value: match[0], start: match.index, end: match.index + match[0].length});
+  rules.forEach(rule => {
+    for (const match of text.matchAll(rule.regex)) {
+      const value = rule.group ? match[rule.group] : match[0];
+      const offset = rule.group ? match[0].lastIndexOf(value) : 0;
+      const start = match.index + offset;
+      matches.push({type:rule.type, value, start, end:start + value.length, priority:rule.priority || 0});
+    }
   });
-  matches.sort((a,b) => a.start-b.start || b.end-a.end);
-  const accepted = matches.filter((item, index, all) => !all.some((other, j) => j < index && item.start < other.end));
+  matches.sort((a,b) => b.priority-a.priority || a.start-b.start || (b.end-b.start)-(a.end-a.start));
+  const accepted = [];
+  matches.forEach(item => {
+    if (!accepted.some(other => item.start < other.end && other.start < item.end)) accepted.push(item);
+  });
+  accepted.sort((a,b) => a.start-b.start || b.end-a.end);
   const counters = {};
   const tokens = new Map();
   let protectedText = text;

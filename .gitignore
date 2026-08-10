@@ -14,3 +14,13 @@ tmp/
 *.db-wal
 *.log
 .env
+.env.*
+!.env.example
+*.pem
+*.key
+*.pfx
+*.p12
+*.sqlite
+*.sqlite3
+customer-data/
+private/
