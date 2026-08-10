@@ -15,10 +15,10 @@ if (-not (Test-Path (Join-Path $DistDir 'AI PM LAB Privacy Gate.exe'))) {
 if (-not $InnoCompiler) {
     $candidates = @(
         "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe",
-        "$env:ProgramFiles(x86)\Inno Setup 6\ISCC.exe",
+        "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe",
         "$env:ProgramFiles\Inno Setup 6\ISCC.exe",
         "$env:LOCALAPPDATA\Programs\Inno Setup 7\ISCC.exe",
-        "$env:ProgramFiles(x86)\Inno Setup 7\ISCC.exe",
+        "${env:ProgramFiles(x86)}\Inno Setup 7\ISCC.exe",
         "$env:ProgramFiles\Inno Setup 7\ISCC.exe"
     )
     $InnoCompiler = $candidates | Where-Object { $_ -and (Test-Path $_) } | Select-Object -First 1
@@ -35,4 +35,3 @@ if ($LASTEXITCODE -ne 0) { throw 'Inno Setup compilation failed.' }
 Get-ChildItem $ReleaseDir -Filter 'AI_PM_LAB_Privacy_Gate_Setup_*.exe' |
     Sort-Object LastWriteTime -Descending |
     Select-Object -First 1 FullName, Length, LastWriteTime
-

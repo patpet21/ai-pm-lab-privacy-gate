@@ -46,7 +46,7 @@ jobs:
         shell: pwsh
         run: |
           $candidates = @(
-            "$env:ProgramFiles(x86)\Inno Setup 6\ISCC.exe",
+            "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe",
             "$env:ProgramFiles\Inno Setup 6\ISCC.exe"
           )
           if (-not ($candidates | Where-Object { Test-Path $_ } | Select-Object -First 1)) {
