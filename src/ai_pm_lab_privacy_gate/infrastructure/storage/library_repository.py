@@ -16,7 +16,7 @@ from ai_pm_lab_privacy_gate.domain.models import LibraryDocument, ProtectionResu
 from ai_pm_lab_privacy_gate.infrastructure.security.local_protector import LocalProtector
 
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 BACKUP_FORMAT = "ai-pm-lab-privacy-gate-backup-v1"
 
 
@@ -77,6 +77,7 @@ class LibraryRepository:
                     updated_at TEXT NOT NULL,
                     has_mapping INTEGER NOT NULL DEFAULT 0,
                     favorite INTEGER NOT NULL DEFAULT 0,
+                    mcp_shared INTEGER NOT NULL DEFAULT 0,
                     deleted_at TEXT
                 );
                 CREATE TABLE IF NOT EXISTS mappings (
@@ -103,6 +104,10 @@ class LibraryRepository:
                 )
             if "deleted_at" not in columns:
                 connection.execute("ALTER TABLE documents ADD COLUMN deleted_at TEXT")
+            if "mcp_shared" not in columns:
+                connection.execute(
+                    "ALTER TABLE documents ADD COLUMN mcp_shared INTEGER NOT NULL DEFAULT 0"
+                )
             connection.execute(
                 "INSERT OR REPLACE INTO app_meta(key, value) VALUES('schema_version', ?)",
                 (str(SCHEMA_VERSION),),
@@ -216,6 +221,46 @@ class LibraryRepository:
             for row in rows
         )
 
+    def list_mcp_documents(
+        self,
+        search: str = "",
+        *,
+        favorites_only: bool = False,
+        limit: int = 50,
+    ) -> tuple[LibraryDocument, ...]:
+        """Return only active documents explicitly approved for MCP access."""
+        safe_limit = max(1, min(int(limit), 200))
+        query = "SELECT * FROM documents WHERE deleted_at IS NULL AND mcp_shared = 1"
+        parameters: list[object] = []
+        if favorites_only:
+            query += " AND favorite = 1"
+        if search.strip():
+            query += (
+                " AND (title LIKE ? OR labels_json LIKE ? OR profile_key LIKE ? "
+                "OR protected_text LIKE ?)"
+            )
+            term = f"%{search.strip()}%"
+            parameters.extend((term, term, term, term))
+        query += " ORDER BY updated_at DESC LIMIT ?"
+        parameters.append(safe_limit)
+        with self._connect() as connection:
+            rows = connection.execute(query, tuple(parameters)).fetchall()
+        return tuple(self._to_document(row) for row in rows)
+
+    def get_mcp_document(self, document_id: str) -> LibraryDocument:
+        """Load a document only when it is active and explicitly MCP-shared."""
+        with self._connect() as connection:
+            row = connection.execute(
+                """
+                SELECT * FROM documents
+                WHERE document_id = ? AND deleted_at IS NULL AND mcp_shared = 1
+                """,
+                (document_id,),
+            ).fetchone()
+        if row is None:
+            raise KeyError(document_id)
+        return self._to_document(row)
+
     def update_metadata(
         self,
         document_id: str,
@@ -244,6 +289,14 @@ class LibraryRepository:
             connection.execute(
                 "UPDATE documents SET favorite = ?, updated_at = ? WHERE document_id = ?",
                 (int(favorite), datetime.now(timezone.utc).isoformat(), document_id),
+            )
+        return self.get(document_id)
+
+    def set_mcp_shared(self, document_id: str, shared: bool) -> LibraryDocument:
+        with self._connect() as connection:
+            connection.execute(
+                "UPDATE documents SET mcp_shared = ?, updated_at = ? WHERE document_id = ?",
+                (int(shared), datetime.now(timezone.utc).isoformat(), document_id),
             )
         return self.get(document_id)
 
@@ -339,5 +392,6 @@ class LibraryRepository:
             updated_at=datetime.fromisoformat(row["updated_at"]),
             has_mapping=bool(row["has_mapping"]),
             favorite=bool(row["favorite"]),
+            mcp_shared=bool(row["mcp_shared"]),
             deleted_at=datetime.fromisoformat(row["deleted_at"]) if row["deleted_at"] else None,
         )

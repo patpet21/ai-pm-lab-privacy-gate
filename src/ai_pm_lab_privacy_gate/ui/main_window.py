@@ -118,8 +118,8 @@ class MainWindow(QMainWindow):
         self.protection_page = ProtectionPage(self.service, self.library)
         self.library_page = LibraryPage(self.library)
         self.restore_page = RestorePage(self.service, self.library)
-        self.local_automation_page = ConnectionsPage("local")
-        self.cloud_automation_page = ConnectionsPage("cloud")
+        self.local_automation_page = ConnectionsPage("local", self.library)
+        self.cloud_automation_page = ConnectionsPage("cloud", self.library)
         for page in (
             self.protection_page,
             self.library_page,

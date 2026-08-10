@@ -2,13 +2,29 @@ from __future__ import annotations
 
 from PySide6.QtCore import QUrl
 from PySide6.QtGui import QDesktopServices
-from PySide6.QtWidgets import QFrame, QGridLayout, QHBoxLayout, QLabel, QMessageBox, QPushButton, QVBoxLayout, QWidget
+from PySide6.QtWidgets import (
+    QApplication,
+    QDialog,
+    QFrame,
+    QGridLayout,
+    QHBoxLayout,
+    QLabel,
+    QMessageBox,
+    QPlainTextEdit,
+    QPushButton,
+    QVBoxLayout,
+    QWidget,
+)
+
+from ai_pm_lab_privacy_gate.infrastructure.mcp.config import client_config_json, mcp_launch_spec
+from ai_pm_lab_privacy_gate.infrastructure.storage.library_repository import LibraryRepository
 
 
 class ConnectionsPage(QWidget):
-    def __init__(self, section: str = "local") -> None:
+    def __init__(self, section: str = "local", library: LibraryRepository | None = None) -> None:
         super().__init__()
         self.section = section
+        self.library = library
         root = QVBoxLayout(self)
         root.setContentsMargins(24, 22, 24, 18)
         root.setSpacing(14)
@@ -32,7 +48,13 @@ class ConnectionsPage(QWidget):
         else:
             cards = [
                 ("Cloud AI", "Optional", "Connect an LLM with the customer’s own account or API key.", "Not configured", self._not_ready),
-                ("ChatGPT & MCP", "Planned", "Allow an approved AI client to retrieve protected documents from the local library.", "View roadmap", self._not_ready),
+                (
+                    "Local MCP",
+                    "Ready",
+                    "Read-only access to protected documents you explicitly share. No original PII or restore mappings.",
+                    "MCP setup",
+                    self._mcp_setup,
+                ),
                 ("Email Automation", "Planned", "Create protected email drafts or approved delivery workflows.", "View roadmap", self._not_ready),
                 ("Workflow Assistance", "AI PM LAB", "Get help designing n8n, MCP, email, or cloud workflows for your business.", "Contact AI PM LAB", self._contact),
             ]
@@ -69,6 +91,40 @@ class ConnectionsPage(QWidget):
             "This integration is visible in the product roadmap but is not enabled in this local build. "
             "Manual copy, download, library and restore remain available without a cloud connection.",
         )
+
+    def _mcp_setup(self) -> None:
+        command, _args = mcp_launch_spec()
+        shared_count = len(self.library.list_mcp_documents(limit=200)) if self.library else 0
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Local MCP setup")
+        dialog.resize(720, 520)
+        layout = QVBoxLayout(dialog)
+        heading = QLabel("AI PM LAB Privacy Gate MCP", objectName="PageTitle")
+        layout.addWidget(heading)
+        explanation = QLabel(
+            f"Server: {command}\nShared protected documents: {shared_count}\n\n"
+            "The server starts only when a compatible desktop client launches it. It is local, "
+            "read-only and exposes only documents marked ‘Share with MCP’ in the Library.\n\n"
+            "Paste this configuration into a desktop client that supports local stdio MCP. "
+            "A cloud-only client requires a separate authenticated remote bridge.",
+            objectName="Muted",
+        )
+        explanation.setWordWrap(True)
+        layout.addWidget(explanation)
+        config = QPlainTextEdit()
+        config.setReadOnly(True)
+        config.setPlainText(client_config_json())
+        layout.addWidget(config, 1)
+        buttons = QHBoxLayout()
+        copy_button = QPushButton("Copy configuration", objectName="Primary")
+        close_button = QPushButton("Close", objectName="Secondary")
+        copy_button.clicked.connect(lambda: QApplication.clipboard().setText(config.toPlainText()))
+        close_button.clicked.connect(dialog.accept)
+        buttons.addWidget(copy_button)
+        buttons.addStretch(1)
+        buttons.addWidget(close_button)
+        layout.addLayout(buttons)
+        dialog.exec()
 
     @staticmethod
     def _contact() -> None:

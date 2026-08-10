@@ -66,16 +66,17 @@ class LibraryPage(QWidget):
         splitter = QSplitter(Qt.Orientation.Horizontal)
         table_card = QFrame(objectName="Card")
         table_layout = QVBoxLayout(table_card)
-        self.table = QTableWidget(0, 5)
-        self.table.setHorizontalHeaderLabels(["★", "Title", "Profile", "Restore", "Updated"])
+        self.table = QTableWidget(0, 6)
+        self.table.setHorizontalHeaderLabels(["★", "MCP", "Title", "Profile", "Restore", "Updated"])
         self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.table.verticalHeader().setVisible(False)
         header = self.table.horizontalHeader()
         header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
-        for column in range(2, 5):
+        header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
+        for column in range(3, 6):
             header.setSectionResizeMode(column, QHeaderView.ResizeMode.ResizeToContents)
         table_layout.addWidget(self.table)
 
@@ -94,6 +95,7 @@ class LibraryPage(QWidget):
         self.export_button = QPushButton("Export text", objectName="Secondary")
         self.edit_button = QPushButton("Rename / Tags", objectName="Secondary")
         self.favorite_button = QPushButton("Favorite", objectName="Secondary")
+        self.mcp_button = QPushButton("Share with MCP", objectName="Secondary")
         self.restore_button = QPushButton("Restore AI result", objectName="Primary")
         self.restore_trash_button = QPushButton("Restore from trash", objectName="Primary")
         self.delete_button = QPushButton("Move to trash", objectName="Danger")
@@ -101,6 +103,7 @@ class LibraryPage(QWidget):
         action_row.addWidget(self.export_button)
         action_row.addWidget(self.edit_button)
         action_row.addWidget(self.favorite_button)
+        action_row.addWidget(self.mcp_button)
         action_row.addStretch(1)
         action_row.addWidget(self.restore_button)
         action_row.addWidget(self.restore_trash_button)
@@ -123,6 +126,7 @@ class LibraryPage(QWidget):
         self.export_button.clicked.connect(self._export)
         self.edit_button.clicked.connect(self._edit_metadata)
         self.favorite_button.clicked.connect(self._toggle_favorite)
+        self.mcp_button.clicked.connect(self._toggle_mcp_share)
         self.restore_button.clicked.connect(self._restore)
         self.restore_trash_button.clicked.connect(self._restore_from_trash)
         self.delete_button.clicked.connect(self._delete)
@@ -139,12 +143,15 @@ class LibraryPage(QWidget):
             favorite = QTableWidgetItem("★" if document.favorite else "")
             favorite.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
             self.table.setItem(row, 0, favorite)
+            mcp_access = QTableWidgetItem("Shared" if document.mcp_shared else "—")
+            mcp_access.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            self.table.setItem(row, 1, mcp_access)
             title = QTableWidgetItem(document.title)
             title.setData(Qt.ItemDataRole.UserRole, document.document_id)
-            self.table.setItem(row, 1, title)
-            self.table.setItem(row, 2, QTableWidgetItem(document.profile_key.replace("_", " ").title()))
-            self.table.setItem(row, 3, QTableWidgetItem("Yes" if document.has_mapping else "—"))
-            self.table.setItem(row, 4, QTableWidgetItem(document.updated_at.astimezone().strftime("%Y-%m-%d %H:%M")))
+            self.table.setItem(row, 2, title)
+            self.table.setItem(row, 3, QTableWidgetItem(document.profile_key.replace("_", " ").title()))
+            self.table.setItem(row, 4, QTableWidgetItem("Yes" if document.has_mapping else "—"))
+            self.table.setItem(row, 5, QTableWidgetItem(document.updated_at.astimezone().strftime("%Y-%m-%d %H:%M")))
         if self._documents:
             self.table.selectRow(0)
         else:
@@ -156,7 +163,7 @@ class LibraryPage(QWidget):
     def select_document(self, document_id: str) -> None:
         self.refresh()
         for row in range(self.table.rowCount()):
-            if self.table.item(row, 1).data(Qt.ItemDataRole.UserRole) == document_id:
+            if self.table.item(row, 2).data(Qt.ItemDataRole.UserRole) == document_id:
                 self.table.selectRow(row)
                 break
 
@@ -164,7 +171,7 @@ class LibraryPage(QWidget):
         row = self.table.currentRow()
         if row < 0:
             return None
-        document_id = self.table.item(row, 1).data(Qt.ItemDataRole.UserRole)
+        document_id = self.table.item(row, 2).data(Qt.ItemDataRole.UserRole)
         return self.library.get(document_id)
 
     def _selection_changed(self) -> None:
@@ -181,11 +188,13 @@ class LibraryPage(QWidget):
         self._set_actions(True)
         self.restore_button.setEnabled(document.has_mapping)
         self.favorite_button.setText("Unfavorite" if document.favorite else "Favorite")
+        self.mcp_button.setText("Stop MCP sharing" if document.mcp_shared else "Share with MCP")
         trashed = document.deleted_at is not None
         self.copy_button.setEnabled(not trashed)
         self.export_button.setEnabled(not trashed)
         self.edit_button.setEnabled(not trashed)
         self.favorite_button.setEnabled(not trashed)
+        self.mcp_button.setEnabled(not trashed)
         self.restore_button.setVisible(not trashed)
         self.restore_trash_button.setVisible(trashed)
         self.delete_button.setText("Delete permanently" if trashed else "Move to trash")
@@ -253,6 +262,24 @@ class LibraryPage(QWidget):
         if document:
             self.library.set_favorite(document.document_id, not document.favorite)
             self.select_document(document.document_id)
+
+    def _toggle_mcp_share(self) -> None:
+        document = self._current()
+        if not document:
+            return
+        enable = not document.mcp_shared
+        if enable:
+            answer = QMessageBox.question(
+                self,
+                "Share protected copy with MCP",
+                "Only this protected copy will become readable through the local MCP server. "
+                "Original PII and encrypted restore mappings remain blocked.\n\n"
+                "Your connected AI client may send the protected text to its provider. Continue?",
+            )
+            if answer != QMessageBox.StandardButton.Yes:
+                return
+        self.library.set_mcp_shared(document.document_id, enable)
+        self.select_document(document.document_id)
 
     def _backup(self) -> None:
         path, _ = QFileDialog.getSaveFileName(
@@ -340,6 +367,7 @@ class LibraryPage(QWidget):
             self.export_button,
             self.edit_button,
             self.favorite_button,
+            self.mcp_button,
             self.restore_button,
             self.restore_trash_button,
             self.delete_button,

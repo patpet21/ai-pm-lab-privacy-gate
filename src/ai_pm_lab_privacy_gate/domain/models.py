@@ -118,4 +118,5 @@ class LibraryDocument:
     updated_at: datetime
     has_mapping: bool
     favorite: bool = False
+    mcp_shared: bool = False
     deleted_at: datetime | None = None

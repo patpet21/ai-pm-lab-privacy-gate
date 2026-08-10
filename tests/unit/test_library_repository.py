@@ -29,6 +29,10 @@ def test_library_round_trip_with_encrypted_mapping(tmp_path) -> None:
     )
 
     assert repository.get(saved.document_id).protected_text == "Email [[PG_EMAIL_ADDRESS_001]]"
+    assert repository.list_mcp_documents() == ()
+    repository.set_mcp_shared(saved.document_id, True)
+    assert repository.get_mcp_document(saved.document_id).document_id == saved.document_id
+    assert repository.list_mcp_documents()[0].mcp_shared is True
     mappings = repository.get_mappings(saved.document_id)
     assert mappings[0].original_text == "jane@example.com"
     assert b"jane@example.com" not in (tmp_path / "library.db").read_bytes()
@@ -57,6 +61,7 @@ def test_library_metadata_trash_and_encrypted_backup_round_trip(tmp_path) -> Non
         labels=("Tenant",),
     )
     repository.set_favorite(saved.document_id, True)
+    repository.set_mcp_shared(saved.document_id, True)
     repository.update_metadata(saved.document_id, title="Updated", labels=("Lease", "NYC"))
     backup = repository.create_backup(tmp_path / "library.pgbackup")
 
@@ -70,6 +75,7 @@ def test_library_metadata_trash_and_encrypted_backup_round_trip(tmp_path) -> Non
     restored = repository.get(saved.document_id)
     assert restored.title == "Updated"
     assert restored.favorite is True
+    assert restored.mcp_shared is True
     assert restored.labels == ("Lease", "NYC")
     assert repository.get_mappings(saved.document_id)[0].original_text == "Jane Smith"
     assert safety_backup.exists()
