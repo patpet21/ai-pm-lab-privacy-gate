@@ -58,7 +58,21 @@ class PresidioPrivacyEngine:
             entities=entities,
             score_threshold=profile.threshold,
         )
-        return [self._to_finding(page, result, index) for index, result in enumerate(results)]
+        resolved = self._without_overlaps(results)
+        return [self._to_finding(page, result, index) for index, result in enumerate(resolved)]
+
+    @staticmethod
+    def _without_overlaps(results: list[RecognizerResult]) -> list[RecognizerResult]:
+        """Prefer high-confidence contextual IDs over generic numeric guesses."""
+        accepted: list[RecognizerResult] = []
+        for candidate in sorted(
+            results,
+            key=lambda item: (-item.score, -(item.end - item.start), item.start),
+        ):
+            if any(candidate.start < current.end and current.start < candidate.end for current in accepted):
+                continue
+            accepted.append(candidate)
+        return sorted(accepted, key=lambda item: (item.start, item.end))
 
     def protect_text(self, text: str, findings: Iterable[Finding]) -> str:
         selected = list(findings)
