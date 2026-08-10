@@ -1,4 +1,4 @@
-# AI PM LAB Privacy Gate 0.3.0 — Build Information
+# AI PM LAB Privacy Gate 0.3.1 — Build Information
 
 Build date: 2026-08-09
 Target: Windows x64
@@ -31,13 +31,13 @@ The installer completed with exit code `0` after its temporary extraction direct
 Portable EXE SHA-256:
 
 ```text
-0770711457E53445D762C3AE21591DFADF0BA2930573B1872DC5EF3DE112E01B
+79A9A7E1CD313F53C199F1017D6DB048AE51FF3A5543C42374E30FA44AF040E3
 ```
 
-Installer 0.3.0 SHA-256:
+Installer 0.3.1 SHA-256:
 
 ```text
-7397E19BA1B70BC2A93A999B405D0745683D1BAC0BC8F454DFCEFC58865093D1
+97F0C39BC9907FB4589CBD22F8C7FEDF3CEF713C5702642D093FDE9D3E0B5F60
 ```
 
 The installer is not Authenticode-signed. Windows or endpoint protection can therefore show an unknown-publisher or reputation warning until a commercial code-signing certificate is added.

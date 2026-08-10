@@ -19,6 +19,16 @@ No cloud service, account, telemetry, LLM, or external database is required by t
 
 The PDF output is a clean text-based protected copy. Pixel-perfect layout preservation and OCR for image-only PDFs are not included yet.
 
+## Downloads and release status
+
+The customer-facing Windows installer is published in the [official downloads repository](https://github.com/patpet21/ai-pm-lab-privacy-gate-downloads/releases). Version 0.3.1 is the current release. The 0.3.1 installer is not yet Authenticode-signed; the project is preparing an application to SignPath Foundation.
+
+## Code signing policy
+
+Free code signing provided by [SignPath.io](https://signpath.io/), certificate by [SignPath Foundation](https://signpath.org/) (pending Foundation approval; current releases remain unsigned until acceptance).
+
+The complete policy, team roles, release controls, and privacy declaration are documented in [CODE_SIGNING_POLICY.md](CODE_SIGNING_POLICY.md). Also see the [privacy policy](PRIVACY.md), [security policy](SECURITY.md), [third-party notices](THIRD_PARTY_NOTICES.md), and [release process](docs/RELEASE_PROCESS.md).
+
 ## Run from source
 
 ```powershell
@@ -39,6 +49,10 @@ The PDF output is a clean text-based protected copy. Pixel-perfect layout preser
 ```
 
 The portable build is generated under `dist\AI PM LAB Privacy Gate`. Keep the complete folder together because the executable loads its private runtime from the adjacent `_internal` directory. The installer is generated under `release`.
+
+GitHub Actions also performs a clean Windows build on GitHub-hosted infrastructure and retains the installer, checksums, and build manifest as workflow artifacts. After SignPath approval, the release workflow will submit those GitHub-built artifacts for signing; credentials will be stored only as encrypted GitHub Actions secrets.
+
+Release builds install the exact dependency versions in `requirements-lock.txt`, including a SHA-256-pinned spaCy language model. Dependency updates are proposed and tested separately before the lock file is changed.
 
 ## Browser demo
 

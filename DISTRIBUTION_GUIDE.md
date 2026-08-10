@@ -2,19 +2,19 @@
 
 ## Where the downloadable installer lives
 
-The official installer belongs in the separate public downloads repository, not inside the private production repository. For version `0.3.0` the expected asset is:
+The official installer belongs in GitHub Releases rather than Git history. The source repository and downloads repository are public. For version `0.3.1` the expected asset is:
 
 ```text
-AI_PM_LAB_Privacy_Gate_Setup_0.3.0.exe
+AI_PM_LAB_Privacy_Gate_Setup_0.3.1.exe
 ```
 
 The funnel uses this stable pattern:
 
 ```text
-https://github.com/patpet21/ai-pm-lab-privacy-gate-downloads/releases/download/v0.3.0/AI_PM_LAB_Privacy_Gate_Setup_0.3.0.exe
+https://github.com/patpet21/ai-pm-lab-privacy-gate-downloads/releases/download/v0.3.1/AI_PM_LAB_Privacy_Gate_Setup_0.3.1.exe
 ```
 
-The production repository remains private. The public downloads repository contains only customer-facing documentation, checksums, release notes, and GitHub Release assets. Do not upload the 132 MB installer directly into Git history.
+The source repository contains code, tests, policies, and build automation. The downloads repository contains customer-facing documentation, checksums, release notes, and GitHub Release assets. Do not upload the 132 MB installer directly into Git history.
 
 If AVG CyberCapture blocks the Inno Setup temporary file under `%LOCALAPPDATA%\Temp`, run the installer with `TEMP` and `TMP` temporarily pointed to the approved/excluded project or download folder. Do not disable antivirus protection globally.
 
@@ -29,6 +29,8 @@ If AVG CyberCapture blocks the Inno Setup temporary file under `%LOCALAPPDATA%\T
 7. Publish the source commit and create a matching GitHub tag and Release.
 8. Attach the installer and publish its SHA-256 in the release notes.
 9. Update the funnel's download link to the new version.
+
+Unsigned release artifacts must be identified as unsigned. After SignPath Foundation approval, only artifacts produced from the public source repository by the GitHub-hosted release workflow may be submitted for release signing. Never sign a locally modified or manually substituted installer.
 
 ## Netlify
 

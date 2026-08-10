@@ -4,7 +4,7 @@
 
 Download the latest Windows installer from the repository's Releases page and open it. Privacy Gate installs for the current Windows user and does not require Python.
 
-Because the current installer is not digitally signed, Windows or antivirus software may show an unknown-publisher or reputation warning. Download only from the official AI PM LAB repository and verify the SHA-256 published in the release notes.
+Version 0.3.1 is currently unsigned while the SignPath Foundation application is pending. Windows or antivirus software may therefore show an unknown-publisher or reputation warning. Download only from the official AI PM LAB repository and verify the SHA-256 published in the release notes. Future signed releases will be identified explicitly; never assume a file is signed based only on its filename.
 
 ## 2. Protect pasted text
 
@@ -49,6 +49,8 @@ The protected library is stored under `%LOCALAPPDATA%\AI PM LAB Privacy Gate\Dat
 
 For workflow design, onboarding, or automation consulting, contact [peter@propertydex.xyz](mailto:peter@propertydex.xyz).
 
+For data handling details, see the project [privacy policy](PRIVACY.md). For release authenticity and signing responsibilities, see the [code signing policy](CODE_SIGNING_POLICY.md).
+
 ## 8. Privacy checklist
 
 - Review detections before exporting.
@@ -56,4 +58,3 @@ For workflow design, onboarding, or automation consulting, contact [peter@proper
 - Keep the original document and the local library protected with Windows account security.
 - Never send reversible mappings to an AI provider.
 - Confirm company policy before using any external AI service.
-

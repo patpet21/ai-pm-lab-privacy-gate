@@ -1,0 +1,84 @@
+name: Build Windows installer
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches:
+      - main
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Create isolated environment
+        shell: pwsh
+        run: |
+          python -m venv .venv
+          .\.venv\Scripts\python.exe -m pip install --upgrade pip
+          .\.venv\Scripts\python.exe -m pip install -r .\requirements-lock.txt
+          .\.venv\Scripts\python.exe -m pip install -e . --no-deps
+
+      - name: Run tests and local smoke checks
+        shell: pwsh
+        run: |
+          .\.venv\Scripts\python.exe -m pytest
+          .\.venv\Scripts\python.exe .\scripts\smoke_test.py
+          .\.venv\Scripts\python.exe .\scripts\ui_smoke.py
+
+      - name: Build PyInstaller distribution
+        shell: pwsh
+        run: .\scripts\build_windows.ps1
+
+      - name: Ensure Inno Setup is available
+        shell: pwsh
+        run: |
+          $candidates = @(
+            "$env:ProgramFiles(x86)\Inno Setup 6\ISCC.exe",
+            "$env:ProgramFiles\Inno Setup 6\ISCC.exe"
+          )
+          if (-not ($candidates | Where-Object { Test-Path $_ } | Select-Object -First 1)) {
+            choco install innosetup --no-progress -y
+          }
+
+      - name: Build installer
+        shell: pwsh
+        run: .\scripts\build_installer.ps1
+
+      - name: Verify runtime and create manifest
+        shell: pwsh
+        run: |
+          $dist = '.\dist\AI PM LAB Privacy Gate'
+          $required = @(
+            "$dist\AI PM LAB Privacy Gate.exe",
+            "$dist\_internal\python312.dll",
+            "$dist\_internal\vcruntime140.dll"
+          )
+          foreach ($file in $required) {
+            if (-not (Test-Path -LiteralPath $file)) { throw "Missing required runtime file: $file" }
+          }
+          $installer = Get-ChildItem '.\release' -Filter 'AI_PM_LAB_Privacy_Gate_Setup_*.exe' | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+          if (-not $installer) { throw 'Installer was not generated.' }
+          $hash = Get-FileHash -LiteralPath $installer.FullName -Algorithm SHA256
+          "SHA256 $($hash.Hash) $($installer.Name)" | Set-Content -LiteralPath '.\release\SHA256SUMS.txt' -Encoding ascii
+          Copy-Item -LiteralPath '.\BUILD_INFO.md','.\CUSTOMER_GUIDE.md','.\CODE_SIGNING_POLICY.md','.\PRIVACY.md','.\THIRD_PARTY_NOTICES.md' -Destination '.\release'
+
+      - name: Upload unsigned build evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: ai-pm-lab-privacy-gate-windows-unsigned
+          path: release/
+          if-no-files-found: error
+          retention-days: 30
