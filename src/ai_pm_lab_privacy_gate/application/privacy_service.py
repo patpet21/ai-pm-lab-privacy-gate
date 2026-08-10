@@ -8,6 +8,7 @@ from ai_pm_lab_privacy_gate.domain.models import (
     AnalysisDocument,
     Finding,
     PageContent,
+    ProtectedSpan,
     ProtectionResult,
     ReplacementMapping,
 )
@@ -60,6 +61,7 @@ class PrivacyGateService:
         counters: Counter[str] = Counter()
         token_by_value: dict[tuple[str, str], str] = {}
         mappings: list[ReplacementMapping] = []
+        protected_spans: list[ProtectedSpan] = []
 
         def replacement_for(finding: Finding) -> str:
             if replacement_mode == "redact":
@@ -85,16 +87,36 @@ class PrivacyGateService:
 
         protected_pages: list[PageContent] = []
         for page in document.pages:
-            protected = page.text
-            page_findings = sorted(by_page.get(page.page_number, []), key=lambda item: item.start, reverse=True)
-            replacements = [(item, replacement_for(item)) for item in page_findings]
-            for item, token in replacements:
-                protected = protected[: item.start] + token + protected[item.end :]
-            protected_pages.append(PageContent(page_number=page.page_number, text=protected))
+            chunks: list[str] = []
+            source_cursor = 0
+            protected_cursor = 0
+            page_findings = sorted(by_page.get(page.page_number, []), key=lambda item: item.start)
+            for item in page_findings:
+                untouched = page.text[source_cursor : item.start]
+                chunks.append(untouched)
+                protected_cursor += len(untouched)
+
+                replacement = replacement_for(item)
+                span_start = protected_cursor
+                chunks.append(replacement)
+                protected_cursor += len(replacement)
+                protected_spans.append(
+                    ProtectedSpan(
+                        page_number=page.page_number,
+                        start=span_start,
+                        end=protected_cursor,
+                        entity_type=item.entity_type,
+                    )
+                )
+                source_cursor = item.end
+
+            chunks.append(page.text[source_cursor:])
+            protected_pages.append(PageContent(page_number=page.page_number, text="".join(chunks)))
         return ProtectionResult(
             protected_pages=tuple(protected_pages),
             applied_findings=selected,
             mappings=tuple(mappings),
+            protected_spans=tuple(protected_spans),
             replacement_mode=replacement_mode,
         )
 

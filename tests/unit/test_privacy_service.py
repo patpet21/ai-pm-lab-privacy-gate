@@ -1,7 +1,7 @@
 from pathlib import Path
 
 from ai_pm_lab_privacy_gate.application.privacy_service import PrivacyGateService
-from ai_pm_lab_privacy_gate.domain.models import Finding
+from ai_pm_lab_privacy_gate.domain.models import AnalysisDocument, Finding, PageContent
 from ai_pm_lab_privacy_gate.domain.profiles import get_profile
 
 
@@ -75,6 +75,40 @@ def test_mask_mode_keeps_only_last_four_alphanumeric_characters():
     result = service.protect(service.document_from_text(text), (finding,), replacement_mode="mask")
     assert result.combined_text == "SSN ***-**-6789"
     assert result.mappings == ()
+    assert len(result.combined_spans) == 1
+    span = result.combined_spans[0]
+    assert result.combined_text[span.start : span.end] == "***-**-6789"
+    assert span.entity_type == "US_SSN"
+
+
+def test_color_spans_survive_every_protection_mode_and_multiple_pages():
+    service = PrivacyGateService()
+    document = AnalysisDocument(
+        source_kind="pdf",
+        pages=(PageContent(1, "Tenant Jane Smith"), PageContent(2, "Owner Jane Smith")),
+    )
+    findings = tuple(
+        Finding(
+            finding_id=f"person-{page.page_number}",
+            entity_type="PERSON",
+            text="Jane Smith",
+            start=page.text.index("Jane Smith"),
+            end=page.text.index("Jane Smith") + len("Jane Smith"),
+            score=1.0,
+            page_number=page.page_number,
+            context=page.text,
+        )
+        for page in document.pages
+    )
+
+    for mode in ("reversible", "generic", "mask", "redact"):
+        result = service.protect(document, findings, replacement_mode=mode)
+        assert len(result.combined_spans) == 2
+        assert all(span.entity_type == "PERSON" for span in result.combined_spans)
+        assert all(
+            result.combined_text[span.start : span.end]
+            for span in result.combined_spans
+        )
 
 
 def test_second_scan_detects_unprotected_residual_pii():

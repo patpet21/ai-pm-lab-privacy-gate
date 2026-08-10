@@ -35,6 +35,7 @@ QLabel#SafeBadge { background: #DFF5F0; color: #136A5D; border-radius: 12px; pad
 QLabel#ConnectionBadge { background: #E8F1F5; color: #176777; border-radius: 10px; padding: 5px 9px; font-size: 8pt; font-weight: 700; }
 QLabel#TokenHint { background: #EDF4F7; color: #476578; border-radius: 9px; padding: 5px 9px; font-size: 8pt; font-weight: 700; }
 QLabel#Metric { background: #E9F2F6; color: #123B56; border: 1px solid #CBDCE6; border-radius: 10px; padding: 8px 13px; font-weight: 700; }
+QLabel#SourceMetric { background: #F7F1E3; color: #765A1E; border: 1px solid #E2D1A9; border-radius: 10px; padding: 8px 13px; font-weight: 700; }
 QLabel#SafetyMetric { background: #DFF5F0; color: #136A5D; border: 1px solid #A9DCD2; border-radius: 10px; padding: 8px 13px; font-weight: 700; }
 QLabel#SafetyMetric[warning="true"] { background: #FFF1E6; color: #9A4A16; border-color: #EDB98F; }
 QPushButton, QToolButton {
@@ -55,6 +56,11 @@ QComboBox, QLineEdit, QPlainTextEdit, QListWidget, QTableWidget, QTabWidget::pan
 QComboBox, QLineEdit { padding: 7px 9px; min-height: 24px; }
 QPlainTextEdit { padding: 9px; selection-background-color: #D2A84B; }
 QPlainTextEdit[readOnly="true"] { background: #FBFDFE; }
+QLabel#ColorLegend { color: #516A7B; background: #F8FBFC; border: 1px solid #E1E9EE; border-radius: 8px; padding: 7px 9px; font-size: 8pt; }
+QFrame#PdfPanel { background: #F7FAFC; border: 1px solid #D5E0E7; border-radius: 10px; }
+QLabel#PdfTitle { color: #0B2A45; font-weight: 750; font-size: 10pt; }
+QLabel#PdfBadge { background: #E4F3F1; color: #146B61; border-radius: 7px; padding: 4px 7px; font-size: 7.5pt; font-weight: 700; }
+QPdfView#PdfView { background: #DDE5EA; border: 1px solid #C5D1DA; border-radius: 6px; }
 QListWidget { padding: 5px; }
 QListWidget::item { padding: 8px; border-radius: 6px; }
 QListWidget::item:hover { background: #EDF5F7; }

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QIcon, QPixmap
+from PySide6.QtGui import QCloseEvent, QIcon, QPixmap
 from PySide6.QtWidgets import (
     QButtonGroup,
     QFrame,
@@ -190,3 +190,7 @@ class MainWindow(QMainWindow):
     def _open_restore(self, document_id: str) -> None:
         self.restore_page.select_document(document_id)
         self._show_page(2)
+
+    def closeEvent(self, event: QCloseEvent) -> None:
+        self.protection_page.cleanup_pdf_preview()
+        super().closeEvent(event)

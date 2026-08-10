@@ -1,11 +1,14 @@
 from __future__ import annotations
 
-import re
+import os
+import tempfile
 from dataclasses import replace
 from pathlib import Path
 
-from PySide6.QtCore import QUrl, Qt, QThreadPool, Signal
+from PySide6.QtCore import QTimer, QUrl, Qt, QThreadPool, Signal
 from PySide6.QtGui import QColor, QDesktopServices, QFont, QTextCharFormat, QTextCursor
+from PySide6.QtPdf import QPdfDocument
+from PySide6.QtPdfWidgets import QPdfView
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QApplication,
@@ -69,6 +72,14 @@ class ProtectionPage(QWidget):
         self.current_result: ProtectionResult | None = None
         self._active_worker: FunctionWorker | None = None
         self._category_sync = False
+        self._preview_directory = Path(tempfile.gettempdir()) / "AI_PM_LAB_Privacy_Gate"
+        self._preview_directory.mkdir(parents=True, exist_ok=True)
+        for stale_preview in self._preview_directory.glob("protected-preview-*.pdf"):
+            try:
+                stale_preview.unlink()
+            except OSError:
+                pass
+        self._preview_path = self._preview_directory / f"protected-preview-{os.getpid()}.pdf"
         self._build_ui()
         self._connect_signals()
         self._update_profile_description()
@@ -184,10 +195,12 @@ class ProtectionPage(QWidget):
         self.findings_metric = QLabel("0 findings", objectName="Metric")
         self.types_metric = QLabel("0 categories", objectName="Metric")
         self.pages_metric = QLabel("0 pages", objectName="Metric")
+        self.source_metric = QLabel("No document", objectName="SourceMetric")
         self.verification_metric = QLabel("Second scan before export", objectName="SafetyMetric")
         metrics.addWidget(self.findings_metric)
         metrics.addWidget(self.types_metric)
         metrics.addWidget(self.pages_metric)
+        metrics.addWidget(self.source_metric)
         metrics.addWidget(self.verification_metric)
         metrics.addStretch(1)
         root.addLayout(metrics)
@@ -255,10 +268,51 @@ class ProtectionPage(QWidget):
         preview_header.addStretch(1)
         preview_header.addWidget(QLabel("Color-coded by protected category", objectName="TokenHint"))
         preview_layout.addLayout(preview_header)
+
+        self.color_legend = QLabel(objectName="ColorLegend")
+        self.color_legend.setWordWrap(True)
+        self.color_legend.setText("Protected categories will appear here after the scan.")
+        preview_layout.addWidget(self.color_legend)
+
+        self.preview_tabs = QTabWidget()
+        text_preview_tab = QWidget()
+        text_preview_layout = QVBoxLayout(text_preview_tab)
+        text_preview_layout.setContentsMargins(0, 8, 0, 0)
         self.preview = QPlainTextEdit()
         self.preview.setReadOnly(True)
         self.preview.setPlaceholderText("Run a scan to generate the protected preview.")
-        preview_layout.addWidget(self.preview, 1)
+        text_preview_layout.addWidget(self.preview)
+        self.preview_tabs.addTab(text_preview_tab, "Protected text")
+
+        pdf_comparison_tab = QWidget()
+        pdf_comparison_layout = QVBoxLayout(pdf_comparison_tab)
+        pdf_comparison_layout.setContentsMargins(0, 8, 0, 0)
+        comparison_note = QLabel(
+            "Original source on the left. The generated, text-based protected PDF on the right.",
+            objectName="Muted",
+        )
+        comparison_note.setWordWrap(True)
+        pdf_comparison_layout.addWidget(comparison_note)
+        pdf_splitter = QSplitter(Qt.Orientation.Horizontal)
+        original_panel, self.original_pdf_view = self._build_pdf_panel("Original PDF", "Local source")
+        protected_panel, self.protected_pdf_view = self._build_pdf_panel(
+            "Protected PDF", "Exact download preview"
+        )
+        self.original_pdf_document = QPdfDocument(self)
+        self.protected_pdf_document = QPdfDocument(self)
+        self.original_pdf_view.setDocument(self.original_pdf_document)
+        self.protected_pdf_view.setDocument(self.protected_pdf_document)
+        for view in (self.original_pdf_view, self.protected_pdf_view):
+            view.setPageMode(QPdfView.PageMode.MultiPage)
+            view.setZoomMode(QPdfView.ZoomMode.FitToWidth)
+        pdf_splitter.addWidget(original_panel)
+        pdf_splitter.addWidget(protected_panel)
+        pdf_splitter.setChildrenCollapsible(False)
+        pdf_splitter.setSizes([500, 500])
+        pdf_comparison_layout.addWidget(pdf_splitter, 1)
+        self.preview_tabs.addTab(pdf_comparison_tab, "PDF comparison")
+        self.preview_tabs.setTabVisible(1, False)
+        preview_layout.addWidget(self.preview_tabs, 1)
         self.labels_input = QLineEdit()
         self.labels_input.setPlaceholderText("Library labels, comma separated (e.g. Lease, Property 014)")
         preview_layout.addWidget(self.labels_input)
@@ -287,6 +341,26 @@ class ProtectionPage(QWidget):
         actions.addWidget(self.ai_button)
         root.addWidget(action_bar)
         self._set_result_actions(False)
+
+        self._pdf_preview_timer = QTimer(self)
+        self._pdf_preview_timer.setSingleShot(True)
+        self._pdf_preview_timer.setInterval(220)
+        self._pdf_preview_timer.timeout.connect(self._update_pdf_comparison)
+
+    @staticmethod
+    def _build_pdf_panel(title: str, subtitle: str) -> tuple[QFrame, QPdfView]:
+        panel = QFrame(objectName="PdfPanel")
+        layout = QVBoxLayout(panel)
+        layout.setContentsMargins(10, 10, 10, 10)
+        heading = QHBoxLayout()
+        heading.addWidget(QLabel(title, objectName="PdfTitle"))
+        heading.addStretch(1)
+        heading.addWidget(QLabel(subtitle, objectName="PdfBadge"))
+        layout.addLayout(heading)
+        view = QPdfView()
+        view.setObjectName("PdfView")
+        layout.addWidget(view, 1)
+        return panel, view
 
     def _build_ai_menu(self):
         from PySide6.QtWidgets import QMenu
@@ -408,6 +482,27 @@ class ProtectionPage(QWidget):
         self.findings_metric.setText(f"{len(self.current_findings)} findings")
         self.types_metric.setText(f"{types} categories")
         self.pages_metric.setText(f"{pages} page{'s' if pages != 1 else ''}")
+        if self.current_document and self.current_document.source_path:
+            self.source_metric.setText(f"PDF  |  {self.current_document.source_path.name}")
+            self.source_metric.setToolTip(str(self.current_document.source_path))
+        else:
+            self.source_metric.setText("Pasted text")
+            self.source_metric.setToolTip("")
+        self._update_color_legend()
+
+    def _update_color_legend(self) -> None:
+        entity_types = sorted({item.entity_type for item in self.current_findings})
+        if not entity_types:
+            self.color_legend.setText("Protected categories will appear here after the scan.")
+            return
+        chips = []
+        for entity_type in entity_types:
+            label = entity_type.replace("_", " ").title()
+            chips.append(
+                f'<span style="background-color:{self._entity_color(entity_type)}; '
+                f'color:#102A43; font-weight:600;">&nbsp;{label}&nbsp;</span>'
+            )
+        self.color_legend.setText("&nbsp;&nbsp;".join(chips))
 
     def _populate_categories(self) -> None:
         counts: dict[str, int] = {}
@@ -457,6 +552,11 @@ class ProtectionPage(QWidget):
             replacement_mode=self.mode_combo.currentData(),
         )
         self._render_preview(self.current_result.combined_text)
+        if self.current_document.source_kind == "pdf":
+            self.preview_tabs.setTabVisible(1, True)
+            self._pdf_preview_timer.start()
+        else:
+            self.preview_tabs.setTabVisible(1, False)
         self._set_result_actions(True)
 
     def _entity_color(self, entity_type: str) -> str:
@@ -467,19 +567,38 @@ class ProtectionPage(QWidget):
 
     def _render_preview(self, text: str) -> None:
         self.preview.setPlainText(text)
-        pattern = re.compile(
-            r"\[\[PG_([A-Z0-9_]+)_\d{3}\]\]|<([A-Z][A-Z0-9_]+)>|\[REDACTED\]"
-        )
-        for match in pattern.finditer(text):
-            entity_type = match.group(1) or match.group(2) or "REDACTED"
+        spans = self.current_result.combined_spans if self.current_result else ()
+        for span in spans:
             cursor = QTextCursor(self.preview.document())
-            cursor.setPosition(match.start())
-            cursor.setPosition(match.end(), QTextCursor.MoveMode.KeepAnchor)
+            cursor.setPosition(span.start)
+            cursor.setPosition(span.end, QTextCursor.MoveMode.KeepAnchor)
             token_format = QTextCharFormat()
-            token_format.setBackground(QColor(self._entity_color(entity_type)))
+            token_format.setBackground(QColor(self._entity_color(span.entity_type)))
             token_format.setForeground(QColor("#102A43"))
             token_format.setFontWeight(int(QFont.Weight.DemiBold))
             cursor.mergeCharFormat(token_format)
+
+    def _update_pdf_comparison(self) -> None:
+        if (
+            self.current_document is None
+            or self.current_result is None
+            or self.current_document.source_kind != "pdf"
+            or self.current_document.source_path is None
+        ):
+            return
+        protected_path = self._preview_path
+        try:
+            self.protected_pdf_document.close()
+            self.service.save_protected_pdf(self.current_result, protected_path)
+            self.original_pdf_document.close()
+            self.original_pdf_document.load(str(self.current_document.source_path))
+            self.protected_pdf_document.load(str(protected_path))
+        except Exception as exc:
+            self.preview_tabs.setTabToolTip(1, f"Preview unavailable: {exc}")
+        else:
+            self.preview_tabs.setTabToolTip(
+                1, "Compare the local source with the exact protected PDF generated by Privacy Gate."
+            )
 
     def _apply_filter(self, term: str) -> None:
         value = term.casefold().strip()
@@ -638,10 +757,30 @@ class ProtectionPage(QWidget):
         if not busy:
             self._active_worker = None
 
+    def cleanup_pdf_preview(self) -> None:
+        """Release Windows PDF file handles before removing the temporary preview."""
+        self._pdf_preview_timer.stop()
+        self.original_pdf_view.setDocument(None)
+        self.protected_pdf_view.setDocument(None)
+        self.original_pdf_document.close()
+        self.protected_pdf_document.close()
+        QApplication.processEvents()
+        try:
+            self._preview_path.unlink(missing_ok=True)
+        except OSError:
+            # Qt's renderer can release the handle just after shutdown. Any stale
+            # preview is removed automatically at the next application start.
+            pass
+
     def clear(self) -> None:
         self.text_input.clear()
         self.pdf_path.clear()
         self.preview.clear()
+        self._pdf_preview_timer.stop()
+        self.original_pdf_document.close()
+        self.protected_pdf_document.close()
+        self.preview_tabs.setTabVisible(1, False)
+        self.preview_tabs.setCurrentIndex(0)
         self.findings_table.setRowCount(0)
         self.category_list.clear()
         self.labels_input.clear()
@@ -651,6 +790,9 @@ class ProtectionPage(QWidget):
         self.findings_metric.setText("0 findings")
         self.types_metric.setText("0 categories")
         self.pages_metric.setText("0 pages")
+        self.source_metric.setText("No document")
+        self.source_metric.setToolTip("")
+        self.color_legend.setText("Protected categories will appear here after the scan.")
         self.verification_metric.setText("Second scan before export")
         self._set_result_actions(False)
         self.setup_toggle.setChecked(True)

@@ -11,9 +11,12 @@ os.environ.setdefault(
 )
 
 from PySide6.QtWidgets import QApplication
+from PySide6.QtTest import QTest
 
 from ai_pm_lab_privacy_gate.application.privacy_service import PrivacyGateService
 from ai_pm_lab_privacy_gate.domain.profiles import get_profile
+from ai_pm_lab_privacy_gate.domain.models import PageContent
+from ai_pm_lab_privacy_gate.infrastructure.documents.pdf_service import PdfDocumentService
 from ai_pm_lab_privacy_gate.ui.main_window import MainWindow
 from ai_pm_lab_privacy_gate.ui.fonts import install_app_font
 from ai_pm_lab_privacy_gate.ui.styles import APP_STYLE
@@ -23,6 +26,8 @@ def main() -> int:
     output = Path("tmp/ui/privacy_gate_main.png")
     collapsed_output = Path("tmp/ui/privacy_gate_collapsed.png")
     library_output = Path("tmp/ui/privacy_gate_library.png")
+    mask_output = Path("tmp/ui/privacy_gate_mask_colors.png")
+    pdf_output = Path("tmp/ui/privacy_gate_pdf_comparison.png")
     output.parent.mkdir(parents=True, exist_ok=True)
     app = QApplication([])
     install_app_font(app)
@@ -41,6 +46,34 @@ def main() -> int:
     app.processEvents()
     if not window.grab().save(str(output)):
         raise RuntimeError("Unable to save UI screenshot")
+    page.mode_combo.setCurrentIndex(page.mode_combo.findData("mask"))
+    app.processEvents()
+    if not page.current_result or len(page.current_result.combined_spans) != len(findings):
+        raise RuntimeError("Mask-mode color metadata is incomplete")
+    if not window.grab().save(str(mask_output)):
+        raise RuntimeError("Unable to save mask color screenshot")
+
+    source_pdf = Path("tmp/ui/privacy_gate_source.pdf")
+    PdfDocumentService().write_protected(
+        (
+            PageContent(1, "Tenant Jane Smith\nEmail jane.smith@example.com\nPhone 212-555-5555"),
+            PageContent(2, "Social Security Number 219-09-9999"),
+        ),
+        source_pdf,
+    )
+    pdf_document = service.document_from_pdf(source_pdf)
+    pdf_findings = service.analyze(pdf_document, get_profile("property_management"))
+    page.pdf_path.setText(str(source_pdf.resolve()))
+    page.input_tabs.setCurrentIndex(1)
+    page._analysis_ready((pdf_document, pdf_findings))
+    page.preview_tabs.setCurrentIndex(1)
+    QTest.qWait(900)
+    app.processEvents()
+    if page.original_pdf_document.pageCount() != 2 or page.protected_pdf_document.pageCount() != 2:
+        raise RuntimeError("PDF comparison did not load both two-page documents")
+    if not window.grab().save(str(pdf_output)):
+        raise RuntimeError("Unable to save PDF comparison screenshot")
+
     window._toggle_sidebar()
     app.processEvents()
     if window.sidebar.width() != 76:
@@ -65,7 +98,8 @@ def main() -> int:
     if not window.grab().save(str(library_output)):
         raise RuntimeError("Unable to save library UI screenshot")
     print(
-        f"UI_OK {output.resolve()} {collapsed_output.resolve()} {library_output.resolve()} "
+        f"UI_OK {output.resolve()} {mask_output.resolve()} {pdf_output.resolve()} "
+        f"{collapsed_output.resolve()} {library_output.resolve()} "
         f"{len(findings)} findings sidebar={window.sidebar.width()}"
     )
     window.close()

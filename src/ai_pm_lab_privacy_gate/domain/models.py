@@ -42,10 +42,21 @@ class ReplacementMapping:
 
 
 @dataclass(frozen=True, slots=True)
+class ProtectedSpan:
+    """Location and category of a replacement in one protected page."""
+
+    page_number: int
+    start: int
+    end: int
+    entity_type: str
+
+
+@dataclass(frozen=True, slots=True)
 class ProtectionResult:
     protected_pages: tuple[PageContent, ...]
     applied_findings: tuple[Finding, ...] = field(default_factory=tuple)
     mappings: tuple[ReplacementMapping, ...] = field(default_factory=tuple)
+    protected_spans: tuple[ProtectedSpan, ...] = field(default_factory=tuple)
     replacement_mode: str = "reversible"
 
     @property
@@ -56,6 +67,35 @@ class ProtectionResult:
             f"--- Page {page.page_number} ---\n{page.text}"
             for page in self.protected_pages
         )
+
+    @property
+    def combined_spans(self) -> tuple[ProtectedSpan, ...]:
+        """Return replacement spans adjusted to the combined preview text."""
+        if len(self.protected_pages) == 1:
+            return self.protected_spans
+
+        spans_by_page: dict[int, list[ProtectedSpan]] = {}
+        for span in self.protected_spans:
+            spans_by_page.setdefault(span.page_number, []).append(span)
+
+        adjusted: list[ProtectedSpan] = []
+        cursor = 0
+        for page_index, page in enumerate(self.protected_pages):
+            prefix = f"--- Page {page.page_number} ---\n"
+            page_offset = cursor + len(prefix)
+            adjusted.extend(
+                ProtectedSpan(
+                    page_number=span.page_number,
+                    start=page_offset + span.start,
+                    end=page_offset + span.end,
+                    entity_type=span.entity_type,
+                )
+                for span in spans_by_page.get(page.page_number, ())
+            )
+            cursor += len(prefix) + len(page.text)
+            if page_index < len(self.protected_pages) - 1:
+                cursor += 2
+        return tuple(adjusted)
 
 
 @dataclass(frozen=True, slots=True)
