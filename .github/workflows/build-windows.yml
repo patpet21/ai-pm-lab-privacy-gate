@@ -64,7 +64,8 @@ jobs:
           $required = @(
             "$dist\AI PM LAB Privacy Gate.exe",
             "$dist\_internal\python312.dll",
-            "$dist\_internal\vcruntime140.dll"
+            "$dist\_internal\vcruntime140.dll",
+            "$dist\cloudflared.exe"
           )
           foreach ($file in $required) {
             if (-not (Test-Path -LiteralPath $file)) { throw "Missing required runtime file: $file" }

@@ -2,7 +2,7 @@
 
 Windows desktop app local-first for detecting and protecting sensitive data before using business documents with AI. The desktop engine uses Microsoft Presidio and runs on the customer's PC.
 
-## Version 0.3.1
+## Current customer release: 0.4.0
 
 - pasted text and PDF files with selectable text;
 - Property Management, Realtor / Brokerage, and Projects & Renovations profiles;
@@ -13,15 +13,21 @@ Windows desktop app local-first for detecting and protecting sensitive data befo
 - local restore of protected AI output;
 - manual "Copy & Open ChatGPT" workflow with no API key;
 - contextual protection for U.S. government, banking, NYC property and real-estate workflow identifiers;
-- extension points for real-estate recognizers, localhost API, MCP, n8n, email, and cloud automation.
+- built-in read-only local and remote MCP beta, plus extension points for localhost API, n8n, email, and cloud automation.
 
-No cloud service, account, telemetry, LLM, or external database is required by the desktop app. Reversible mappings are encrypted with Windows DPAPI for the current Windows user. The SQLite library lives outside the installation folder under `%LOCALAPPDATA%\AI PM LAB Privacy Gate\Data`, so installing an update does not overwrite customer documents.
+No cloud service, account, telemetry, LLM, or external database is required for the core desktop workflow. The optional Remote MCP beta uses an outbound encrypted tunnel only when the user starts it. Reversible mappings are encrypted with Windows DPAPI for the current Windows user. The SQLite library lives outside the installation folder under `%LOCALAPPDATA%\AI PM LAB Privacy Gate\Data`, so installing an update does not overwrite customer documents.
 
-The PDF output is a clean text-based protected copy. Pixel-perfect layout preservation and OCR for image-only PDFs are not included yet.
+Version 0.4.0 can generate a layout-preserving protected PDF with secure overlays as well as a protected text view. OCR for image-only PDFs is not included.
+
+## Protection and MCP in 0.4.0
+
+Version 0.4.0 adds layout-preserving secure PDF output and a universal protection layer above Presidio. Users can select Essential PII, PII + Financial, PII + Business Confidential, Maximum Protection, or Custom Review. Context-aware local recognizers distinguish bank accounts, routing and SWIFT/BIC values, card endings, transaction IDs, amounts, merchants, counterparties, transaction references, addresses, business registration numbers, invoices, purchase orders, contracts, customer/employee IDs, and case references without using a cloud model.
+
+Version 0.4.0 includes two read-only MCP transports. Local desktop clients may launch the stdio server directly. The Remote MCP beta starts a loopback-only Streamable HTTP server and an outbound Cloudflare Quick Tunnel, producing a private session-based HTTPS URL for ChatGPT or Claude custom connectors. Newly saved protected Library copies are available automatically and can be blocked individually. Original files, original PII, and encrypted restore mappings are never exposed by the MCP tools.
 
 ## Downloads and release status
 
-The customer-facing Windows installer is published in the [official downloads repository](https://github.com/patpet21/ai-pm-lab-privacy-gate-downloads/releases). Version 0.3.1 is the current release. The 0.3.1 installer is not yet Authenticode-signed; the project is preparing an application to SignPath Foundation.
+The customer-facing Windows installer is published in the [official downloads repository](https://github.com/patpet21/ai-pm-lab-privacy-gate-downloads/releases). Version 0.4.0 is the current release. The 0.4.0 installer is not yet Authenticode-signed; the SignPath Foundation application is pending.
 
 ## Code signing policy
 

@@ -8,6 +8,7 @@ from ai_pm_lab_privacy_gate.domain.models import (
     AnalysisDocument,
     Finding,
     PageContent,
+    ProtectedSpan,
     ProtectionResult,
     ReplacementMapping,
 )
@@ -60,12 +61,15 @@ class PrivacyGateService:
         counters: Counter[str] = Counter()
         token_by_value: dict[tuple[str, str], str] = {}
         mappings: list[ReplacementMapping] = []
+        protected_spans: list[ProtectedSpan] = []
 
         def replacement_for(finding: Finding) -> str:
             if replacement_mode == "redact":
                 return "[REDACTED]"
             if replacement_mode == "generic":
                 return f"[[{finding.entity_type}]]"
+            if replacement_mode == "mask":
+                return self._mask_value(finding.text)
             key = (finding.entity_type, finding.text.casefold())
             token = token_by_value.get(key)
             if token is None:
@@ -83,17 +87,61 @@ class PrivacyGateService:
 
         protected_pages: list[PageContent] = []
         for page in document.pages:
-            protected = page.text
-            page_findings = sorted(by_page.get(page.page_number, []), key=lambda item: item.start, reverse=True)
-            replacements = [(item, replacement_for(item)) for item in page_findings]
-            for item, token in replacements:
-                protected = protected[: item.start] + token + protected[item.end :]
-            protected_pages.append(PageContent(page_number=page.page_number, text=protected))
+            chunks: list[str] = []
+            source_cursor = 0
+            protected_cursor = 0
+            page_findings = sorted(by_page.get(page.page_number, []), key=lambda item: item.start)
+            for item in page_findings:
+                untouched = page.text[source_cursor : item.start]
+                chunks.append(untouched)
+                protected_cursor += len(untouched)
+
+                replacement = replacement_for(item)
+                span_start = protected_cursor
+                chunks.append(replacement)
+                protected_cursor += len(replacement)
+                protected_spans.append(
+                    ProtectedSpan(
+                        page_number=page.page_number,
+                        start=span_start,
+                        end=protected_cursor,
+                        entity_type=item.entity_type,
+                        finding_id=item.finding_id,
+                        replacement_text=replacement,
+                    )
+                )
+                source_cursor = item.end
+
+            chunks.append(page.text[source_cursor:])
+            protected_pages.append(PageContent(page_number=page.page_number, text="".join(chunks)))
         return ProtectionResult(
             protected_pages=tuple(protected_pages),
             applied_findings=selected,
             mappings=tuple(mappings),
+            protected_spans=tuple(protected_spans),
             replacement_mode=replacement_mode,
+        )
+
+    def verify_protected(
+        self,
+        result: ProtectionResult,
+        profile: PrivacyProfile,
+    ) -> tuple[Finding, ...]:
+        """Run a fail-safe second analysis on the exact text about to leave the app."""
+        protected_document = AnalysisDocument(
+            source_kind="protected",
+            pages=result.protected_pages,
+        )
+        return self.analyze(protected_document, profile)
+
+    @staticmethod
+    def _mask_value(value: str) -> str:
+        visible = 4
+        alphanumeric_positions = [index for index, char in enumerate(value) if char.isalnum()]
+        keep = set(alphanumeric_positions[-visible:])
+        return "".join(
+            char if index in keep or not char.isalnum() else "*"
+            for index, char in enumerate(value)
         )
 
     @staticmethod
@@ -126,5 +174,16 @@ class PrivacyGateService:
         destination.write_text(result.combined_text, encoding="utf-8")
         return destination
 
-    def save_protected_pdf(self, result: ProtectionResult, path: str | Path) -> Path:
+    def save_protected_pdf(
+        self,
+        result: ProtectionResult,
+        path: str | Path,
+        source_document: AnalysisDocument | None = None,
+    ) -> Path:
+        if (
+            source_document is not None
+            and source_document.source_kind == "pdf"
+            and source_document.source_path is not None
+        ):
+            return self._pdf.write_layout_preserving(source_document.source_path, result, path)
         return self._pdf.write_protected(result.protected_pages, path)

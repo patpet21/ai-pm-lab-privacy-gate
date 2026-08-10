@@ -1,15 +1,20 @@
 from __future__ import annotations
 
-import re
+import os
+import tempfile
+from dataclasses import replace
 from pathlib import Path
 
-from PySide6.QtCore import QUrl, Qt, QThreadPool, Signal
+from PySide6.QtCore import QPointF, QTimer, QUrl, Qt, QThreadPool, Signal
 from PySide6.QtGui import QColor, QDesktopServices, QFont, QTextCharFormat, QTextCursor
+from PySide6.QtPdf import QPdfDocument
+from PySide6.QtPdfWidgets import QPdfView
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QApplication,
     QComboBox,
     QDialog,
+    QDoubleSpinBox,
     QFileDialog,
     QFrame,
     QHBoxLayout,
@@ -33,7 +38,13 @@ from PySide6.QtWidgets import (
 
 from ai_pm_lab_privacy_gate.application.privacy_service import PrivacyGateService
 from ai_pm_lab_privacy_gate.domain.models import AnalysisDocument, Finding, ProtectionResult
-from ai_pm_lab_privacy_gate.domain.profiles import get_profile, list_profiles
+from ai_pm_lab_privacy_gate.domain.profiles import (
+    entities_for_scope,
+    get_profile,
+    get_scope,
+    list_profiles,
+    list_scopes,
+)
 from ai_pm_lab_privacy_gate.infrastructure.storage.library_repository import LibraryRepository
 from ai_pm_lab_privacy_gate.ui.workers import FunctionWorker
 
@@ -52,6 +63,25 @@ class ProtectionPage(QWidget):
         "DATE_TIME": "#E3F2D7",
         "CREDIT_CARD": "#F8DDF1",
         "US_BANK_NUMBER": "#F5E0D3",
+        "US_ROUTING_NUMBER": "#E5EED2",
+        "SWIFT_BIC": "#DDEBD7",
+        "CARD_LAST_FOUR": "#F8DDF1",
+        "CARD_TRANSACTION_ID": "#F3E3D5",
+        "TRANSFER_TRANSACTION_ID": "#E2E6F5",
+        "STATEMENT_REFERENCE": "#DEE7EE",
+        "POSTAL_CODE": "#E8DFFF",
+        "STREET_ADDRESS": "#FFF1BD",
+        "MONEY_AMOUNT": "#DDEFD9",
+        "MERCHANT": "#E5E0F5",
+        "COUNTERPARTY": "#DCE8F8",
+        "TRANSACTION_REFERENCE": "#F4E7D5",
+        "BUSINESS_REGISTRATION_NUMBER": "#DEE7EE",
+        "INVOICE_NUMBER": "#E2E6F5",
+        "PURCHASE_ORDER_ID": "#E5E0F5",
+        "CONTRACT_ID": "#D9F0F3",
+        "CUSTOMER_ID": "#DCE8F8",
+        "EMPLOYEE_ID": "#DDE7FF",
+        "CASE_REFERENCE": "#F4E7D5",
         "PROPERTY_IDENTIFIER": "#D9F0F3",
         "CUSTOM": "#E7E9ED",
         "REDACTED": "#D8DEE5",
@@ -67,9 +97,19 @@ class ProtectionPage(QWidget):
         self.current_result: ProtectionResult | None = None
         self._active_worker: FunctionWorker | None = None
         self._category_sync = False
+        self._last_residual: tuple[Finding, ...] = ()
+        self._preview_directory = Path(tempfile.gettempdir()) / "AI_PM_LAB_Privacy_Gate"
+        self._preview_directory.mkdir(parents=True, exist_ok=True)
+        for stale_preview in self._preview_directory.glob("protected-preview-*.pdf"):
+            try:
+                stale_preview.unlink()
+            except OSError:
+                pass
+        self._preview_path = self._preview_directory / f"protected-preview-{os.getpid()}.pdf"
         self._build_ui()
         self._connect_signals()
         self._update_profile_description()
+        self._update_scope_description()
 
     def _build_ui(self) -> None:
         root = QVBoxLayout(self)
@@ -105,7 +145,12 @@ class ProtectionPage(QWidget):
         setup.setSpacing(10)
         profile_row = QHBoxLayout()
         profile_col = QVBoxLayout()
-        profile_col.addWidget(QLabel("Industry profile", objectName="FieldLabel"))
+        profile_col.addLayout(
+            self._info_heading(
+                "Industry profile",
+                "Selects the Presidio entities and real-estate rules most relevant to the document.",
+            )
+        )
         self.profile_combo = QComboBox()
         for profile in list_profiles():
             self.profile_combo.addItem(profile.name, profile.key)
@@ -114,15 +159,55 @@ class ProtectionPage(QWidget):
         profile_description = self.profile_description
         profile_description.setWordWrap(True)
         profile_col.addWidget(profile_description)
+        scope_col = QVBoxLayout()
+        scope_col.addLayout(
+            self._info_heading(
+                "Protection scope",
+                "Controls whether Privacy Gate scans essential PII only or also financial and business-sensitive data.",
+            )
+        )
+        self.scope_combo = QComboBox()
+        for scope in list_scopes():
+            self.scope_combo.addItem(scope.name, scope.key)
+        self.scope_combo.setCurrentIndex(self.scope_combo.findData("financial"))
+        scope_col.addWidget(self.scope_combo)
+        self.scope_description = QLabel(objectName="Muted")
+        self.scope_description.setWordWrap(True)
+        scope_col.addWidget(self.scope_description)
         mode_col = QVBoxLayout()
-        mode_col.addWidget(QLabel("Protection mode", objectName="FieldLabel"))
+        mode_col.addLayout(
+            self._info_heading(
+                "Protection mode",
+                "Choose reversible tokens, generic labels, partial masking or permanent redaction.",
+            )
+        )
         self.mode_combo = QComboBox()
         self.mode_combo.addItem("Reversible placeholders", "reversible")
         self.mode_combo.addItem("Generic placeholders", "generic")
+        self.mode_combo.addItem("Masked values (keep last 4)", "mask")
         self.mode_combo.addItem("Permanent redaction", "redact")
         mode_col.addWidget(self.mode_combo)
-        mode_col.addWidget(QLabel("Reversible mode enables local restore.", objectName="Muted"))
+        self.mode_help = QLabel("Reversible mode enables local restore.", objectName="Muted")
+        mode_col.addWidget(self.mode_help)
+        threshold_row = QHBoxLayout()
+        threshold_row.addWidget(QLabel("Detection confidence", objectName="FieldLabel"))
+        threshold_row.addWidget(
+            self._info_button(
+                "Detection confidence",
+                "Lower values detect more possible PII but can create false positives. Higher values are stricter.",
+            )
+        )
+        self.threshold_input = QDoubleSpinBox()
+        self.threshold_input.setRange(0.10, 0.95)
+        self.threshold_input.setSingleStep(0.05)
+        self.threshold_input.setDecimals(2)
+        self.threshold_input.setValue(0.35)
+        self.threshold_input.setToolTip("Lower values find more possible PII; higher values reduce false positives.")
+        threshold_row.addWidget(self.threshold_input)
+        mode_col.addLayout(threshold_row)
         profile_row.addLayout(profile_col, 2)
+        profile_row.addSpacing(16)
+        profile_row.addLayout(scope_col, 2)
         profile_row.addSpacing(16)
         profile_row.addLayout(mode_col, 1)
         setup.addLayout(profile_row)
@@ -170,9 +255,16 @@ class ProtectionPage(QWidget):
         self.findings_metric = QLabel("0 findings", objectName="Metric")
         self.types_metric = QLabel("0 categories", objectName="Metric")
         self.pages_metric = QLabel("0 pages", objectName="Metric")
+        self.source_metric = QLabel("No document", objectName="SourceMetric")
+        self.verification_metric = QPushButton("Second scan before export", objectName="SafetyMetric")
+        self.verification_metric.setToolTip(
+            "Privacy Gate scans the protected result again before copy, download or AI actions."
+        )
         metrics.addWidget(self.findings_metric)
         metrics.addWidget(self.types_metric)
         metrics.addWidget(self.pages_metric)
+        metrics.addWidget(self.source_metric)
+        metrics.addWidget(self.verification_metric)
         metrics.addStretch(1)
         root.addLayout(metrics)
 
@@ -204,7 +296,11 @@ class ProtectionPage(QWidget):
         filter_row.addWidget(QLabel("Detected items", objectName="SectionTitle"))
         filter_row.addStretch(1)
         self.categories_button = QPushButton("Categories", objectName="Secondary")
+        self.categories_button.setToolTip("Select or deselect entire groups of detected information.")
         filter_row.addWidget(self.categories_button)
+        self.reset_selections_button = QPushButton("Reset", objectName="Tiny")
+        self.reset_selections_button.setToolTip("Select every detected item again and clear the filter.")
+        filter_row.addWidget(self.reset_selections_button)
         self.filter_input = QLineEdit()
         self.filter_input.setPlaceholderText("Filter findings")
         self.filter_input.setMaximumWidth(220)
@@ -239,10 +335,71 @@ class ProtectionPage(QWidget):
         preview_header.addStretch(1)
         preview_header.addWidget(QLabel("Color-coded by protected category", objectName="TokenHint"))
         preview_layout.addLayout(preview_header)
+
+        self.color_legend = QLabel(objectName="ColorLegend")
+        self.color_legend.setWordWrap(True)
+        self.color_legend.setText("Protected categories will appear here after the scan.")
+        preview_layout.addWidget(self.color_legend)
+
+        self.preview_tabs = QTabWidget()
+        text_preview_tab = QWidget()
+        text_preview_layout = QVBoxLayout(text_preview_tab)
+        text_preview_layout.setContentsMargins(0, 8, 0, 0)
         self.preview = QPlainTextEdit()
         self.preview.setReadOnly(True)
         self.preview.setPlaceholderText("Run a scan to generate the protected preview.")
-        preview_layout.addWidget(self.preview, 1)
+        text_preview_layout.addWidget(self.preview)
+        self.preview_tabs.addTab(text_preview_tab, "Protected text")
+
+        pdf_comparison_tab = QWidget()
+        pdf_comparison_layout = QVBoxLayout(pdf_comparison_tab)
+        pdf_comparison_layout.setContentsMargins(0, 8, 0, 0)
+        comparison_note = QLabel(
+            "Original source on the left. The secure, layout-preserving protected copy on the right.",
+            objectName="Muted",
+        )
+        comparison_note.setWordWrap(True)
+        pdf_comparison_layout.addWidget(comparison_note)
+        pdf_controls = QHBoxLayout()
+        self.pdf_previous_button = QPushButton("‹", objectName="Tiny")
+        self.pdf_previous_button.setToolTip("Previous page in both previews")
+        self.pdf_next_button = QPushButton("›", objectName="Tiny")
+        self.pdf_next_button.setToolTip("Next page in both previews")
+        self.pdf_page_label = QLabel("Page 1 / 1", objectName="PdfPageLabel")
+        self.pdf_zoom_out_button = QPushButton("−", objectName="Tiny")
+        self.pdf_zoom_out_button.setToolTip("Zoom out both previews")
+        self.pdf_fit_button = QPushButton("Fit width", objectName="Tiny")
+        self.pdf_fit_button.setToolTip("Fit both PDF previews to their panel width")
+        self.pdf_zoom_in_button = QPushButton("+", objectName="Tiny")
+        self.pdf_zoom_in_button.setToolTip("Zoom in both previews")
+        pdf_controls.addWidget(self.pdf_previous_button)
+        pdf_controls.addWidget(self.pdf_next_button)
+        pdf_controls.addWidget(self.pdf_page_label)
+        pdf_controls.addStretch(1)
+        pdf_controls.addWidget(self.pdf_zoom_out_button)
+        pdf_controls.addWidget(self.pdf_fit_button)
+        pdf_controls.addWidget(self.pdf_zoom_in_button)
+        pdf_comparison_layout.addLayout(pdf_controls)
+        pdf_splitter = QSplitter(Qt.Orientation.Horizontal)
+        original_panel, self.original_pdf_view = self._build_pdf_panel("Original PDF", "Local source")
+        protected_panel, self.protected_pdf_view = self._build_pdf_panel(
+            "Protected PDF", "Exact download preview"
+        )
+        self.original_pdf_document = QPdfDocument(self)
+        self.protected_pdf_document = QPdfDocument(self)
+        self.original_pdf_view.setDocument(self.original_pdf_document)
+        self.protected_pdf_view.setDocument(self.protected_pdf_document)
+        for view in (self.original_pdf_view, self.protected_pdf_view):
+            view.setPageMode(QPdfView.PageMode.MultiPage)
+            view.setZoomMode(QPdfView.ZoomMode.FitToWidth)
+        pdf_splitter.addWidget(original_panel)
+        pdf_splitter.addWidget(protected_panel)
+        pdf_splitter.setChildrenCollapsible(False)
+        pdf_splitter.setSizes([500, 500])
+        pdf_comparison_layout.addWidget(pdf_splitter, 1)
+        self.preview_tabs.addTab(pdf_comparison_tab, "PDF comparison")
+        self.preview_tabs.setTabVisible(1, False)
+        preview_layout.addWidget(self.preview_tabs, 1)
         self.labels_input = QLineEdit()
         self.labels_input.setPlaceholderText("Library labels, comma separated (e.g. Lease, Property 014)")
         preview_layout.addWidget(self.labels_input)
@@ -255,9 +412,18 @@ class ProtectionPage(QWidget):
 
         action_bar = QFrame(objectName="ActionBar")
         actions = QHBoxLayout(action_bar)
+        actions.addWidget(
+            self._info_button(
+                "Protected result actions",
+                "Copy keeps the result in memory. Save stores it locally. Download creates a protected TXT or PDF.",
+            )
+        )
         self.copy_button = QPushButton("Copy protected text", objectName="Secondary")
+        self.copy_button.setToolTip("Copy the protected text after the automatic residual-PII check.")
         self.save_copy_button = QPushButton("Save + Copy", objectName="Primary")
+        self.save_copy_button.setToolTip("Save to the encrypted local library and copy the protected text.")
         self.save_download_button = QPushButton("Save + Download", objectName="Gold")
+        self.save_download_button.setToolTip("Save locally and export the protected TXT or layout-preserving PDF.")
         self.ai_button = QToolButton()
         self.ai_button.setText("Open with AI")
         self.ai_button.setObjectName("SecondaryTool")
@@ -271,6 +437,42 @@ class ProtectionPage(QWidget):
         actions.addWidget(self.ai_button)
         root.addWidget(action_bar)
         self._set_result_actions(False)
+
+        self._pdf_preview_timer = QTimer(self)
+        self._pdf_preview_timer.setSingleShot(True)
+        self._pdf_preview_timer.setInterval(220)
+        self._pdf_preview_timer.timeout.connect(self._update_pdf_comparison)
+
+    def _info_heading(self, title: str, message: str) -> QHBoxLayout:
+        row = QHBoxLayout()
+        row.setSpacing(6)
+        row.addWidget(QLabel(title, objectName="FieldLabel"))
+        row.addWidget(self._info_button(title, message))
+        row.addStretch(1)
+        return row
+
+    def _info_button(self, title: str, message: str) -> QToolButton:
+        button = QToolButton()
+        button.setText("i")
+        button.setObjectName("InfoButton")
+        button.setToolTip(message)
+        button.clicked.connect(lambda _checked=False: QMessageBox.information(self, title, message))
+        return button
+
+    @staticmethod
+    def _build_pdf_panel(title: str, subtitle: str) -> tuple[QFrame, QPdfView]:
+        panel = QFrame(objectName="PdfPanel")
+        layout = QVBoxLayout(panel)
+        layout.setContentsMargins(10, 10, 10, 10)
+        heading = QHBoxLayout()
+        heading.addWidget(QLabel(title, objectName="PdfTitle"))
+        heading.addStretch(1)
+        heading.addWidget(QLabel(subtitle, objectName="PdfBadge"))
+        layout.addLayout(heading)
+        view = QPdfView()
+        view.setObjectName("PdfView")
+        layout.addWidget(view, 1)
+        return panel, view
 
     def _build_ai_menu(self):
         from PySide6.QtWidgets import QMenu
@@ -286,7 +488,9 @@ class ProtectionPage(QWidget):
     def _connect_signals(self) -> None:
         self.setup_toggle.toggled.connect(self._toggle_setup)
         self.profile_combo.currentIndexChanged.connect(self._update_profile_description)
+        self.scope_combo.currentIndexChanged.connect(self._update_scope_description)
         self.mode_combo.currentIndexChanged.connect(self._refresh_preview)
+        self.mode_combo.currentIndexChanged.connect(self._update_mode_help)
         self.browse_button.clicked.connect(self._browse_pdf)
         self.scan_button.clicked.connect(self._start_analysis)
         self.clear_button.clicked.connect(self.clear)
@@ -295,11 +499,20 @@ class ProtectionPage(QWidget):
         self.select_all_button.clicked.connect(lambda: self._set_all_categories(True))
         self.select_none_button.clicked.connect(lambda: self._set_all_categories(False))
         self.categories_button.clicked.connect(self._open_categories)
+        self.reset_selections_button.clicked.connect(self._reset_selections)
         self.filter_input.textChanged.connect(self._apply_filter)
+        self.findings_table.cellClicked.connect(self._finding_selected)
         self.add_sensitive_button.clicked.connect(self._add_sensitive_item)
         self.copy_button.clicked.connect(self._copy_result)
         self.save_copy_button.clicked.connect(self._save_and_copy)
         self.save_download_button.clicked.connect(self._save_and_download)
+        self.verification_metric.clicked.connect(self._show_residual_details)
+        self.pdf_previous_button.clicked.connect(lambda: self._change_pdf_page(-1))
+        self.pdf_next_button.clicked.connect(lambda: self._change_pdf_page(1))
+        self.pdf_zoom_out_button.clicked.connect(lambda: self._zoom_pdf(0.82))
+        self.pdf_fit_button.clicked.connect(self._fit_pdf_width)
+        self.pdf_zoom_in_button.clicked.connect(lambda: self._zoom_pdf(1.22))
+        self.original_pdf_view.pageNavigator().currentPageChanged.connect(self._sync_pdf_page)
 
     def _toggle_setup(self, visible: bool) -> None:
         self.setup_card.setVisible(visible)
@@ -311,7 +524,22 @@ class ProtectionPage(QWidget):
         self.categories_dialog.activateWindow()
 
     def _update_profile_description(self) -> None:
-        self.profile_description.setText(get_profile(self.profile_combo.currentData()).description)
+        profile = get_profile(self.profile_combo.currentData())
+        self.profile_description.setText(profile.description)
+        self.threshold_input.setValue(profile.threshold)
+
+    def _update_scope_description(self) -> None:
+        scope = get_scope(self.scope_combo.currentData())
+        self.scope_description.setText(scope.description)
+
+    def _update_mode_help(self) -> None:
+        messages = {
+            "reversible": "Encrypted local mapping enables restore.",
+            "generic": "Permanent generic placeholders; original values are not stored.",
+            "mask": "Permanent masking keeps only the final four letters or digits.",
+            "redact": "Permanent redaction replaces every selected value with [REDACTED].",
+        }
+        self.mode_help.setText(messages.get(self.mode_combo.currentData(), ""))
 
     def _browse_pdf(self) -> None:
         path, _ = QFileDialog.getOpenFileName(self, "Choose PDF", "", "PDF files (*.pdf)")
@@ -320,7 +548,12 @@ class ProtectionPage(QWidget):
             self.input_tabs.setCurrentIndex(1)
 
     def _start_analysis(self) -> None:
-        profile = get_profile(self.profile_combo.currentData())
+        base_profile = get_profile(self.profile_combo.currentData())
+        profile = replace(
+            base_profile,
+            entities=entities_for_scope(base_profile, self.scope_combo.currentData()),
+            threshold=float(self.threshold_input.value()),
+        )
         tab = self.input_tabs.currentIndex()
         text = self.text_input.toPlainText().strip()
         pdf_path = self.pdf_path.text().strip()
@@ -377,6 +610,27 @@ class ProtectionPage(QWidget):
         self.findings_metric.setText(f"{len(self.current_findings)} findings")
         self.types_metric.setText(f"{types} categories")
         self.pages_metric.setText(f"{pages} page{'s' if pages != 1 else ''}")
+        if self.current_document and self.current_document.source_path:
+            self.source_metric.setText(f"PDF  |  {self.current_document.source_path.name}")
+            self.source_metric.setToolTip(str(self.current_document.source_path))
+        else:
+            self.source_metric.setText("Pasted text")
+            self.source_metric.setToolTip("")
+        self._update_color_legend()
+
+    def _update_color_legend(self) -> None:
+        entity_types = sorted({item.entity_type for item in self.current_findings})
+        if not entity_types:
+            self.color_legend.setText("Protected categories will appear here after the scan.")
+            return
+        chips = []
+        for entity_type in entity_types:
+            label = entity_type.replace("_", " ").title()
+            chips.append(
+                f'<span style="background-color:{self._entity_color(entity_type)}; '
+                f'color:#102A43; font-weight:600;">&nbsp;{label}&nbsp;</span>'
+            )
+        self.color_legend.setText("&nbsp;&nbsp;".join(chips))
 
     def _populate_categories(self) -> None:
         counts: dict[str, int] = {}
@@ -409,6 +663,18 @@ class ProtectionPage(QWidget):
         for index in range(self.category_list.count()):
             self.category_list.item(index).setCheckState(state)
 
+    def _reset_selections(self) -> None:
+        self.filter_input.clear()
+        self._set_all_categories(True)
+
+    def _finding_selected(self, row: int, _column: int) -> None:
+        if not self.current_document or self.current_document.source_kind != "pdf":
+            return
+        item = self.findings_table.item(row, 3)
+        if item and item.text().isdigit():
+            self._set_pdf_page(max(0, int(item.text()) - 1))
+            self.preview_tabs.setCurrentIndex(1)
+
     def _selected_findings(self) -> tuple[Finding, ...]:
         selected_ids = {
             self.findings_table.item(row, 0).data(Qt.ItemDataRole.UserRole)
@@ -426,6 +692,15 @@ class ProtectionPage(QWidget):
             replacement_mode=self.mode_combo.currentData(),
         )
         self._render_preview(self.current_result.combined_text)
+        protected_count = len(self.current_result.applied_findings)
+        self.findings_metric.setText(
+            f"{len(self.current_findings)} detected  |  {protected_count} protected"
+        )
+        if self.current_document.source_kind == "pdf":
+            self.preview_tabs.setTabVisible(1, True)
+            self._pdf_preview_timer.start()
+        else:
+            self.preview_tabs.setTabVisible(1, False)
         self._set_result_actions(True)
 
     def _entity_color(self, entity_type: str) -> str:
@@ -436,19 +711,76 @@ class ProtectionPage(QWidget):
 
     def _render_preview(self, text: str) -> None:
         self.preview.setPlainText(text)
-        pattern = re.compile(
-            r"\[\[PG_([A-Z0-9_]+)_\d{3}\]\]|<([A-Z][A-Z0-9_]+)>|\[REDACTED\]"
-        )
-        for match in pattern.finditer(text):
-            entity_type = match.group(1) or match.group(2) or "REDACTED"
+        spans = self.current_result.combined_spans if self.current_result else ()
+        for span in spans:
             cursor = QTextCursor(self.preview.document())
-            cursor.setPosition(match.start())
-            cursor.setPosition(match.end(), QTextCursor.MoveMode.KeepAnchor)
+            cursor.setPosition(span.start)
+            cursor.setPosition(span.end, QTextCursor.MoveMode.KeepAnchor)
             token_format = QTextCharFormat()
-            token_format.setBackground(QColor(self._entity_color(entity_type)))
+            token_format.setBackground(QColor(self._entity_color(span.entity_type)))
             token_format.setForeground(QColor("#102A43"))
             token_format.setFontWeight(int(QFont.Weight.DemiBold))
             cursor.mergeCharFormat(token_format)
+
+    def _update_pdf_comparison(self) -> None:
+        if (
+            self.current_document is None
+            or self.current_result is None
+            or self.current_document.source_kind != "pdf"
+            or self.current_document.source_path is None
+        ):
+            return
+        protected_path = self._preview_path
+        try:
+            self.protected_pdf_document.close()
+            self.service.save_protected_pdf(
+                self.current_result,
+                protected_path,
+                source_document=self.current_document,
+            )
+            self.original_pdf_document.close()
+            self.original_pdf_document.load(str(self.current_document.source_path))
+            self.protected_pdf_document.load(str(protected_path))
+        except Exception as exc:
+            self.preview_tabs.setTabToolTip(1, f"Preview unavailable: {exc}")
+        else:
+            self.preview_tabs.setTabToolTip(
+                1, "Compare the local source with the secure layout-preserving PDF generated by Privacy Gate."
+            )
+            self._set_pdf_page(0)
+
+    def _set_pdf_page(self, page: int) -> None:
+        page_count = max(
+            self.original_pdf_document.pageCount(), self.protected_pdf_document.pageCount()
+        )
+        if page_count <= 0:
+            return
+        target = max(0, min(page, page_count - 1))
+        for view in (self.original_pdf_view, self.protected_pdf_view):
+            view.pageNavigator().jump(target, QPointF(0, 0), view.zoomFactor())
+        self.pdf_page_label.setText(f"Page {target + 1} / {page_count}")
+
+    def _change_pdf_page(self, delta: int) -> None:
+        self._set_pdf_page(self.original_pdf_view.pageNavigator().currentPage() + delta)
+
+    def _sync_pdf_page(self, page: int) -> None:
+        if self.protected_pdf_view.pageNavigator().currentPage() != page:
+            self.protected_pdf_view.pageNavigator().jump(
+                page, QPointF(0, 0), self.protected_pdf_view.zoomFactor()
+            )
+        page_count = max(
+            self.original_pdf_document.pageCount(), self.protected_pdf_document.pageCount()
+        )
+        self.pdf_page_label.setText(f"Page {page + 1} / {max(1, page_count)}")
+
+    def _zoom_pdf(self, factor: float) -> None:
+        for view in (self.original_pdf_view, self.protected_pdf_view):
+            view.setZoomMode(QPdfView.ZoomMode.Custom)
+            view.setZoomFactor(max(0.25, min(4.0, view.zoomFactor() * factor)))
+
+    def _fit_pdf_width(self) -> None:
+        for view in (self.original_pdf_view, self.protected_pdf_view):
+            view.setZoomMode(QPdfView.ZoomMode.FitToWidth)
 
     def _apply_filter(self, term: str) -> None:
         value = term.casefold().strip()
@@ -469,7 +801,11 @@ class ProtectionPage(QWidget):
             self,
             "Sensitive category",
             "Category:",
-            ["PERSON", "EMAIL_ADDRESS", "PHONE_NUMBER", "LOCATION", "US_SSN", "US_BANK_NUMBER", "PROPERTY_IDENTIFIER", "CUSTOM"],
+            [
+                "PERSON", "EMAIL_ADDRESS", "PHONE_NUMBER", "LOCATION", "STREET_ADDRESS",
+                "US_SSN", "US_BANK_NUMBER", "MONEY_AMOUNT", "MERCHANT", "COUNTERPARTY",
+                "TRANSACTION_ID", "PROPERTY_IDENTIFIER", "CUSTOM",
+            ],
             editable=True,
         )
         if not ok or not entity_type:
@@ -528,17 +864,75 @@ class ProtectionPage(QWidget):
         self.library_changed.emit(document.document_id)
         return document
 
+    def _current_profile(self):
+        base_profile = get_profile(self.profile_combo.currentData())
+        return replace(
+            base_profile,
+            entities=entities_for_scope(base_profile, self.scope_combo.currentData()),
+            threshold=float(self.threshold_input.value()),
+        )
+
+    def _confirm_residual_risk(self, action: str) -> bool:
+        if self.current_result is None:
+            return False
+        residual = self.service.verify_protected(self.current_result, self._current_profile())
+        self._last_residual = residual
+        if not residual:
+            self.verification_metric.setText("Verified: no remaining PII")
+            self.verification_metric.setProperty("warning", False)
+            self.verification_metric.style().unpolish(self.verification_metric)
+            self.verification_metric.style().polish(self.verification_metric)
+            return True
+        self.verification_metric.setText(f"Warning: {len(residual)} possible PII remain")
+        self.verification_metric.setProperty("warning", True)
+        self.verification_metric.style().unpolish(self.verification_metric)
+        self.verification_metric.style().polish(self.verification_metric)
+        examples = "\n".join(
+            f"• {item.entity_type}: {item.text[:45]} (page {item.page_number})"
+            for item in residual[:8]
+        )
+        answer = QMessageBox.warning(
+            self,
+            "Possible sensitive data remains",
+            f"Privacy Gate found {len(residual)} possible sensitive item(s) in the protected copy before {action}:\n\n{examples}\n\nReturn to the findings and protect them whenever possible.",
+            QMessageBox.StandardButton.Cancel | QMessageBox.StandardButton.Ignore,
+            QMessageBox.StandardButton.Cancel,
+        )
+        return answer == QMessageBox.StandardButton.Ignore
+
+    def _show_residual_details(self) -> None:
+        if not self._last_residual:
+            QMessageBox.information(
+                self,
+                "Second privacy scan",
+                "The protected result is checked again before it can leave the app. No unresolved items are currently recorded.",
+            )
+            return
+        details = "\n".join(
+            f"• Page {item.page_number} — {item.entity_type}: {item.text[:70]}"
+            for item in self._last_residual[:20]
+        )
+        QMessageBox.warning(
+            self,
+            "Possible sensitive data remains",
+            f"Review these possible residual items:\n\n{details}",
+        )
+
     def _copy_result(self) -> None:
-        if self.current_result:
+        if self.current_result and self._confirm_residual_risk("copying"):
             QApplication.clipboard().setText(self.current_result.combined_text)
 
     def _save_and_copy(self) -> None:
+        if not self._confirm_residual_risk("copying"):
+            return
         document = self._save_to_library()
         if document:
-            self._copy_result()
+            QApplication.clipboard().setText(self.current_result.combined_text)
             QMessageBox.information(self, "Saved locally", "The protected text was saved and copied.")
 
     def _save_and_download(self) -> None:
+        if not self._confirm_residual_risk("downloading"):
+            return
         document = self._save_to_library()
         if not document or not self.current_result or not self.current_document:
             return
@@ -546,7 +940,11 @@ class ProtectionPage(QWidget):
             suggested = f"{document.title}_protected.pdf"
             path, _ = QFileDialog.getSaveFileName(self, "Save protected PDF", suggested, "PDF files (*.pdf)")
             if path:
-                self.service.save_protected_pdf(self.current_result, path if path.lower().endswith(".pdf") else path + ".pdf")
+                self.service.save_protected_pdf(
+                    self.current_result,
+                    path if path.lower().endswith(".pdf") else path + ".pdf",
+                    source_document=self.current_document,
+                )
         else:
             suggested = f"{document.title}_protected.txt"
             path, _ = QFileDialog.getSaveFileName(self, "Save protected text", suggested, "Text files (*.txt)")
@@ -554,7 +952,9 @@ class ProtectionPage(QWidget):
                 self.service.save_protected_text(self.current_result, path if path.lower().endswith(".txt") else path + ".txt")
 
     def _copy_and_open_chatgpt(self) -> None:
-        self._copy_result()
+        if not self.current_result or not self._confirm_residual_risk("opening an AI service"):
+            return
+        QApplication.clipboard().setText(self.current_result.combined_text)
         QDesktopServices.openUrl(QUrl("https://chatgpt.com/"))
 
     def _set_result_actions(self, enabled: bool) -> None:
@@ -565,13 +965,34 @@ class ProtectionPage(QWidget):
         self.scan_button.setEnabled(not busy)
         self.browse_button.setEnabled(not busy)
         self.profile_combo.setEnabled(not busy)
+        self.scope_combo.setEnabled(not busy)
         if not busy:
             self._active_worker = None
+
+    def cleanup_pdf_preview(self) -> None:
+        """Release Windows PDF file handles before removing the temporary preview."""
+        self._pdf_preview_timer.stop()
+        self.original_pdf_view.setDocument(None)
+        self.protected_pdf_view.setDocument(None)
+        self.original_pdf_document.close()
+        self.protected_pdf_document.close()
+        QApplication.processEvents()
+        try:
+            self._preview_path.unlink(missing_ok=True)
+        except OSError:
+            # Qt's renderer can release the handle just after shutdown. Any stale
+            # preview is removed automatically at the next application start.
+            pass
 
     def clear(self) -> None:
         self.text_input.clear()
         self.pdf_path.clear()
         self.preview.clear()
+        self._pdf_preview_timer.stop()
+        self.original_pdf_document.close()
+        self.protected_pdf_document.close()
+        self.preview_tabs.setTabVisible(1, False)
+        self.preview_tabs.setCurrentIndex(0)
         self.findings_table.setRowCount(0)
         self.category_list.clear()
         self.labels_input.clear()
@@ -581,5 +1002,10 @@ class ProtectionPage(QWidget):
         self.findings_metric.setText("0 findings")
         self.types_metric.setText("0 categories")
         self.pages_metric.setText("0 pages")
+        self.source_metric.setText("No document")
+        self.source_metric.setToolTip("")
+        self.color_legend.setText("Protected categories will appear here after the scan.")
+        self.verification_metric.setText("Second scan before export")
+        self._last_residual = ()
         self._set_result_actions(False)
         self.setup_toggle.setChecked(True)

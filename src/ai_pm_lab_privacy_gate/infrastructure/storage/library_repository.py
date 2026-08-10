@@ -1,9 +1,14 @@
 from __future__ import annotations
 
 import json
+import io
 import os
+import shutil
 import sqlite3
+import tempfile
 import uuid
+import zipfile
+from contextlib import closing, contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -11,7 +16,8 @@ from ai_pm_lab_privacy_gate.domain.models import LibraryDocument, ProtectionResu
 from ai_pm_lab_privacy_gate.infrastructure.security.local_protector import LocalProtector
 
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 4
+BACKUP_FORMAT = "ai-pm-lab-privacy-gate-backup-v1"
 
 
 def default_data_dir() -> Path:
@@ -33,13 +39,22 @@ class LibraryRepository:
         self._protector = LocalProtector()
         self._initialize()
 
-    def _connect(self) -> sqlite3.Connection:
+    @contextmanager
+    def _connect(self):
         connection = sqlite3.connect(self.db_path)
         connection.row_factory = sqlite3.Row
         connection.execute("PRAGMA foreign_keys = ON")
-        return connection
+        try:
+            yield connection
+            connection.commit()
+        except Exception:
+            connection.rollback()
+            raise
+        finally:
+            connection.close()
 
     def _initialize(self) -> None:
+        existing_version = 0
         with self._connect() as connection:
             connection.executescript(
                 """
@@ -60,7 +75,10 @@ class LibraryRepository:
                     replacement_mode TEXT NOT NULL,
                     created_at TEXT NOT NULL,
                     updated_at TEXT NOT NULL,
-                    has_mapping INTEGER NOT NULL DEFAULT 0
+                    has_mapping INTEGER NOT NULL DEFAULT 0,
+                    favorite INTEGER NOT NULL DEFAULT 0,
+                    mcp_shared INTEGER NOT NULL DEFAULT 1,
+                    deleted_at TEXT
                 );
                 CREATE TABLE IF NOT EXISTS mappings (
                     document_id TEXT NOT NULL,
@@ -72,10 +90,43 @@ class LibraryRepository:
                 );
                 """
             )
+            row = connection.execute(
+                "SELECT value FROM app_meta WHERE key = 'schema_version'"
+            ).fetchone()
+            existing_version = int(row["value"]) if row else 0
+            columns = {
+                item["name"] for item in connection.execute("PRAGMA table_info(documents)").fetchall()
+            }
+            if "favorite" not in columns:
+                self._backup_database_file(f"pre_migration_v{existing_version or 1}")
+                connection.execute(
+                    "ALTER TABLE documents ADD COLUMN favorite INTEGER NOT NULL DEFAULT 0"
+                )
+            if "deleted_at" not in columns:
+                connection.execute("ALTER TABLE documents ADD COLUMN deleted_at TEXT")
+            if "mcp_shared" not in columns:
+                connection.execute(
+                    "ALTER TABLE documents ADD COLUMN mcp_shared INTEGER NOT NULL DEFAULT 1"
+                )
+            if existing_version < 4:
+                # Version 0.4 makes protected library copies available to MCP by
+                # default. The source document is never stored in this table and
+                # restore mappings remain encrypted in the separate mappings table.
+                connection.execute(
+                    "UPDATE documents SET mcp_shared = 1 WHERE deleted_at IS NULL"
+                )
             connection.execute(
                 "INSERT OR REPLACE INTO app_meta(key, value) VALUES('schema_version', ?)",
                 (str(SCHEMA_VERSION),),
             )
+
+    def _backup_database_file(self, reason: str) -> Path | None:
+        if not self.db_path.exists() or self.db_path.stat().st_size == 0:
+            return None
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        destination = self.backup_dir / f"library_{reason}_{timestamp}.db"
+        shutil.copy2(self.db_path, destination)
+        return destination
 
     def save(
         self,
@@ -96,8 +147,8 @@ class LibraryRepository:
                 INSERT INTO documents(
                     document_id, title, source_kind, source_name, profile_key,
                     protected_text, findings_count, entity_types_json, labels_json,
-                    replacement_mode, created_at, updated_at, has_mapping
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    replacement_mode, created_at, updated_at, has_mapping, mcp_shared
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
                 """,
                 (
                     document_id,
@@ -129,16 +180,28 @@ class LibraryRepository:
             )
         return self.get(document_id)
 
-    def list_documents(self, search: str = "") -> tuple[LibraryDocument, ...]:
+    def list_documents(
+        self,
+        search: str = "",
+        *,
+        include_deleted: bool = False,
+        favorites_only: bool = False,
+    ) -> tuple[LibraryDocument, ...]:
         query = "SELECT * FROM documents"
-        parameters: tuple[str, ...] = ()
+        conditions: list[str] = []
+        parameters: list[str] = []
+        conditions.append("deleted_at IS NOT NULL" if include_deleted else "deleted_at IS NULL")
+        if favorites_only:
+            conditions.append("favorite = 1")
         if search.strip():
-            query += " WHERE title LIKE ? OR source_name LIKE ? OR labels_json LIKE ?"
+            conditions.append("(title LIKE ? OR source_name LIKE ? OR labels_json LIKE ? OR profile_key LIKE ?)")
             term = f"%{search.strip()}%"
-            parameters = (term, term, term)
+            parameters.extend((term, term, term, term))
+        if conditions:
+            query += " WHERE " + " AND ".join(conditions)
         query += " ORDER BY updated_at DESC"
         with self._connect() as connection:
-            rows = connection.execute(query, parameters).fetchall()
+            rows = connection.execute(query, tuple(parameters)).fetchall()
         return tuple(self._to_document(row) for row in rows)
 
     def get(self, document_id: str) -> LibraryDocument:
@@ -165,9 +228,159 @@ class LibraryRepository:
             for row in rows
         )
 
-    def delete(self, document_id: str) -> None:
+    def list_mcp_documents(
+        self,
+        search: str = "",
+        *,
+        favorites_only: bool = False,
+        limit: int = 50,
+    ) -> tuple[LibraryDocument, ...]:
+        """Return only active documents explicitly approved for MCP access."""
+        safe_limit = max(1, min(int(limit), 200))
+        query = "SELECT * FROM documents WHERE deleted_at IS NULL AND mcp_shared = 1"
+        parameters: list[object] = []
+        if favorites_only:
+            query += " AND favorite = 1"
+        if search.strip():
+            query += (
+                " AND (title LIKE ? OR labels_json LIKE ? OR profile_key LIKE ? "
+                "OR protected_text LIKE ?)"
+            )
+            term = f"%{search.strip()}%"
+            parameters.extend((term, term, term, term))
+        query += " ORDER BY updated_at DESC LIMIT ?"
+        parameters.append(safe_limit)
+        with self._connect() as connection:
+            rows = connection.execute(query, tuple(parameters)).fetchall()
+        return tuple(self._to_document(row) for row in rows)
+
+    def get_mcp_document(self, document_id: str) -> LibraryDocument:
+        """Load a document only when it is active and explicitly MCP-shared."""
+        with self._connect() as connection:
+            row = connection.execute(
+                """
+                SELECT * FROM documents
+                WHERE document_id = ? AND deleted_at IS NULL AND mcp_shared = 1
+                """,
+                (document_id,),
+            ).fetchone()
+        if row is None:
+            raise KeyError(document_id)
+        return self._to_document(row)
+
+    def update_metadata(
+        self,
+        document_id: str,
+        *,
+        title: str | None = None,
+        labels: tuple[str, ...] | None = None,
+    ) -> LibraryDocument:
+        assignments = ["updated_at = ?"]
+        parameters: list[object] = [datetime.now(timezone.utc).isoformat()]
+        if title is not None:
+            assignments.append("title = ?")
+            parameters.append(title.strip() or "Untitled protected document")
+        if labels is not None:
+            assignments.append("labels_json = ?")
+            parameters.append(json.dumps(tuple(label.strip() for label in labels if label.strip())))
+        parameters.append(document_id)
+        with self._connect() as connection:
+            connection.execute(
+                f"UPDATE documents SET {', '.join(assignments)} WHERE document_id = ?",
+                tuple(parameters),
+            )
+        return self.get(document_id)
+
+    def set_favorite(self, document_id: str, favorite: bool) -> LibraryDocument:
+        with self._connect() as connection:
+            connection.execute(
+                "UPDATE documents SET favorite = ?, updated_at = ? WHERE document_id = ?",
+                (int(favorite), datetime.now(timezone.utc).isoformat(), document_id),
+            )
+        return self.get(document_id)
+
+    def set_mcp_shared(self, document_id: str, shared: bool) -> LibraryDocument:
+        with self._connect() as connection:
+            connection.execute(
+                "UPDATE documents SET mcp_shared = ?, updated_at = ? WHERE document_id = ?",
+                (int(shared), datetime.now(timezone.utc).isoformat(), document_id),
+            )
+        return self.get(document_id)
+
+    def move_to_trash(self, document_id: str) -> None:
+        with self._connect() as connection:
+            connection.execute(
+                "UPDATE documents SET deleted_at = ?, updated_at = ? WHERE document_id = ?",
+                (
+                    datetime.now(timezone.utc).isoformat(),
+                    datetime.now(timezone.utc).isoformat(),
+                    document_id,
+                ),
+            )
+
+    def restore_from_trash(self, document_id: str) -> None:
+        with self._connect() as connection:
+            connection.execute(
+                "UPDATE documents SET deleted_at = NULL, updated_at = ? WHERE document_id = ?",
+                (datetime.now(timezone.utc).isoformat(), document_id),
+            )
+
+    def delete_permanently(self, document_id: str) -> None:
         with self._connect() as connection:
             connection.execute("DELETE FROM documents WHERE document_id = ?", (document_id,))
+
+    def delete(self, document_id: str) -> None:
+        """Compatibility alias: deletion is recoverable in schema v2."""
+        self.move_to_trash(document_id)
+
+    def create_backup(self, destination: str | Path | None = None) -> Path:
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        target = Path(destination) if destination else self.backup_dir / f"privacy_gate_{timestamp}.pgbackup"
+        target.parent.mkdir(parents=True, exist_ok=True)
+        with tempfile.TemporaryDirectory(prefix="privacy_gate_backup_") as temp_dir:
+            snapshot = Path(temp_dir) / "library.db"
+            with self._connect() as source, closing(sqlite3.connect(snapshot)) as output:
+                source.backup(output)
+            manifest = {
+                "format": BACKUP_FORMAT,
+                "schema_version": SCHEMA_VERSION,
+                "created_at": datetime.now(timezone.utc).isoformat(),
+                "protection": "Windows DPAPI current user",
+            }
+            archive = io.BytesIO()
+            with zipfile.ZipFile(archive, "w", compression=zipfile.ZIP_DEFLATED) as bundle:
+                bundle.writestr("manifest.json", json.dumps(manifest, indent=2))
+                bundle.write(snapshot, "library.db")
+            protected = self._protector.protect_bytes(archive.getvalue())
+            temporary = target.with_suffix(target.suffix + ".tmp")
+            temporary.write_bytes(protected)
+            os.replace(temporary, target)
+        return target
+
+    def restore_backup(self, source: str | Path) -> Path:
+        source_path = Path(source)
+        raw = self._protector.unprotect_bytes(source_path.read_bytes())
+        with zipfile.ZipFile(io.BytesIO(raw), "r") as bundle:
+            manifest = json.loads(bundle.read("manifest.json"))
+            if manifest.get("format") != BACKUP_FORMAT:
+                raise ValueError("This is not a supported Privacy Gate backup.")
+            database_bytes = bundle.read("library.db")
+        with tempfile.NamedTemporaryFile(
+            dir=self.data_dir, prefix="restore_", suffix=".db", delete=False
+        ) as temporary_file:
+            temporary_path = Path(temporary_file.name)
+            temporary_file.write(database_bytes)
+        try:
+            with closing(sqlite3.connect(temporary_path)) as connection:
+                result = connection.execute("PRAGMA integrity_check").fetchone()
+                if not result or result[0] != "ok":
+                    raise ValueError("The backup database failed its integrity check.")
+            safety_backup = self.create_backup()
+            os.replace(temporary_path, self.db_path)
+            self._initialize()
+            return safety_backup
+        finally:
+            temporary_path.unlink(missing_ok=True)
 
     @staticmethod
     def _to_document(row: sqlite3.Row) -> LibraryDocument:
@@ -185,4 +398,7 @@ class LibraryRepository:
             created_at=datetime.fromisoformat(row["created_at"]),
             updated_at=datetime.fromisoformat(row["updated_at"]),
             has_mapping=bool(row["has_mapping"]),
+            favorite=bool(row["favorite"]),
+            mcp_shared=bool(row["mcp_shared"]),
+            deleted_at=datetime.fromisoformat(row["deleted_at"]) if row["deleted_at"] else None,
         )

@@ -1,6 +1,6 @@
-# AI PM LAB Privacy Gate 0.3.1 — Build Information
+# AI PM LAB Privacy Gate 0.4.0 — Build Information
 
-Build date: 2026-08-09
+Build date: 2026-08-10
 Target: Windows x64
 Packaging: PyInstaller onedir + Inno Setup installer
 
@@ -15,6 +15,8 @@ Packaging: PyInstaller onedir + Inno Setup installer
 - three real-estate operations profiles;
 - no mandatory cloud, account, telemetry, n8n, or LLM connection;
 - browser-only pasted-text demo for Netlify.
+- layout-preserving protected PDF output with secure overlays;
+- read-only local MCP and optional Remote MCP beta for protected Library copies.
 - collapsible desktop navigation and a two-column review workspace;
 - color-coded protected placeholders in desktop and browser previews;
 - branded Windows EXE, installer, shortcuts, and website icon;
@@ -34,10 +36,10 @@ Portable EXE SHA-256:
 79A9A7E1CD313F53C199F1017D6DB048AE51FF3A5543C42374E30FA44AF040E3
 ```
 
-Installer 0.3.1 SHA-256:
+Installer 0.4.0 SHA-256:
 
 ```text
-97F0C39BC9907FB4589CBD22F8C7FEDF3CEF713C5702642D093FDE9D3E0B5F60
+ECBC1B94E2B157D5E48ED3A0748EFFF9A4D123D73AF5C8DAC6AA4332EE58BF62
 ```
 
 The installer is not Authenticode-signed. Windows or endpoint protection can therefore show an unknown-publisher or reputation warning until a commercial code-signing certificate is added.
@@ -45,7 +47,7 @@ The installer is not Authenticode-signed. Windows or endpoint protection can the
 ## Known limitations
 
 - image-only/scanned PDFs are rejected; OCR is not included;
-- protected PDFs are clean reflowed text copies, not pixel-perfect replicas;
+- layout preservation depends on the source PDF structure; image-only PDFs still require OCR;
 - English NLP is bundled for the U.S.-focused first version;
 - automated detection always requires human review;
-- integrations displayed under Connections are roadmap placeholders and are not active.
+- Remote MCP beta requires Privacy Gate to remain open and uses a session-based tunnel URL.

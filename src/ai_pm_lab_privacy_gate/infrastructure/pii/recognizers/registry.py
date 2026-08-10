@@ -7,10 +7,16 @@ from presidio_analyzer import RecognizerRegistry
 from ai_pm_lab_privacy_gate.infrastructure.pii.recognizers.real_estate import (
     install_real_estate_recognizers,
 )
+from ai_pm_lab_privacy_gate.infrastructure.pii.recognizers.universal_sensitive import (
+    install_universal_sensitive_recognizers,
+)
 
 
 RecognizerInstaller = Callable[[RecognizerRegistry], None]
-_INSTALLERS: list[RecognizerInstaller] = [install_real_estate_recognizers]
+_INSTALLERS: list[RecognizerInstaller] = [
+    install_universal_sensitive_recognizers,
+    install_real_estate_recognizers,
+]
 
 
 def register_installer(installer: RecognizerInstaller) -> RecognizerInstaller:

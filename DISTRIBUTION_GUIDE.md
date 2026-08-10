@@ -2,19 +2,19 @@
 
 ## Where the downloadable installer lives
 
-The official installer belongs in GitHub Releases rather than Git history. The source repository and downloads repository are public. For version `0.3.1` the expected asset is:
+The official installer belongs in GitHub Releases rather than Git history. The source repository and downloads repository are public. For version `0.4.0` the expected asset is:
 
 ```text
-AI_PM_LAB_Privacy_Gate_Setup_0.3.1.exe
+AI_PM_LAB_Privacy_Gate_Setup_0.4.0.exe
 ```
 
 The funnel uses this stable pattern:
 
 ```text
-https://github.com/patpet21/ai-pm-lab-privacy-gate-downloads/releases/download/v0.3.1/AI_PM_LAB_Privacy_Gate_Setup_0.3.1.exe
+https://github.com/patpet21/ai-pm-lab-privacy-gate-downloads/releases/download/v0.4.0/AI_PM_LAB_Privacy_Gate_Setup_0.4.0.exe
 ```
 
-The source repository contains code, tests, policies, and build automation. The downloads repository contains customer-facing documentation, checksums, release notes, and GitHub Release assets. Do not upload the 132 MB installer directly into Git history.
+The source repository contains code, tests, policies, and build automation. The downloads repository contains customer-facing documentation, checksums, release notes, and GitHub Release assets. Do not upload the installer directly into Git history.
 
 If AVG CyberCapture blocks the Inno Setup temporary file under `%LOCALAPPDATA%\Temp`, run the installer with `TEMP` and `TMP` temporarily pointed to the approved/excluded project or download folder. Do not disable antivirus protection globally.
 
