@@ -38,7 +38,7 @@ class MainWindow(QMainWindow):
         self.library = library or LibraryRepository()
         self.connection_identity = ConnectionIdentityStore(self.library.data_dir)
         self.remote_mcp = RemoteMcpManager(self.connection_identity)
-        self.setWindowTitle(f"AI PM LAB Privacy Gate — {__version__} INTERNAL")
+        self.setWindowTitle(f"AI PM LAB Privacy Gate — {__version__}")
         self.resize(1460, 920)
         self.setMinimumSize(1120, 720)
         icon_path = resource_path("resources", "branding", "privacy-gate.ico")
@@ -50,7 +50,7 @@ class MainWindow(QMainWindow):
             self.setWindowIcon(QIcon(str(logo_path)))
         self._build_ui(display_logo_path if display_logo_path.exists() else logo_path)
         self.statusBar().showMessage(
-            f"INTERNAL BUILD {__version__}  •  Local library: {self.library.data_dir}"
+            f"Version {__version__}  •  Local library: {self.library.data_dir}"
         )
 
     def _build_ui(self, logo_path) -> None:

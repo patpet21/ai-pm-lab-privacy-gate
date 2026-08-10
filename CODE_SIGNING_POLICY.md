@@ -2,7 +2,7 @@
 
 Free code signing provided by [SignPath.io](https://signpath.io/), certificate by [SignPath Foundation](https://signpath.org/).
 
-Status: the SignPath Foundation application is pending. AI PM LAB Privacy Gate 0.3.1 and earlier releases are unsigned. This document does not claim that an unsigned release has already received a SignPath signature.
+Status: the SignPath Foundation application is pending. AI PM LAB Privacy Gate 0.4.0 and earlier releases are unsigned. This document does not claim that an unsigned release has already received a SignPath signature.
 
 ## Project identity
 

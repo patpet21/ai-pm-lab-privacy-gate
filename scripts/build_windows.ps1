@@ -18,7 +18,7 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'Tests failed; build stopped.' }
     & $Python -m PyInstaller --noconfirm --clean $Spec
     if ($LASTEXITCODE -ne 0) { throw 'PyInstaller build failed.' }
-    & $Python -m PyInstaller --noconfirm --clean --onedir --console `
+    & $Python -m PyInstaller --noconfirm --clean --onedir --windowed `
         --name 'AI PM LAB Privacy Gate MCP' `
         --distpath $McpDist `
         --workpath $McpWork `

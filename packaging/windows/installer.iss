@@ -1,5 +1,5 @@
 #define MyAppName "AI PM LAB Privacy Gate"
-#define MyAppVersion "0.4.0-dev.1"
+#define MyAppVersion "0.4.0"
 #define MyAppVersionInfo "0.4.0.1"
 #define MyAppPublisher "AI PM LAB by Trigosat Consulting"
 #define MyAppExeName "AI PM LAB Privacy Gate.exe"
