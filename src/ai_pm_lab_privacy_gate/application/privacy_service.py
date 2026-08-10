@@ -106,6 +106,8 @@ class PrivacyGateService:
                         start=span_start,
                         end=protected_cursor,
                         entity_type=item.entity_type,
+                        finding_id=item.finding_id,
+                        replacement_text=replacement,
                     )
                 )
                 source_cursor = item.end
@@ -172,5 +174,16 @@ class PrivacyGateService:
         destination.write_text(result.combined_text, encoding="utf-8")
         return destination
 
-    def save_protected_pdf(self, result: ProtectionResult, path: str | Path) -> Path:
+    def save_protected_pdf(
+        self,
+        result: ProtectionResult,
+        path: str | Path,
+        source_document: AnalysisDocument | None = None,
+    ) -> Path:
+        if (
+            source_document is not None
+            and source_document.source_kind == "pdf"
+            and source_document.source_path is not None
+        ):
+            return self._pdf.write_layout_preserving(source_document.source_path, result, path)
         return self._pdf.write_protected(result.protected_pages, path)

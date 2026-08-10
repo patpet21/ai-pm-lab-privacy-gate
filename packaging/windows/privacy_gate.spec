@@ -23,6 +23,9 @@ for package in (
     "tldextract",
     "en_core_web_sm",
     "reportlab",
+    "pdfplumber",
+    "pdfminer",
+    "pypdfium2",
 ):
     package_datas, package_binaries, package_hidden = collect_all(package)
     datas += package_datas
@@ -35,6 +38,9 @@ for distribution in (
     "spacy",
     "en-core-web-sm",
     "reportlab",
+    "pdfplumber",
+    "pdfminer.six",
+    "pypdfium2",
 ):
     try:
         datas += copy_metadata(distribution)

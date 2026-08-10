@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QSize, Qt
 from PySide6.QtGui import QCloseEvent, QIcon, QPixmap
 from PySide6.QtWidgets import (
     QButtonGroup,
@@ -57,7 +57,7 @@ class MainWindow(QMainWindow):
 
         self.sidebar_expanded = True
         self.sidebar = QFrame(objectName="Sidebar")
-        self.sidebar.setFixedWidth(238)
+        self.sidebar.setFixedWidth(258)
         self.side_layout = QVBoxLayout(self.sidebar)
         self.side_layout.setContentsMargins(18, 16, 18, 18)
         self.side_layout.setSpacing(8)
@@ -86,23 +86,25 @@ class MainWindow(QMainWindow):
         self.nav_group = QButtonGroup(self)
         self.nav_group.setExclusive(True)
         self.nav_buttons: list[QPushButton] = []
-        self.nav_labels: list[tuple[str, str]] = []
+        self.nav_labels: list[str] = []
         navigation = [
-            ("Protect", "P", 0),
-            ("Library", "L", 1),
-            ("Restore", "R", 2),
-            ("Local Automation / n8n", "A", 3),
-            ("Cloud / MCP / Email", "C", 4),
+            ("Protect", "nav-protect.svg", 0),
+            ("Library", "nav-library.svg", 1),
+            ("Restore", "nav-restore.svg", 2),
+            ("Local Automation / n8n", "nav-automation.svg", 3),
+            ("Cloud / MCP / Email", "nav-cloud.svg", 4),
         ]
-        for label, compact_label, page_index in navigation:
+        for label, icon_name, page_index in navigation:
             button = QPushButton(label, objectName="NavButton")
+            button.setIcon(QIcon(str(resource_path("resources", "branding", icon_name))))
+            button.setIconSize(QSize(22, 22))
             button.setCheckable(True)
             button.setToolTip(label)
             button.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
             button.clicked.connect(lambda _checked=False, page=page_index: self._show_page(page))
             self.nav_group.addButton(button)
             self.nav_buttons.append(button)
-            self.nav_labels.append((label, compact_label))
+            self.nav_labels.append(label)
             self.side_layout.addWidget(button)
         self.side_layout.addStretch(1)
         self.privacy_note = QLabel("LOCAL-FIRST\nNo mandatory cloud", objectName="SidebarNote")
@@ -141,7 +143,7 @@ class MainWindow(QMainWindow):
     def _toggle_sidebar(self) -> None:
         self.sidebar_expanded = not self.sidebar_expanded
         if self.sidebar_expanded:
-            self.sidebar.setFixedWidth(238)
+            self.sidebar.setFixedWidth(258)
             self.side_layout.setContentsMargins(18, 16, 18, 18)
             self.sidebar_toggle.setText("‹")
             self.sidebar_toggle.setToolTip("Collapse navigation")
@@ -171,8 +173,8 @@ class MainWindow(QMainWindow):
                     Qt.TransformationMode.SmoothTransformation,
                 )
             )
-        for button, (full_label, compact_label) in zip(self.nav_buttons, self.nav_labels):
-            button.setText(full_label if self.sidebar_expanded else compact_label)
+        for button, full_label in zip(self.nav_buttons, self.nav_labels):
+            button.setText(full_label if self.sidebar_expanded else "")
 
     def _show_page(self, index: int) -> None:
         self.pages.setCurrentIndex(index)

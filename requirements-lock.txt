@@ -38,10 +38,13 @@ presidio_anonymizer==2.2.364
 pycparser==3.0
 pydantic==2.13.4
 pydantic_core==2.46.4
+pdfminer.six==20260107
+pdfplumber==0.11.10
 Pygments==2.20.0
 pyinstaller==6.22.0
 pyinstaller-hooks-contrib==2026.6
 pypdf==6.15.0
+pypdfium2==5.12.1
 PySide6==6.11.1
 PySide6_Addons==6.11.1
 PySide6_Essentials==6.11.1

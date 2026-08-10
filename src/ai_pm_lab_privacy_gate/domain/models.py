@@ -49,6 +49,8 @@ class ProtectedSpan:
     start: int
     end: int
     entity_type: str
+    finding_id: str
+    replacement_text: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -89,6 +91,8 @@ class ProtectionResult:
                     start=page_offset + span.start,
                     end=page_offset + span.end,
                     entity_type=span.entity_type,
+                    finding_id=span.finding_id,
+                    replacement_text=span.replacement_text,
                 )
                 for span in spans_by_page.get(page.page_number, ())
             )

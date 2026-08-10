@@ -36,8 +36,9 @@ QLabel#ConnectionBadge { background: #E8F1F5; color: #176777; border-radius: 10p
 QLabel#TokenHint { background: #EDF4F7; color: #476578; border-radius: 9px; padding: 5px 9px; font-size: 8pt; font-weight: 700; }
 QLabel#Metric { background: #E9F2F6; color: #123B56; border: 1px solid #CBDCE6; border-radius: 10px; padding: 8px 13px; font-weight: 700; }
 QLabel#SourceMetric { background: #F7F1E3; color: #765A1E; border: 1px solid #E2D1A9; border-radius: 10px; padding: 8px 13px; font-weight: 700; }
-QLabel#SafetyMetric { background: #DFF5F0; color: #136A5D; border: 1px solid #A9DCD2; border-radius: 10px; padding: 8px 13px; font-weight: 700; }
-QLabel#SafetyMetric[warning="true"] { background: #FFF1E6; color: #9A4A16; border-color: #EDB98F; }
+QPushButton#SafetyMetric { background: #DFF5F0; color: #136A5D; border: 1px solid #A9DCD2; border-radius: 10px; padding: 8px 13px; font-weight: 700; }
+QPushButton#SafetyMetric:hover { background: #D2EEE8; }
+QPushButton#SafetyMetric[warning="true"] { background: #FFF1E6; color: #9A4A16; border-color: #EDB98F; }
 QPushButton, QToolButton {
     background: #168492; color: white; border: none; border-radius: 8px;
     padding: 9px 15px; font-weight: 700;
@@ -50,6 +51,8 @@ QPushButton#Gold { background: #B58A36; }
 QPushButton#Gold:hover { background: #987329; }
 QPushButton#Danger { background: #FFF2F0; color: #A33A31; border: 1px solid #E9B4AF; }
 QPushButton#Tiny { background: #EAF1F5; color: #244B63; padding: 5px 9px; font-size: 8pt; }
+QToolButton#InfoButton { background: #E7F2F5; color: #176777; border: 1px solid #B9D5DD; border-radius: 9px; padding: 0; min-width: 18px; max-width: 18px; min-height: 18px; max-height: 18px; font-size: 8pt; font-weight: 800; }
+QToolButton#InfoButton:hover { background: #168492; color: white; }
 QComboBox, QLineEdit, QPlainTextEdit, QListWidget, QTableWidget, QTabWidget::pane {
     background: white; border: 1px solid #C9D6DF; border-radius: 8px;
 }
@@ -60,6 +63,7 @@ QLabel#ColorLegend { color: #516A7B; background: #F8FBFC; border: 1px solid #E1E
 QFrame#PdfPanel { background: #F7FAFC; border: 1px solid #D5E0E7; border-radius: 10px; }
 QLabel#PdfTitle { color: #0B2A45; font-weight: 750; font-size: 10pt; }
 QLabel#PdfBadge { background: #E4F3F1; color: #146B61; border-radius: 7px; padding: 4px 7px; font-size: 7.5pt; font-weight: 700; }
+QLabel#PdfPageLabel { color: #244B63; font-weight: 700; padding: 3px 8px; }
 QPdfView#PdfView { background: #DDE5EA; border: 1px solid #C5D1DA; border-radius: 6px; }
 QListWidget { padding: 5px; }
 QListWidget::item { padding: 8px; border-radius: 6px; }

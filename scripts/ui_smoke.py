@@ -78,6 +78,8 @@ def main() -> int:
     app.processEvents()
     if window.sidebar.width() != 76:
         raise RuntimeError("Sidebar did not collapse to the expected width")
+    if any(button.text() or button.icon().isNull() for button in window.nav_buttons):
+        raise RuntimeError("Collapsed navigation must use recognizable icons without initials")
     if not window.grab().save(str(collapsed_output)):
         raise RuntimeError("Unable to save collapsed UI screenshot")
     result = service.protect(document, findings)
