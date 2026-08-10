@@ -2,7 +2,7 @@
 
 Windows desktop app local-first for detecting and protecting sensitive data before using business documents with AI. The desktop engine uses Microsoft Presidio and runs on the customer's PC.
 
-## Version 0.3.1
+## Current customer release: 0.3.1
 
 - pasted text and PDF files with selectable text;
 - Property Management, Realtor / Brokerage, and Projects & Renovations profiles;
@@ -17,7 +17,11 @@ Windows desktop app local-first for detecting and protecting sensitive data befo
 
 No cloud service, account, telemetry, LLM, or external database is required by the desktop app. Reversible mappings are encrypted with Windows DPAPI for the current Windows user. The SQLite library lives outside the installation folder under `%LOCALAPPDATA%\AI PM LAB Privacy Gate\Data`, so installing an update does not overwrite customer documents.
 
-The PDF output is a clean text-based protected copy. Pixel-perfect layout preservation and OCR for image-only PDFs are not included yet.
+The 0.3.1 PDF output is a clean text-based protected copy. Pixel-perfect layout preservation and OCR for image-only PDFs are not included in that public release.
+
+## Internal 0.4 development branch
+
+The current `codex/0.4-dev` branch adds layout-preserving secure PDF output and a universal protection layer above Presidio. Users can select Essential PII, PII + Financial, PII + Business Confidential, Maximum Protection, or Custom Review. Context-aware local recognizers distinguish bank accounts, routing and SWIFT/BIC values, card endings, transaction IDs, amounts, merchants, counterparties, transaction references, addresses, business registration numbers, invoices, purchase orders, contracts, customer/employee IDs, and case references without using a cloud model.
 
 ## Downloads and release status
 

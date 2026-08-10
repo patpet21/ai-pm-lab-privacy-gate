@@ -14,7 +14,6 @@ from PySide6.QtWidgets import QApplication
 from PySide6.QtTest import QTest
 
 from ai_pm_lab_privacy_gate.application.privacy_service import PrivacyGateService
-from ai_pm_lab_privacy_gate.domain.profiles import get_profile
 from ai_pm_lab_privacy_gate.domain.models import PageContent
 from ai_pm_lab_privacy_gate.infrastructure.documents.pdf_service import PdfDocumentService
 from ai_pm_lab_privacy_gate.ui.main_window import MainWindow
@@ -37,9 +36,9 @@ def main() -> int:
         "Tenant Jane Smith can be reached at jane.smith@example.com or 212-555-5555. "
         "Social Security Number: 219-09-9999."
     )
-    findings = service.analyze(document, get_profile("property_management"))
     window = MainWindow(service=service)
     page = window.protection_page
+    findings = service.analyze(document, page._current_profile())
     page.text_input.setPlainText(document.pages[0].text)
     page._analysis_ready((document, findings))
     window.show()
@@ -62,7 +61,7 @@ def main() -> int:
         source_pdf,
     )
     pdf_document = service.document_from_pdf(source_pdf)
-    pdf_findings = service.analyze(pdf_document, get_profile("property_management"))
+    pdf_findings = service.analyze(pdf_document, page._current_profile())
     page.pdf_path.setText(str(source_pdf.resolve()))
     page.input_tabs.setCurrentIndex(1)
     page._analysis_ready((pdf_document, pdf_findings))

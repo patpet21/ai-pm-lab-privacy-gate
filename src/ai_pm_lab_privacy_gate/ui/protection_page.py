@@ -38,7 +38,13 @@ from PySide6.QtWidgets import (
 
 from ai_pm_lab_privacy_gate.application.privacy_service import PrivacyGateService
 from ai_pm_lab_privacy_gate.domain.models import AnalysisDocument, Finding, ProtectionResult
-from ai_pm_lab_privacy_gate.domain.profiles import get_profile, list_profiles
+from ai_pm_lab_privacy_gate.domain.profiles import (
+    entities_for_scope,
+    get_profile,
+    get_scope,
+    list_profiles,
+    list_scopes,
+)
 from ai_pm_lab_privacy_gate.infrastructure.storage.library_repository import LibraryRepository
 from ai_pm_lab_privacy_gate.ui.workers import FunctionWorker
 
@@ -57,6 +63,25 @@ class ProtectionPage(QWidget):
         "DATE_TIME": "#E3F2D7",
         "CREDIT_CARD": "#F8DDF1",
         "US_BANK_NUMBER": "#F5E0D3",
+        "US_ROUTING_NUMBER": "#E5EED2",
+        "SWIFT_BIC": "#DDEBD7",
+        "CARD_LAST_FOUR": "#F8DDF1",
+        "CARD_TRANSACTION_ID": "#F3E3D5",
+        "TRANSFER_TRANSACTION_ID": "#E2E6F5",
+        "STATEMENT_REFERENCE": "#DEE7EE",
+        "POSTAL_CODE": "#E8DFFF",
+        "STREET_ADDRESS": "#FFF1BD",
+        "MONEY_AMOUNT": "#DDEFD9",
+        "MERCHANT": "#E5E0F5",
+        "COUNTERPARTY": "#DCE8F8",
+        "TRANSACTION_REFERENCE": "#F4E7D5",
+        "BUSINESS_REGISTRATION_NUMBER": "#DEE7EE",
+        "INVOICE_NUMBER": "#E2E6F5",
+        "PURCHASE_ORDER_ID": "#E5E0F5",
+        "CONTRACT_ID": "#D9F0F3",
+        "CUSTOMER_ID": "#DCE8F8",
+        "EMPLOYEE_ID": "#DDE7FF",
+        "CASE_REFERENCE": "#F4E7D5",
         "PROPERTY_IDENTIFIER": "#D9F0F3",
         "CUSTOM": "#E7E9ED",
         "REDACTED": "#D8DEE5",
@@ -84,6 +109,7 @@ class ProtectionPage(QWidget):
         self._build_ui()
         self._connect_signals()
         self._update_profile_description()
+        self._update_scope_description()
 
     def _build_ui(self) -> None:
         root = QVBoxLayout(self)
@@ -133,6 +159,21 @@ class ProtectionPage(QWidget):
         profile_description = self.profile_description
         profile_description.setWordWrap(True)
         profile_col.addWidget(profile_description)
+        scope_col = QVBoxLayout()
+        scope_col.addLayout(
+            self._info_heading(
+                "Protection scope",
+                "Controls whether Privacy Gate scans essential PII only or also financial and business-sensitive data.",
+            )
+        )
+        self.scope_combo = QComboBox()
+        for scope in list_scopes():
+            self.scope_combo.addItem(scope.name, scope.key)
+        self.scope_combo.setCurrentIndex(self.scope_combo.findData("financial"))
+        scope_col.addWidget(self.scope_combo)
+        self.scope_description = QLabel(objectName="Muted")
+        self.scope_description.setWordWrap(True)
+        scope_col.addWidget(self.scope_description)
         mode_col = QVBoxLayout()
         mode_col.addLayout(
             self._info_heading(
@@ -165,6 +206,8 @@ class ProtectionPage(QWidget):
         threshold_row.addWidget(self.threshold_input)
         mode_col.addLayout(threshold_row)
         profile_row.addLayout(profile_col, 2)
+        profile_row.addSpacing(16)
+        profile_row.addLayout(scope_col, 2)
         profile_row.addSpacing(16)
         profile_row.addLayout(mode_col, 1)
         setup.addLayout(profile_row)
@@ -445,6 +488,7 @@ class ProtectionPage(QWidget):
     def _connect_signals(self) -> None:
         self.setup_toggle.toggled.connect(self._toggle_setup)
         self.profile_combo.currentIndexChanged.connect(self._update_profile_description)
+        self.scope_combo.currentIndexChanged.connect(self._update_scope_description)
         self.mode_combo.currentIndexChanged.connect(self._refresh_preview)
         self.mode_combo.currentIndexChanged.connect(self._update_mode_help)
         self.browse_button.clicked.connect(self._browse_pdf)
@@ -484,6 +528,10 @@ class ProtectionPage(QWidget):
         self.profile_description.setText(profile.description)
         self.threshold_input.setValue(profile.threshold)
 
+    def _update_scope_description(self) -> None:
+        scope = get_scope(self.scope_combo.currentData())
+        self.scope_description.setText(scope.description)
+
     def _update_mode_help(self) -> None:
         messages = {
             "reversible": "Encrypted local mapping enables restore.",
@@ -500,8 +548,10 @@ class ProtectionPage(QWidget):
             self.input_tabs.setCurrentIndex(1)
 
     def _start_analysis(self) -> None:
+        base_profile = get_profile(self.profile_combo.currentData())
         profile = replace(
-            get_profile(self.profile_combo.currentData()),
+            base_profile,
+            entities=entities_for_scope(base_profile, self.scope_combo.currentData()),
             threshold=float(self.threshold_input.value()),
         )
         tab = self.input_tabs.currentIndex()
@@ -751,7 +801,11 @@ class ProtectionPage(QWidget):
             self,
             "Sensitive category",
             "Category:",
-            ["PERSON", "EMAIL_ADDRESS", "PHONE_NUMBER", "LOCATION", "US_SSN", "US_BANK_NUMBER", "PROPERTY_IDENTIFIER", "CUSTOM"],
+            [
+                "PERSON", "EMAIL_ADDRESS", "PHONE_NUMBER", "LOCATION", "STREET_ADDRESS",
+                "US_SSN", "US_BANK_NUMBER", "MONEY_AMOUNT", "MERCHANT", "COUNTERPARTY",
+                "TRANSACTION_ID", "PROPERTY_IDENTIFIER", "CUSTOM",
+            ],
             editable=True,
         )
         if not ok or not entity_type:
@@ -811,8 +865,10 @@ class ProtectionPage(QWidget):
         return document
 
     def _current_profile(self):
+        base_profile = get_profile(self.profile_combo.currentData())
         return replace(
-            get_profile(self.profile_combo.currentData()),
+            base_profile,
+            entities=entities_for_scope(base_profile, self.scope_combo.currentData()),
             threshold=float(self.threshold_input.value()),
         )
 
@@ -909,6 +965,7 @@ class ProtectionPage(QWidget):
         self.scan_button.setEnabled(not busy)
         self.browse_button.setEnabled(not busy)
         self.profile_combo.setEnabled(not busy)
+        self.scope_combo.setEnabled(not busy)
         if not busy:
             self._active_worker = None
 

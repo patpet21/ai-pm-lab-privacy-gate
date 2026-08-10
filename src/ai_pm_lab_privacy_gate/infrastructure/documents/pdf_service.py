@@ -35,6 +35,24 @@ class PdfDocumentService:
         "CREDIT_CARD": "#F8DDF1",
         "US_BANK_NUMBER": "#F5E0D3",
         "US_ROUTING_NUMBER": "#E5EED2",
+        "SWIFT_BIC": "#DDEBD7",
+        "CARD_LAST_FOUR": "#F8DDF1",
+        "CARD_TRANSACTION_ID": "#F3E3D5",
+        "TRANSFER_TRANSACTION_ID": "#E2E6F5",
+        "STATEMENT_REFERENCE": "#DEE7EE",
+        "POSTAL_CODE": "#E8DFFF",
+        "STREET_ADDRESS": "#FFF1BD",
+        "MONEY_AMOUNT": "#DDEFD9",
+        "MERCHANT": "#E5E0F5",
+        "COUNTERPARTY": "#DCE8F8",
+        "TRANSACTION_REFERENCE": "#F4E7D5",
+        "BUSINESS_REGISTRATION_NUMBER": "#DEE7EE",
+        "INVOICE_NUMBER": "#E2E6F5",
+        "PURCHASE_ORDER_ID": "#E5E0F5",
+        "CONTRACT_ID": "#D9F0F3",
+        "CUSTOMER_ID": "#DCE8F8",
+        "EMPLOYEE_ID": "#DDE7FF",
+        "CASE_REFERENCE": "#F4E7D5",
         "PROPERTY_IDENTIFIER": "#D9F0F3",
         "CUSTOM": "#E7E9ED",
     }
@@ -122,6 +140,10 @@ class PdfDocumentService:
         findings_by_page: dict[int, list] = defaultdict(list)
         for finding in result.applied_findings:
             findings_by_page[finding.page_number].append(finding)
+        analysis_text_by_page = {
+            page_number: (page.extract_text() or "")
+            for page_number, page in enumerate(PdfReader(str(source)).pages, start=1)
+        }
 
         unresolved: list[str] = []
         locations_by_page: dict[int, list[tuple[object, object, list[dict]]]] = defaultdict(list)
@@ -138,7 +160,16 @@ class PdfDocumentService:
                     if span is None:
                         unresolved.append(f"page {page_number}: {finding.text}")
                         continue
-                    matches = self._locate_finding(page, finding.text, occurrence_by_value)
+                    analysis_text = analysis_text_by_page.get(page_number, "")
+                    exact_occurrence = analysis_text[: finding.start].casefold().count(
+                        finding.text.casefold()
+                    )
+                    matches = self._locate_finding(
+                        page,
+                        finding.text,
+                        occurrence_by_value,
+                        exact_occurrence=exact_occurrence,
+                    )
                     if not matches:
                         unresolved.append(f"page {page_number}: {finding.text}")
                         continue
@@ -160,6 +191,15 @@ class PdfDocumentService:
 
                     for finding, span, matches in locations_by_page.get(page_number, ()):
                         label = self._compact_replacement(span.replacement_text, finding.entity_type)
+                        if finding.entity_type == "STREET_ADDRESS" and len(matches) > 1:
+                            matches = [
+                                {
+                                    "x0": min(item["x0"] for item in matches),
+                                    "top": min(item["top"] for item in matches),
+                                    "x1": max(item["x1"] for item in matches),
+                                    "bottom": max(item["bottom"] for item in matches),
+                                }
+                            ]
                         for match in matches:
                             box = (
                                 max(0, int(match["x0"] * scale_x) - 2),
@@ -187,12 +227,20 @@ class PdfDocumentService:
         return destination
 
     @staticmethod
-    def _locate_finding(page, value: str, occurrence_by_value: dict[str, int]) -> list[dict]:
+    def _locate_finding(
+        page,
+        value: str,
+        occurrence_by_value: dict[str, int],
+        exact_occurrence: int | None = None,
+    ) -> list[dict]:
         """Map an analyzed value to one or more visual boxes on a PDF page."""
         key = value.casefold()
         exact_matches = page.search(re.escape(value), regex=True, case=False)
-        occurrence = occurrence_by_value[key]
-        occurrence_by_value[key] += 1
+        occurrence = (
+            exact_occurrence if exact_occurrence is not None else occurrence_by_value[key]
+        )
+        if exact_occurrence is None:
+            occurrence_by_value[key] += 1
         if occurrence < len(exact_matches):
             return [exact_matches[occurrence]]
 
@@ -223,6 +271,15 @@ class PdfDocumentService:
                 "PHONE_NUMBER": "PHONE",
                 "CREDIT_CARD": "CARD",
                 "PROPERTY_IDENTIFIER": "PROPERTY",
+                "MONEY_AMOUNT": "AMOUNT",
+                "CARD_LAST_FOUR": "CARD_LAST4",
+                "CARD_TRANSACTION_ID": "CARD_TX",
+                "TRANSFER_TRANSACTION_ID": "TRANSFER_TX",
+                "TRANSACTION_REFERENCE": "REFERENCE",
+                "STATEMENT_REFERENCE": "STATEMENT_REF",
+                "STREET_ADDRESS": "ADDRESS",
+                "BUSINESS_REGISTRATION_NUMBER": "REG_NO",
+                "SWIFT_BIC": "SWIFT",
             }
             for original, short in aliases.items():
                 if suffix.startswith(original + "_"):

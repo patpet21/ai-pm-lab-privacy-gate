@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import threading
+import re
 from collections.abc import Iterable
 
 import tldextract
@@ -58,6 +59,19 @@ class PresidioPrivacyEngine:
             entities=entities,
             score_threshold=profile.threshold,
         )
+        token_spans = [
+            match.span()
+            for match in re.finditer(
+                r"\[\[(?:PG_)?[A-Z0-9_]+(?:_\d{3})?\]\]|\[REDACTED\]",
+                page.text,
+            )
+        ]
+        if token_spans:
+            results = [
+                result
+                for result in results
+                if not any(result.start < end and start < result.end for start, end in token_spans)
+            ]
         resolved = self._without_overlaps(results)
         return [self._to_finding(page, result, index) for index, result in enumerate(resolved)]
 
