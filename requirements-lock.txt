@@ -45,7 +45,7 @@ presidio_analyzer==2.2.364
 presidio_anonymizer==2.2.364
 pycparser==3.0
 pydantic==2.13.4
-pydantic_core==2.46.4
+pydantic_core==2.48.0
 pdfminer.six==20260107
 pdfplumber==0.11.10
 Pygments==2.20.0
