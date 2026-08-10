@@ -95,7 +95,7 @@ class LibraryPage(QWidget):
         self.export_button = QPushButton("Export text", objectName="Secondary")
         self.edit_button = QPushButton("Rename / Tags", objectName="Secondary")
         self.favorite_button = QPushButton("Favorite", objectName="Secondary")
-        self.mcp_button = QPushButton("Share with MCP", objectName="Secondary")
+        self.mcp_button = QPushButton("Block AI access", objectName="Secondary")
         self.restore_button = QPushButton("Restore AI result", objectName="Primary")
         self.restore_trash_button = QPushButton("Restore from trash", objectName="Primary")
         self.delete_button = QPushButton("Move to trash", objectName="Danger")
@@ -188,7 +188,7 @@ class LibraryPage(QWidget):
         self._set_actions(True)
         self.restore_button.setEnabled(document.has_mapping)
         self.favorite_button.setText("Unfavorite" if document.favorite else "Favorite")
-        self.mcp_button.setText("Stop MCP sharing" if document.mcp_shared else "Share with MCP")
+        self.mcp_button.setText("Block AI access" if document.mcp_shared else "Allow AI access")
         trashed = document.deleted_at is not None
         self.copy_button.setEnabled(not trashed)
         self.export_button.setEnabled(not trashed)
@@ -271,8 +271,8 @@ class LibraryPage(QWidget):
         if enable:
             answer = QMessageBox.question(
                 self,
-                "Share protected copy with MCP",
-                "Only this protected copy will become readable through the local MCP server. "
+                "Allow AI access",
+                "Only this protected copy will become readable through the MCP connection. "
                 "Original PII and encrypted restore mappings remain blocked.\n\n"
                 "Your connected AI client may send the protected text to its provider. Continue?",
             )

@@ -29,8 +29,7 @@ def test_library_round_trip_with_encrypted_mapping(tmp_path) -> None:
     )
 
     assert repository.get(saved.document_id).protected_text == "Email [[PG_EMAIL_ADDRESS_001]]"
-    assert repository.list_mcp_documents() == ()
-    repository.set_mcp_shared(saved.document_id, True)
+    assert repository.list_mcp_documents()[0].document_id == saved.document_id
     assert repository.get_mcp_document(saved.document_id).document_id == saved.document_id
     assert repository.list_mcp_documents()[0].mcp_shared is True
     mappings = repository.get_mappings(saved.document_id)

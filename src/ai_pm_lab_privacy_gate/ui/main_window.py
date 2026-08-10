@@ -18,6 +18,8 @@ from PySide6.QtWidgets import (
 from ai_pm_lab_privacy_gate.application.privacy_service import PrivacyGateService
 from ai_pm_lab_privacy_gate import __version__
 from ai_pm_lab_privacy_gate.infrastructure.storage.library_repository import LibraryRepository
+from ai_pm_lab_privacy_gate.infrastructure.mcp.identity import ConnectionIdentityStore
+from ai_pm_lab_privacy_gate.infrastructure.mcp.remote import RemoteMcpManager
 from ai_pm_lab_privacy_gate.ui.connections_page import ConnectionsPage
 from ai_pm_lab_privacy_gate.ui.library_page import LibraryPage
 from ai_pm_lab_privacy_gate.ui.protection_page import ProtectionPage
@@ -34,6 +36,8 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.service = service or PrivacyGateService()
         self.library = library or LibraryRepository()
+        self.connection_identity = ConnectionIdentityStore(self.library.data_dir)
+        self.remote_mcp = RemoteMcpManager(self.connection_identity)
         self.setWindowTitle(f"AI PM LAB Privacy Gate — {__version__} INTERNAL")
         self.resize(1460, 920)
         self.setMinimumSize(1120, 720)
@@ -119,7 +123,9 @@ class MainWindow(QMainWindow):
         self.library_page = LibraryPage(self.library)
         self.restore_page = RestorePage(self.service, self.library)
         self.local_automation_page = ConnectionsPage("local", self.library)
-        self.cloud_automation_page = ConnectionsPage("cloud", self.library)
+        self.cloud_automation_page = ConnectionsPage(
+            "cloud", self.library, remote_mcp=self.remote_mcp
+        )
         for page in (
             self.protection_page,
             self.library_page,
@@ -139,6 +145,8 @@ class MainWindow(QMainWindow):
         self.library_page.restore_requested.connect(self._open_restore)
         self.nav_buttons[0].setChecked(True)
         self._show_page(0)
+        if self.connection_identity.is_remote_enabled():
+            self.remote_mcp.start()
 
     def _toggle_sidebar(self) -> None:
         self.sidebar_expanded = not self.sidebar_expanded
@@ -195,4 +203,5 @@ class MainWindow(QMainWindow):
 
     def closeEvent(self, event: QCloseEvent) -> None:
         self.protection_page.cleanup_pdf_preview()
+        self.remote_mcp.stop()
         super().closeEvent(event)

@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import argparse
 from typing import Any
 
 from mcp.server import MCPServer
+from mcp.server.transport_security import TransportSecuritySettings
 
 from ai_pm_lab_privacy_gate import __version__
 from ai_pm_lab_privacy_gate.domain.models import LibraryDocument
@@ -42,7 +44,7 @@ def _snippet(text: str, query: str, width: int = 360) -> str:
 
 
 def create_mcp_server(library: LibraryRepository | None = None) -> MCPServer:
-    """Create a stdio MCP server exposing only explicitly shared protected copies."""
+    """Create a read-only MCP server exposing only approved protected copies."""
     repository = library or LibraryRepository()
     server = MCPServer(
         name=SERVER_NAME,
@@ -161,7 +163,37 @@ def create_mcp_server(library: LibraryRepository | None = None) -> MCPServer:
 
 
 def main() -> None:
-    create_mcp_server().run(transport="stdio")
+    parser = argparse.ArgumentParser(description="AI PM LAB Privacy Gate MCP server")
+    parser.add_argument(
+        "--transport",
+        choices=("stdio", "streamable-http"),
+        default="stdio",
+    )
+    parser.add_argument("--host", default="127.0.0.1")
+    parser.add_argument("--port", type=int, default=8766)
+    parser.add_argument("--path", default="/mcp")
+    arguments = parser.parse_args()
+    server = create_mcp_server()
+    if arguments.transport == "stdio":
+        server.run(transport="stdio")
+        return
+    if arguments.host not in {"127.0.0.1", "localhost"}:
+        parser.error("The HTTP MCP server may bind only to localhost.")
+    server.run(
+        transport="streamable-http",
+        host="127.0.0.1",
+        port=arguments.port,
+        streamable_http_path=arguments.path,
+        stateless_http=True,
+        json_response=True,
+        # This process is bound to loopback only and reached through an
+        # outbound tunnel whose public hostname changes per session. The
+        # unguessable path is the connection credential; Host allowlisting is
+        # therefore not applicable here. POST Content-Type validation remains.
+        transport_security=TransportSecuritySettings(
+            enable_dns_rebinding_protection=False
+        ),
+    )
 
 
 if __name__ == "__main__":

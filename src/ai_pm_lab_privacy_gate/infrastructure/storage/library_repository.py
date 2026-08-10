@@ -16,7 +16,7 @@ from ai_pm_lab_privacy_gate.domain.models import LibraryDocument, ProtectionResu
 from ai_pm_lab_privacy_gate.infrastructure.security.local_protector import LocalProtector
 
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 BACKUP_FORMAT = "ai-pm-lab-privacy-gate-backup-v1"
 
 
@@ -77,7 +77,7 @@ class LibraryRepository:
                     updated_at TEXT NOT NULL,
                     has_mapping INTEGER NOT NULL DEFAULT 0,
                     favorite INTEGER NOT NULL DEFAULT 0,
-                    mcp_shared INTEGER NOT NULL DEFAULT 0,
+                    mcp_shared INTEGER NOT NULL DEFAULT 1,
                     deleted_at TEXT
                 );
                 CREATE TABLE IF NOT EXISTS mappings (
@@ -106,7 +106,14 @@ class LibraryRepository:
                 connection.execute("ALTER TABLE documents ADD COLUMN deleted_at TEXT")
             if "mcp_shared" not in columns:
                 connection.execute(
-                    "ALTER TABLE documents ADD COLUMN mcp_shared INTEGER NOT NULL DEFAULT 0"
+                    "ALTER TABLE documents ADD COLUMN mcp_shared INTEGER NOT NULL DEFAULT 1"
+                )
+            if existing_version < 4:
+                # Version 0.4 makes protected library copies available to MCP by
+                # default. The source document is never stored in this table and
+                # restore mappings remain encrypted in the separate mappings table.
+                connection.execute(
+                    "UPDATE documents SET mcp_shared = 1 WHERE deleted_at IS NULL"
                 )
             connection.execute(
                 "INSERT OR REPLACE INTO app_meta(key, value) VALUES('schema_version', ?)",
@@ -140,8 +147,8 @@ class LibraryRepository:
                 INSERT INTO documents(
                     document_id, title, source_kind, source_name, profile_key,
                     protected_text, findings_count, entity_types_json, labels_json,
-                    replacement_mode, created_at, updated_at, has_mapping
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    replacement_mode, created_at, updated_at, has_mapping, mcp_shared
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
                 """,
                 (
                     document_id,

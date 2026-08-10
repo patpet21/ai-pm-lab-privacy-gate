@@ -41,10 +41,6 @@ def test_mcp_exposes_only_explicitly_shared_protected_text(tmp_path) -> None:
                 "get_protected_document",
             } <= names
 
-            hidden = await client.call_tool("list_protected_documents")
-            assert hidden.structured_content["count"] == 0
-
-            repository.set_mcp_shared(saved.document_id, True)
             visible = await client.call_tool("list_protected_documents")
             assert visible.structured_content["count"] == 1
 
@@ -59,6 +55,8 @@ def test_mcp_exposes_only_explicitly_shared_protected_text(tmp_path) -> None:
             assert "jane@example.com" not in protected_text
 
             repository.set_mcp_shared(saved.document_id, False)
+            hidden = await client.call_tool("list_protected_documents")
+            assert hidden.structured_content["count"] == 0
             blocked = await client.call_tool(
                 "get_protected_document",
                 {"document_id": saved.document_id},
@@ -71,8 +69,6 @@ def test_mcp_exposes_only_explicitly_shared_protected_text(tmp_path) -> None:
 def test_mcp_search_never_reads_restore_mapping(tmp_path) -> None:
     repository = LibraryRepository(tmp_path)
     saved = _save_document(repository)
-    repository.set_mcp_shared(saved.document_id, True)
-
     async def exercise_server() -> None:
         async with Client(create_mcp_server(repository)) as client:
             result = await client.call_tool(

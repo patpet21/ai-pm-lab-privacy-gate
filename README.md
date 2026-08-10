@@ -23,7 +23,7 @@ The 0.3.1 PDF output is a clean text-based protected copy. Pixel-perfect layout 
 
 The current `codex/0.4-dev` branch adds layout-preserving secure PDF output and a universal protection layer above Presidio. Users can select Essential PII, PII + Financial, PII + Business Confidential, Maximum Protection, or Custom Review. Context-aware local recognizers distinguish bank accounts, routing and SWIFT/BIC values, card endings, transaction IDs, amounts, merchants, counterparties, transaction references, addresses, business registration numbers, invoices, purchase orders, contracts, customer/employee IDs, and case references without using a cloud model.
 
-The same development branch now includes a local read-only MCP server. Documents remain private by default and must be individually marked **Share with MCP** in the Library. Compatible desktop clients can list, search and read only those protected copies; original PII and encrypted restore mappings are never exposed by the MCP boundary.
+The same development branch includes two read-only MCP transports. Local desktop clients may launch the stdio server directly. The Remote MCP beta starts a loopback-only Streamable HTTP server and an outbound Cloudflare Quick Tunnel, producing a private session-based HTTPS URL for ChatGPT or Claude custom connectors. Newly saved protected Library copies are available automatically and can be blocked individually. Original files, original PII, and encrypted restore mappings are never exposed by the MCP tools.
 
 ## Downloads and release status
 

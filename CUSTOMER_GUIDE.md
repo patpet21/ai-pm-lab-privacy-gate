@@ -44,7 +44,9 @@ The protected library is stored under `%LOCALAPPDATA%\AI PM LAB Privacy Gate\Dat
 ## 7. Automation options
 
 - **Local Automation / n8n:** future localhost API and local workflows without a mandatory Privacy Gate cloud.
-- **Cloud / MCP / Email:** optional advanced integrations using customer-owned accounts or a managed service.
+- **ChatGPT & Claude / Remote MCP beta:** creates a private session-based HTTPS link. Saved protected copies are available automatically; use **Block AI access** in the Library for exceptions. Keep Privacy Gate open while connected and never publish the complete MCP URL.
+- **Local desktop MCP:** advanced direct configuration for compatible clients installed on the same computer.
+- **Email and other cloud options:** optional future integrations using customer-owned accounts or a managed service.
 - **Manual workflow:** available now and free; no API key is required.
 
 For workflow design, onboarding, or automation consulting, contact [peter@propertydex.xyz](mailto:peter@propertydex.xyz).
