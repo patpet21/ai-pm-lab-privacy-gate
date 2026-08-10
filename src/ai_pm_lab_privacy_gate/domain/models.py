@@ -73,3 +73,5 @@ class LibraryDocument:
     created_at: datetime
     updated_at: datetime
     has_mapping: bool
+    favorite: bool = False
+    deleted_at: datetime | None = None

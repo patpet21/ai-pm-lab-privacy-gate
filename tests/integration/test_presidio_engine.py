@@ -35,6 +35,16 @@ def test_strict_context_recognizers_cover_government_financial_and_property_ids(
         "INSURANCE_POLICY_ID": "CGL-NY-1234567",
         "PREAPPROVAL_ID": "PA-NY-260809-18",
         "MORTGAGE_REFERENCE": "MTG-260809-735",
+        "US_EIN": "12-3456789",
+        "PROPERTY_IDENTIFIER": "APN-44-01928",
+        "UNIT_NUMBER": "4B",
+        "PROPERTY_ACCESS_CODE": "7284",
+        "LOCKBOX_CODE": "9912",
+        "CONTRACTOR_LICENSE": "NYC-HIC-2091842",
+        "INSURANCE_CLAIM_ID": "CLM-NY-77421",
+        "UTILITY_ACCOUNT_ID": "UTIL-CONED-90177",
+        "LOAN_NUMBER": "LOAN-8821904",
+        "TRANSACTION_ID": "TXN-NY-55109",
     }
     text = "\n".join(
         (
@@ -53,6 +63,16 @@ def test_strict_context_recognizers_cover_government_financial_and_property_ids(
             "Insurance policy: CGL-NY-1234567",
             "Preapproval reference: PA-NY-260809-18",
             "Mortgage reference: MTG-260809-735",
+            "Employer identification number: 12-3456789",
+            "Property ID: APN-44-01928",
+            "Unit: 4B",
+            "Building access code: 7284",
+            "Lockbox code: 9912",
+            "Contractor license: NYC-HIC-2091842",
+            "Insurance claim: CLM-NY-77421",
+            "Electric account: UTIL-CONED-90177",
+            "Loan number: LOAN-8821904",
+            "Transaction ID: TXN-NY-55109",
         )
     )
     page = PageContent(page_number=1, text=text)

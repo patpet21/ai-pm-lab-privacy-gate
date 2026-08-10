@@ -14,7 +14,10 @@ class LocalProtector:
 
     @staticmethod
     def protect(value: str) -> bytes:
-        raw = value.encode("utf-8")
+        return LocalProtector.protect_bytes(value.encode("utf-8"))
+
+    @staticmethod
+    def protect_bytes(raw: bytes) -> bytes:
         if sys.platform != "win32":
             return raw
         source_buffer = ctypes.create_string_buffer(raw)
@@ -37,8 +40,12 @@ class LocalProtector:
 
     @staticmethod
     def unprotect(value: bytes) -> str:
+        return LocalProtector.unprotect_bytes(value).decode("utf-8")
+
+    @staticmethod
+    def unprotect_bytes(value: bytes) -> bytes:
         if sys.platform != "win32":
-            return value.decode("utf-8")
+            return value
         source_buffer = ctypes.create_string_buffer(value)
         source = _DataBlob(len(value), ctypes.cast(source_buffer, ctypes.POINTER(ctypes.c_byte)))
         destination = _DataBlob()
@@ -53,6 +60,6 @@ class LocalProtector:
         ):
             raise ctypes.WinError()
         try:
-            return ctypes.string_at(destination.pbData, destination.cbData).decode("utf-8")
+            return ctypes.string_at(destination.pbData, destination.cbData)
         finally:
             ctypes.windll.kernel32.LocalFree(destination.pbData)

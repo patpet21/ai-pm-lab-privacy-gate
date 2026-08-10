@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+from dataclasses import replace
 from pathlib import Path
 
 from PySide6.QtCore import QUrl, Qt, QThreadPool, Signal
@@ -10,6 +11,7 @@ from PySide6.QtWidgets import (
     QApplication,
     QComboBox,
     QDialog,
+    QDoubleSpinBox,
     QFileDialog,
     QFrame,
     QHBoxLayout,
@@ -119,9 +121,21 @@ class ProtectionPage(QWidget):
         self.mode_combo = QComboBox()
         self.mode_combo.addItem("Reversible placeholders", "reversible")
         self.mode_combo.addItem("Generic placeholders", "generic")
+        self.mode_combo.addItem("Masked values (keep last 4)", "mask")
         self.mode_combo.addItem("Permanent redaction", "redact")
         mode_col.addWidget(self.mode_combo)
-        mode_col.addWidget(QLabel("Reversible mode enables local restore.", objectName="Muted"))
+        self.mode_help = QLabel("Reversible mode enables local restore.", objectName="Muted")
+        mode_col.addWidget(self.mode_help)
+        threshold_row = QHBoxLayout()
+        threshold_row.addWidget(QLabel("Detection confidence", objectName="FieldLabel"))
+        self.threshold_input = QDoubleSpinBox()
+        self.threshold_input.setRange(0.10, 0.95)
+        self.threshold_input.setSingleStep(0.05)
+        self.threshold_input.setDecimals(2)
+        self.threshold_input.setValue(0.35)
+        self.threshold_input.setToolTip("Lower values find more possible PII; higher values reduce false positives.")
+        threshold_row.addWidget(self.threshold_input)
+        mode_col.addLayout(threshold_row)
         profile_row.addLayout(profile_col, 2)
         profile_row.addSpacing(16)
         profile_row.addLayout(mode_col, 1)
@@ -170,9 +184,11 @@ class ProtectionPage(QWidget):
         self.findings_metric = QLabel("0 findings", objectName="Metric")
         self.types_metric = QLabel("0 categories", objectName="Metric")
         self.pages_metric = QLabel("0 pages", objectName="Metric")
+        self.verification_metric = QLabel("Second scan before export", objectName="SafetyMetric")
         metrics.addWidget(self.findings_metric)
         metrics.addWidget(self.types_metric)
         metrics.addWidget(self.pages_metric)
+        metrics.addWidget(self.verification_metric)
         metrics.addStretch(1)
         root.addLayout(metrics)
 
@@ -287,6 +303,7 @@ class ProtectionPage(QWidget):
         self.setup_toggle.toggled.connect(self._toggle_setup)
         self.profile_combo.currentIndexChanged.connect(self._update_profile_description)
         self.mode_combo.currentIndexChanged.connect(self._refresh_preview)
+        self.mode_combo.currentIndexChanged.connect(self._update_mode_help)
         self.browse_button.clicked.connect(self._browse_pdf)
         self.scan_button.clicked.connect(self._start_analysis)
         self.clear_button.clicked.connect(self.clear)
@@ -311,7 +328,18 @@ class ProtectionPage(QWidget):
         self.categories_dialog.activateWindow()
 
     def _update_profile_description(self) -> None:
-        self.profile_description.setText(get_profile(self.profile_combo.currentData()).description)
+        profile = get_profile(self.profile_combo.currentData())
+        self.profile_description.setText(profile.description)
+        self.threshold_input.setValue(profile.threshold)
+
+    def _update_mode_help(self) -> None:
+        messages = {
+            "reversible": "Encrypted local mapping enables restore.",
+            "generic": "Permanent generic placeholders; original values are not stored.",
+            "mask": "Permanent masking keeps only the final four letters or digits.",
+            "redact": "Permanent redaction replaces every selected value with [REDACTED].",
+        }
+        self.mode_help.setText(messages.get(self.mode_combo.currentData(), ""))
 
     def _browse_pdf(self) -> None:
         path, _ = QFileDialog.getOpenFileName(self, "Choose PDF", "", "PDF files (*.pdf)")
@@ -320,7 +348,10 @@ class ProtectionPage(QWidget):
             self.input_tabs.setCurrentIndex(1)
 
     def _start_analysis(self) -> None:
-        profile = get_profile(self.profile_combo.currentData())
+        profile = replace(
+            get_profile(self.profile_combo.currentData()),
+            threshold=float(self.threshold_input.value()),
+        )
         tab = self.input_tabs.currentIndex()
         text = self.text_input.toPlainText().strip()
         pdf_path = self.pdf_path.text().strip()
@@ -528,17 +559,54 @@ class ProtectionPage(QWidget):
         self.library_changed.emit(document.document_id)
         return document
 
+    def _current_profile(self):
+        return replace(
+            get_profile(self.profile_combo.currentData()),
+            threshold=float(self.threshold_input.value()),
+        )
+
+    def _confirm_residual_risk(self, action: str) -> bool:
+        if self.current_result is None:
+            return False
+        residual = self.service.verify_protected(self.current_result, self._current_profile())
+        if not residual:
+            self.verification_metric.setText("Verified: no remaining PII")
+            self.verification_metric.setProperty("warning", False)
+            self.verification_metric.style().unpolish(self.verification_metric)
+            self.verification_metric.style().polish(self.verification_metric)
+            return True
+        self.verification_metric.setText(f"Warning: {len(residual)} possible PII remain")
+        self.verification_metric.setProperty("warning", True)
+        self.verification_metric.style().unpolish(self.verification_metric)
+        self.verification_metric.style().polish(self.verification_metric)
+        examples = "\n".join(
+            f"• {item.entity_type}: {item.text[:45]} (page {item.page_number})"
+            for item in residual[:8]
+        )
+        answer = QMessageBox.warning(
+            self,
+            "Possible sensitive data remains",
+            f"Privacy Gate found {len(residual)} possible sensitive item(s) in the protected copy before {action}:\n\n{examples}\n\nReturn to the findings and protect them whenever possible.",
+            QMessageBox.StandardButton.Cancel | QMessageBox.StandardButton.Ignore,
+            QMessageBox.StandardButton.Cancel,
+        )
+        return answer == QMessageBox.StandardButton.Ignore
+
     def _copy_result(self) -> None:
-        if self.current_result:
+        if self.current_result and self._confirm_residual_risk("copying"):
             QApplication.clipboard().setText(self.current_result.combined_text)
 
     def _save_and_copy(self) -> None:
+        if not self._confirm_residual_risk("copying"):
+            return
         document = self._save_to_library()
         if document:
-            self._copy_result()
+            QApplication.clipboard().setText(self.current_result.combined_text)
             QMessageBox.information(self, "Saved locally", "The protected text was saved and copied.")
 
     def _save_and_download(self) -> None:
+        if not self._confirm_residual_risk("downloading"):
+            return
         document = self._save_to_library()
         if not document or not self.current_result or not self.current_document:
             return
@@ -554,7 +622,9 @@ class ProtectionPage(QWidget):
                 self.service.save_protected_text(self.current_result, path if path.lower().endswith(".txt") else path + ".txt")
 
     def _copy_and_open_chatgpt(self) -> None:
-        self._copy_result()
+        if not self.current_result or not self._confirm_residual_risk("opening an AI service"):
+            return
+        QApplication.clipboard().setText(self.current_result.combined_text)
         QDesktopServices.openUrl(QUrl("https://chatgpt.com/"))
 
     def _set_result_actions(self, enabled: bool) -> None:
@@ -581,5 +651,6 @@ class ProtectionPage(QWidget):
         self.findings_metric.setText("0 findings")
         self.types_metric.setText("0 categories")
         self.pages_metric.setText("0 pages")
+        self.verification_metric.setText("Second scan before export")
         self._set_result_actions(False)
         self.setup_toggle.setChecked(True)

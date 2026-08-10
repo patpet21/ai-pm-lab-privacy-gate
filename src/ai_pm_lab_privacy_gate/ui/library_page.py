@@ -1,15 +1,20 @@
 from __future__ import annotations
 
+import json
+from pathlib import Path
+
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QApplication,
+    QCheckBox,
     QFileDialog,
     QFrame,
     QHBoxLayout,
     QHeaderView,
     QLabel,
     QLineEdit,
+    QInputDialog,
     QMessageBox,
     QPlainTextEdit,
     QPushButton,
@@ -45,23 +50,32 @@ class LibraryPage(QWidget):
         toolbar = QHBoxLayout()
         self.search = QLineEdit()
         self.search.setPlaceholderText("Search by title, source file or label")
+        self.favorites_only = QCheckBox("Favorites")
+        self.show_trash = QCheckBox("Trash")
         self.refresh_button = QPushButton("Refresh", objectName="Secondary")
+        self.backup_button = QPushButton("Backup library", objectName="Secondary")
+        self.import_backup_button = QPushButton("Restore backup", objectName="Secondary")
         toolbar.addWidget(self.search, 1)
+        toolbar.addWidget(self.favorites_only)
+        toolbar.addWidget(self.show_trash)
+        toolbar.addWidget(self.backup_button)
+        toolbar.addWidget(self.import_backup_button)
         toolbar.addWidget(self.refresh_button)
         root.addLayout(toolbar)
 
         splitter = QSplitter(Qt.Orientation.Horizontal)
         table_card = QFrame(objectName="Card")
         table_layout = QVBoxLayout(table_card)
-        self.table = QTableWidget(0, 6)
-        self.table.setHorizontalHeaderLabels(["Title", "Profile", "Source", "Findings", "Restore", "Updated"])
+        self.table = QTableWidget(0, 5)
+        self.table.setHorizontalHeaderLabels(["★", "Title", "Profile", "Restore", "Updated"])
         self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.table.verticalHeader().setVisible(False)
         header = self.table.horizontalHeader()
-        header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
-        for column in range(1, 6):
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        for column in range(2, 5):
             header.setSectionResizeMode(column, QHeaderView.ResizeMode.ResizeToContents)
         table_layout.addWidget(self.table)
 
@@ -78,12 +92,18 @@ class LibraryPage(QWidget):
         action_row = QHBoxLayout()
         self.copy_button = QPushButton("Copy", objectName="Secondary")
         self.export_button = QPushButton("Export text", objectName="Secondary")
+        self.edit_button = QPushButton("Rename / Tags", objectName="Secondary")
+        self.favorite_button = QPushButton("Favorite", objectName="Secondary")
         self.restore_button = QPushButton("Restore AI result", objectName="Primary")
-        self.delete_button = QPushButton("Delete", objectName="Danger")
+        self.restore_trash_button = QPushButton("Restore from trash", objectName="Primary")
+        self.delete_button = QPushButton("Move to trash", objectName="Danger")
         action_row.addWidget(self.copy_button)
         action_row.addWidget(self.export_button)
+        action_row.addWidget(self.edit_button)
+        action_row.addWidget(self.favorite_button)
         action_row.addStretch(1)
         action_row.addWidget(self.restore_button)
+        action_row.addWidget(self.restore_trash_button)
         action_row.addWidget(self.delete_button)
         preview_layout.addLayout(action_row)
 
@@ -93,26 +113,38 @@ class LibraryPage(QWidget):
         root.addWidget(splitter, 1)
 
         self.search.textChanged.connect(self.refresh)
+        self.favorites_only.toggled.connect(self.refresh)
+        self.show_trash.toggled.connect(self.refresh)
         self.refresh_button.clicked.connect(self.refresh)
+        self.backup_button.clicked.connect(self._backup)
+        self.import_backup_button.clicked.connect(self._restore_backup)
         self.table.itemSelectionChanged.connect(self._selection_changed)
         self.copy_button.clicked.connect(self._copy)
         self.export_button.clicked.connect(self._export)
+        self.edit_button.clicked.connect(self._edit_metadata)
+        self.favorite_button.clicked.connect(self._toggle_favorite)
         self.restore_button.clicked.connect(self._restore)
+        self.restore_trash_button.clicked.connect(self._restore_from_trash)
         self.delete_button.clicked.connect(self._delete)
         self._set_actions(False)
 
     def refresh(self, *_args) -> None:
-        self._documents = self.library.list_documents(self.search.text())
+        self._documents = self.library.list_documents(
+            self.search.text(),
+            include_deleted=self.show_trash.isChecked(),
+            favorites_only=self.favorites_only.isChecked(),
+        )
         self.table.setRowCount(len(self._documents))
         for row, document in enumerate(self._documents):
+            favorite = QTableWidgetItem("★" if document.favorite else "")
+            favorite.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            self.table.setItem(row, 0, favorite)
             title = QTableWidgetItem(document.title)
             title.setData(Qt.ItemDataRole.UserRole, document.document_id)
-            self.table.setItem(row, 0, title)
-            self.table.setItem(row, 1, QTableWidgetItem(document.profile_key.replace("_", " ").title()))
-            self.table.setItem(row, 2, QTableWidgetItem(document.source_kind.upper()))
-            self.table.setItem(row, 3, QTableWidgetItem(str(document.findings_count)))
-            self.table.setItem(row, 4, QTableWidgetItem("Available" if document.has_mapping else "—"))
-            self.table.setItem(row, 5, QTableWidgetItem(document.updated_at.astimezone().strftime("%Y-%m-%d %H:%M")))
+            self.table.setItem(row, 1, title)
+            self.table.setItem(row, 2, QTableWidgetItem(document.profile_key.replace("_", " ").title()))
+            self.table.setItem(row, 3, QTableWidgetItem("Yes" if document.has_mapping else "—"))
+            self.table.setItem(row, 4, QTableWidgetItem(document.updated_at.astimezone().strftime("%Y-%m-%d %H:%M")))
         if self._documents:
             self.table.selectRow(0)
         else:
@@ -124,7 +156,7 @@ class LibraryPage(QWidget):
     def select_document(self, document_id: str) -> None:
         self.refresh()
         for row in range(self.table.rowCount()):
-            if self.table.item(row, 0).data(Qt.ItemDataRole.UserRole) == document_id:
+            if self.table.item(row, 1).data(Qt.ItemDataRole.UserRole) == document_id:
                 self.table.selectRow(row)
                 break
 
@@ -132,7 +164,7 @@ class LibraryPage(QWidget):
         row = self.table.currentRow()
         if row < 0:
             return None
-        document_id = self.table.item(row, 0).data(Qt.ItemDataRole.UserRole)
+        document_id = self.table.item(row, 1).data(Qt.ItemDataRole.UserRole)
         return self.library.get(document_id)
 
     def _selection_changed(self) -> None:
@@ -148,6 +180,15 @@ class LibraryPage(QWidget):
         self.preview.setPlainText(document.protected_text)
         self._set_actions(True)
         self.restore_button.setEnabled(document.has_mapping)
+        self.favorite_button.setText("Unfavorite" if document.favorite else "Favorite")
+        trashed = document.deleted_at is not None
+        self.copy_button.setEnabled(not trashed)
+        self.export_button.setEnabled(not trashed)
+        self.edit_button.setEnabled(not trashed)
+        self.favorite_button.setEnabled(not trashed)
+        self.restore_button.setVisible(not trashed)
+        self.restore_trash_button.setVisible(trashed)
+        self.delete_button.setText("Delete permanently" if trashed else "Move to trash")
 
     def _copy(self) -> None:
         document = self._current()
@@ -158,11 +199,108 @@ class LibraryPage(QWidget):
         document = self._current()
         if not document:
             return
-        path, _ = QFileDialog.getSaveFileName(self, "Export protected text", f"{document.title}_protected.txt", "Text files (*.txt)")
+        path, selected_filter = QFileDialog.getSaveFileName(
+            self,
+            "Export protected document",
+            f"{document.title}_protected.txt",
+            "Text files (*.txt);;JSON files (*.json)",
+        )
         if path:
-            from pathlib import Path
+            if selected_filter.startswith("JSON"):
+                destination = Path(path if path.lower().endswith(".json") else path + ".json")
+                destination.write_text(
+                    json.dumps(
+                        {
+                            "document_id": document.document_id,
+                            "title": document.title,
+                            "source": document.source_name,
+                            "profile": document.profile_key,
+                            "labels": document.labels,
+                            "replacement_mode": document.replacement_mode,
+                            "protected_text": document.protected_text,
+                        },
+                        indent=2,
+                    ),
+                    encoding="utf-8",
+                )
+            else:
+                Path(path if path.lower().endswith(".txt") else path + ".txt").write_text(document.protected_text, encoding="utf-8")
 
-            Path(path if path.lower().endswith(".txt") else path + ".txt").write_text(document.protected_text, encoding="utf-8")
+    def _edit_metadata(self) -> None:
+        document = self._current()
+        if not document:
+            return
+        title, ok = QInputDialog.getText(self, "Rename document", "Title:", text=document.title)
+        if not ok:
+            return
+        labels, ok = QInputDialog.getText(
+            self,
+            "Edit labels",
+            "Comma-separated labels:",
+            text=", ".join(document.labels),
+        )
+        if not ok:
+            return
+        self.library.update_metadata(
+            document.document_id,
+            title=title,
+            labels=tuple(item.strip() for item in labels.split(",") if item.strip()),
+        )
+        self.select_document(document.document_id)
+
+    def _toggle_favorite(self) -> None:
+        document = self._current()
+        if document:
+            self.library.set_favorite(document.document_id, not document.favorite)
+            self.select_document(document.document_id)
+
+    def _backup(self) -> None:
+        path, _ = QFileDialog.getSaveFileName(
+            self,
+            "Create encrypted library backup",
+            "AI_PM_LAB_Privacy_Gate_Library.pgbackup",
+            "Privacy Gate backup (*.pgbackup)",
+        )
+        if not path:
+            return
+        try:
+            destination = self.library.create_backup(
+                path if path.lower().endswith(".pgbackup") else path + ".pgbackup"
+            )
+            QMessageBox.information(
+                self,
+                "Backup created",
+                f"Encrypted backup saved to:\n{destination}\n\nIt can be restored only by the same Windows user account.",
+            )
+        except Exception as error:
+            QMessageBox.critical(self, "Backup failed", str(error))
+
+    def _restore_backup(self) -> None:
+        path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Restore encrypted library backup",
+            "",
+            "Privacy Gate backup (*.pgbackup)",
+        )
+        if not path:
+            return
+        answer = QMessageBox.question(
+            self,
+            "Restore library backup",
+            "Privacy Gate will first create a safety backup, then replace the current library. Continue?",
+        )
+        if answer != QMessageBox.StandardButton.Yes:
+            return
+        try:
+            safety_backup = self.library.restore_backup(path)
+            self.refresh()
+            QMessageBox.information(
+                self,
+                "Library restored",
+                f"The backup was restored. A safety copy of the previous library is at:\n{safety_backup}",
+            )
+        except Exception as error:
+            QMessageBox.critical(self, "Restore failed", str(error))
 
     def _restore(self) -> None:
         document = self._current()
@@ -173,15 +311,38 @@ class LibraryPage(QWidget):
         document = self._current()
         if not document:
             return
+        permanent = document.deleted_at is not None
         answer = QMessageBox.question(
             self,
-            "Delete local document",
-            f"Delete ‘{document.title}’ and its encrypted restore mapping from this PC?",
+            "Delete permanently" if permanent else "Move document to trash",
+            (
+                f"Permanently delete ‘{document.title}’ and its encrypted restore mapping? This cannot be undone."
+                if permanent
+                else f"Move ‘{document.title}’ to the recoverable local trash?"
+            ),
         )
         if answer == QMessageBox.StandardButton.Yes:
-            self.library.delete(document.document_id)
+            if permanent:
+                self.library.delete_permanently(document.document_id)
+            else:
+                self.library.move_to_trash(document.document_id)
+            self.refresh()
+
+    def _restore_from_trash(self) -> None:
+        document = self._current()
+        if document:
+            self.library.restore_from_trash(document.document_id)
             self.refresh()
 
     def _set_actions(self, enabled: bool) -> None:
-        for widget in (self.copy_button, self.export_button, self.restore_button, self.delete_button):
+        for widget in (
+            self.copy_button,
+            self.export_button,
+            self.edit_button,
+            self.favorite_button,
+            self.restore_button,
+            self.restore_trash_button,
+            self.delete_button,
+        ):
             widget.setEnabled(enabled)
+        self.restore_trash_button.setVisible(False)

@@ -66,6 +66,8 @@ class PrivacyGateService:
                 return "[REDACTED]"
             if replacement_mode == "generic":
                 return f"[[{finding.entity_type}]]"
+            if replacement_mode == "mask":
+                return self._mask_value(finding.text)
             key = (finding.entity_type, finding.text.casefold())
             token = token_by_value.get(key)
             if token is None:
@@ -94,6 +96,28 @@ class PrivacyGateService:
             applied_findings=selected,
             mappings=tuple(mappings),
             replacement_mode=replacement_mode,
+        )
+
+    def verify_protected(
+        self,
+        result: ProtectionResult,
+        profile: PrivacyProfile,
+    ) -> tuple[Finding, ...]:
+        """Run a fail-safe second analysis on the exact text about to leave the app."""
+        protected_document = AnalysisDocument(
+            source_kind="protected",
+            pages=result.protected_pages,
+        )
+        return self.analyze(protected_document, profile)
+
+    @staticmethod
+    def _mask_value(value: str) -> str:
+        visible = 4
+        alphanumeric_positions = [index for index, char in enumerate(value) if char.isalnum()]
+        keep = set(alphanumeric_positions[-visible:])
+        return "".join(
+            char if index in keep or not char.isalnum() else "*"
+            for index, char in enumerate(value)
         )
 
     @staticmethod

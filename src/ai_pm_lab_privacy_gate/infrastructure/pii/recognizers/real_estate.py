@@ -114,6 +114,47 @@ CONTEXT_RULES = (
         "MORTGAGE_REFERENCE",
         rf"mortgage(?:\s+(?:id|reference|number|no\.?))?\b{_LABEL_SEPARATOR}(?P<value>[A-Z0-9][A-Z0-9-]{{3,30}})\b",
     ),
+    ContextRule(
+        "US_EIN",
+        rf"(?:ein|employer\s+identification(?:\s+number)?|federal\s+tax\s+id)\b{_LABEL_SEPARATOR}(?P<value>\d{{2}}-\d{{7}})\b",
+    ),
+    ContextRule(
+        "PROPERTY_IDENTIFIER",
+        rf"(?:property|parcel|apn)\s+(?:id|identifier|number|no\.?)\b{_LABEL_SEPARATOR}(?P<value>[A-Z0-9][A-Z0-9-]{{3,30}})\b",
+    ),
+    ContextRule(
+        "UNIT_NUMBER",
+        rf"(?:apartment|apt\.?|unit)\b{_LABEL_SEPARATOR}(?P<value>[A-Z0-9][A-Z0-9-]{{0,9}})\b",
+        score=0.91,
+    ),
+    ContextRule(
+        "PROPERTY_ACCESS_CODE",
+        rf"(?:building|property|door|gate|entry)\s+(?:access\s+)?code\b{_LABEL_SEPARATOR}(?P<value>[A-Z0-9#*][A-Z0-9#*-]{{2,15}})\b",
+    ),
+    ContextRule(
+        "LOCKBOX_CODE",
+        rf"lock\s*box(?:\s+code)?\b{_LABEL_SEPARATOR}(?P<value>[A-Z0-9#*][A-Z0-9#*-]{{2,15}})\b",
+    ),
+    ContextRule(
+        "CONTRACTOR_LICENSE",
+        rf"contractor(?:'s)?\s+licen[cs]e(?:\s+(?:id|number|no\.?))?\b{_LABEL_SEPARATOR}(?P<value>[A-Z0-9][A-Z0-9-]{{4,30}})\b",
+    ),
+    ContextRule(
+        "INSURANCE_CLAIM_ID",
+        rf"(?:insurance\s+)?claim(?:\s+(?:id|reference|number|no\.?))?\b{_LABEL_SEPARATOR}(?P<value>[A-Z0-9][A-Z0-9-]{{3,30}})\b",
+    ),
+    ContextRule(
+        "UTILITY_ACCOUNT_ID",
+        rf"(?:electric|gas|water|utility)\s+account(?:\s+(?:id|number|no\.?))?\b{_LABEL_SEPARATOR}(?P<value>[A-Z0-9][A-Z0-9-]{{4,30}})\b",
+    ),
+    ContextRule(
+        "LOAN_NUMBER",
+        rf"loan(?:\s+(?:id|number|no\.?))\b{_LABEL_SEPARATOR}(?P<value>[A-Z0-9][A-Z0-9-]{{4,30}})\b",
+    ),
+    ContextRule(
+        "TRANSACTION_ID",
+        rf"(?:transaction|closing|deal)\s+(?:id|reference|number|no\.?)\b{_LABEL_SEPARATOR}(?P<value>[A-Z0-9][A-Z0-9-]{{3,30}})\b",
+    ),
 )
 
 
@@ -148,6 +189,11 @@ def install_real_estate_recognizers(registry) -> None:  # noqa: ANN001
         "PREAPPROVAL_ID": r"\bPA-[A-Z0-9-]{4,30}\b",
         "MORTGAGE_REFERENCE": r"\bMTG-[A-Z0-9-]{4,30}\b",
         "NYC_BBL": r"\b[1-5]-\d{5}-\d{4}\b",
+        "PROPERTY_IDENTIFIER": r"\b(?:PROPERTY|APN)-[A-Z0-9-]{4,30}\b",
+        "INSURANCE_CLAIM_ID": r"\bCLM-[A-Z0-9-]{4,30}\b",
+        "UTILITY_ACCOUNT_ID": r"\bUTIL-[A-Z0-9-]{4,30}\b",
+        "LOAN_NUMBER": r"\bLOAN-[A-Z0-9-]{4,30}\b",
+        "TRANSACTION_ID": r"\b(?:TXN|CLOSE)-[A-Z0-9-]{4,30}\b",
     }
     for entity_type, regex in prefixed_patterns.items():
         registry.add_recognizer(

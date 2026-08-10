@@ -16,6 +16,7 @@ from PySide6.QtWidgets import (
 )
 
 from ai_pm_lab_privacy_gate.application.privacy_service import PrivacyGateService
+from ai_pm_lab_privacy_gate import __version__
 from ai_pm_lab_privacy_gate.infrastructure.storage.library_repository import LibraryRepository
 from ai_pm_lab_privacy_gate.ui.connections_page import ConnectionsPage
 from ai_pm_lab_privacy_gate.ui.library_page import LibraryPage
@@ -33,7 +34,7 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.service = service or PrivacyGateService()
         self.library = library or LibraryRepository()
-        self.setWindowTitle("AI PM LAB Privacy Gate")
+        self.setWindowTitle(f"AI PM LAB Privacy Gate — {__version__} INTERNAL")
         self.resize(1460, 920)
         self.setMinimumSize(1120, 720)
         icon_path = resource_path("resources", "branding", "privacy-gate.ico")
@@ -44,7 +45,9 @@ class MainWindow(QMainWindow):
         elif logo_path.exists():
             self.setWindowIcon(QIcon(str(logo_path)))
         self._build_ui(display_logo_path if display_logo_path.exists() else logo_path)
-        self.statusBar().showMessage(f"Local library: {self.library.data_dir}")
+        self.statusBar().showMessage(
+            f"INTERNAL BUILD {__version__}  •  Local library: {self.library.data_dir}"
+        )
 
     def _build_ui(self, logo_path) -> None:
         central = QWidget()

@@ -35,6 +35,8 @@ QLabel#SafeBadge { background: #DFF5F0; color: #136A5D; border-radius: 12px; pad
 QLabel#ConnectionBadge { background: #E8F1F5; color: #176777; border-radius: 10px; padding: 5px 9px; font-size: 8pt; font-weight: 700; }
 QLabel#TokenHint { background: #EDF4F7; color: #476578; border-radius: 9px; padding: 5px 9px; font-size: 8pt; font-weight: 700; }
 QLabel#Metric { background: #E9F2F6; color: #123B56; border: 1px solid #CBDCE6; border-radius: 10px; padding: 8px 13px; font-weight: 700; }
+QLabel#SafetyMetric { background: #DFF5F0; color: #136A5D; border: 1px solid #A9DCD2; border-radius: 10px; padding: 8px 13px; font-weight: 700; }
+QLabel#SafetyMetric[warning="true"] { background: #FFF1E6; color: #9A4A16; border-color: #EDB98F; }
 QPushButton, QToolButton {
     background: #168492; color: white; border: none; border-radius: 8px;
     padding: 9px 15px; font-weight: 700;
