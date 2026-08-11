@@ -24,3 +24,5 @@ tmp/
 *.sqlite3
 customer-data/
 private/
+node_modules/
+.wrangler/

@@ -1,21 +1,30 @@
 from __future__ import annotations
 
 import argparse
+import asyncio
 from typing import Any
 
 from mcp.server import MCPServer
 from mcp.server.transport_security import TransportSecuritySettings
 
 from ai_pm_lab_privacy_gate import __version__
-from ai_pm_lab_privacy_gate.domain.models import LibraryDocument
-from ai_pm_lab_privacy_gate.infrastructure.storage.library_repository import LibraryRepository
+from ai_pm_lab_privacy_gate.infrastructure.mcp.auth import (
+    McpOAuthMiddleware,
+    OAuthResourceConfiguration,
+)
+from ai_pm_lab_privacy_gate.infrastructure.storage.library_repository import default_data_dir
+from ai_pm_lab_privacy_gate.infrastructure.storage.protected_library import (
+    ProtectedDocument,
+    ProtectedDocumentSource,
+    ProtectedLibraryRepository,
+)
 
 
 SERVER_NAME = "ai-pm-lab-privacy-gate"
 MAX_PAGE_CHARS = 50_000
 
 
-def _metadata(document: LibraryDocument) -> dict[str, Any]:
+def _metadata(document: ProtectedDocument) -> dict[str, Any]:
     return {
         "document_id": document.document_id,
         "title": document.title,
@@ -43,9 +52,9 @@ def _snippet(text: str, query: str, width: int = 360) -> str:
     return f"{prefix}{text[start:end]}{suffix}"
 
 
-def create_mcp_server(library: LibraryRepository | None = None) -> MCPServer:
+def create_mcp_server(library: ProtectedDocumentSource | None = None) -> MCPServer:
     """Create a read-only MCP server exposing only approved protected copies."""
-    repository = library or LibraryRepository()
+    repository = library or ProtectedLibraryRepository(default_data_dir() / "Protected")
     server = MCPServer(
         name=SERVER_NAME,
         title="AI PM LAB Privacy Gate",
@@ -172,6 +181,10 @@ def main() -> None:
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8766)
     parser.add_argument("--path", default="/mcp")
+    parser.add_argument("--auth-mode", choices=("none", "jwt"), default="none")
+    parser.add_argument("--resource", default="")
+    parser.add_argument("--issuer", default="")
+    parser.add_argument("--jwks-url", default="")
     arguments = parser.parse_args()
     server = create_mcp_server()
     if arguments.transport == "stdio":
@@ -179,21 +192,45 @@ def main() -> None:
         return
     if arguments.host not in {"127.0.0.1", "localhost"}:
         parser.error("The HTTP MCP server may bind only to localhost.")
-    server.run(
-        transport="streamable-http",
-        host="127.0.0.1",
-        port=arguments.port,
+    transport_security = TransportSecuritySettings(enable_dns_rebinding_protection=False)
+    if arguments.auth_mode == "none":
+        server.run(
+            transport="streamable-http",
+            host="127.0.0.1",
+            port=arguments.port,
+            streamable_http_path=arguments.path,
+            stateless_http=True,
+            json_response=True,
+            transport_security=transport_security,
+        )
+        return
+    if not all((arguments.resource, arguments.issuer, arguments.jwks_url)):
+        parser.error("JWT mode requires --resource, --issuer and --jwks-url")
+    if not arguments.resource.startswith("https://"):
+        parser.error("The OAuth resource must use HTTPS")
+    app = server.streamable_http_app(
         streamable_http_path=arguments.path,
         stateless_http=True,
         json_response=True,
-        # This process is bound to loopback only and reached through an
-        # outbound tunnel whose public hostname changes per session. The
-        # unguessable path is the connection credential; Host allowlisting is
-        # therefore not applicable here. POST Content-Type validation remains.
-        transport_security=TransportSecuritySettings(
-            enable_dns_rebinding_protection=False
+        transport_security=transport_security,
+        host="127.0.0.1",
+    )
+    app.add_middleware(
+        McpOAuthMiddleware,
+        configuration=OAuthResourceConfiguration(
+            resource=arguments.resource.rstrip("/"),
+            issuer=arguments.issuer.rstrip("/"),
+            jwks_url=arguments.jwks_url,
         ),
     )
+
+    async def serve() -> None:
+        import uvicorn
+
+        config = uvicorn.Config(app, host="127.0.0.1", port=arguments.port, log_level="info")
+        await uvicorn.Server(config).serve()
+
+    asyncio.run(serve())
 
 
 if __name__ == "__main__":

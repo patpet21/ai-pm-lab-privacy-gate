@@ -33,6 +33,7 @@ QLabel#FieldLabel { color: #183E5B; font-weight: 700; }
 QLabel#Muted { color: #64788A; }
 QLabel#SafeBadge { background: #DFF5F0; color: #136A5D; border-radius: 12px; padding: 7px 12px; font-weight: 700; }
 QLabel#ConnectionBadge { background: #E8F1F5; color: #176777; border-radius: 10px; padding: 5px 9px; font-size: 8pt; font-weight: 700; }
+QLabel#CopyFeedback { color: #136A5D; font-size: 8pt; font-weight: 750; min-width: 58px; }
 QLabel#TokenHint { background: #EDF4F7; color: #476578; border-radius: 9px; padding: 5px 9px; font-size: 8pt; font-weight: 700; }
 QLabel#Metric { background: #E9F2F6; color: #123B56; border: 1px solid #CBDCE6; border-radius: 10px; padding: 8px 13px; font-weight: 700; }
 QLabel#SourceMetric { background: #F7F1E3; color: #765A1E; border: 1px solid #E2D1A9; border-radius: 10px; padding: 8px 13px; font-weight: 700; }

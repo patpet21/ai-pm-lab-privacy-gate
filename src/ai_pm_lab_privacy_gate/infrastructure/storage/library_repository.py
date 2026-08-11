@@ -14,6 +14,7 @@ from pathlib import Path
 
 from ai_pm_lab_privacy_gate.domain.models import LibraryDocument, ProtectionResult, ReplacementMapping
 from ai_pm_lab_privacy_gate.infrastructure.security.local_protector import LocalProtector
+from ai_pm_lab_privacy_gate.infrastructure.storage.protected_library import ProtectedLibraryRepository
 
 
 SCHEMA_VERSION = 4
@@ -37,7 +38,9 @@ class LibraryRepository:
         self.backup_dir.mkdir(exist_ok=True)
         self.db_path = self.data_dir / "library.db"
         self._protector = LocalProtector()
+        self.protected_library = ProtectedLibraryRepository(self.data_dir / "Protected")
         self._initialize()
+        self._synchronize_protected_library()
 
     @contextmanager
     def _connect(self):
@@ -178,7 +181,37 @@ class LibraryRepository:
                     for mapping in result.mappings
                 ],
             )
-        return self.get(document_id)
+        document = self.get(document_id)
+        self._publish_protected(document)
+        return document
+
+    def _synchronize_protected_library(self) -> None:
+        with self._connect() as connection:
+            rows = connection.execute(
+                "SELECT * FROM documents WHERE deleted_at IS NULL AND mcp_shared = 1"
+            ).fetchall()
+        published_ids: set[str] = set()
+        for row in rows:
+            document = self._to_document(row)
+            self._publish_protected(document)
+            published_ids.add(document.document_id)
+        for document in self.protected_library.list_mcp_documents(limit=200):
+            if document.document_id not in published_ids:
+                self.protected_library.withdraw(document.document_id)
+
+    def _publish_protected(self, document: LibraryDocument) -> None:
+        if document.deleted_at is not None or not document.mcp_shared:
+            self.protected_library.withdraw(document.document_id)
+            return
+        self.protected_library.publish(
+            document_id=document.document_id,
+            profile_key=document.profile_key,
+            protected_text=document.protected_text,
+            findings_count=document.findings_count,
+            entity_types=document.entity_types,
+            updated_at=document.updated_at,
+            favorite=document.favorite,
+        )
 
     def list_documents(
         self,
@@ -289,7 +322,9 @@ class LibraryRepository:
                 f"UPDATE documents SET {', '.join(assignments)} WHERE document_id = ?",
                 tuple(parameters),
             )
-        return self.get(document_id)
+        document = self.get(document_id)
+        self._publish_protected(document)
+        return document
 
     def set_favorite(self, document_id: str, favorite: bool) -> LibraryDocument:
         with self._connect() as connection:
@@ -297,7 +332,9 @@ class LibraryRepository:
                 "UPDATE documents SET favorite = ?, updated_at = ? WHERE document_id = ?",
                 (int(favorite), datetime.now(timezone.utc).isoformat(), document_id),
             )
-        return self.get(document_id)
+        document = self.get(document_id)
+        self._publish_protected(document)
+        return document
 
     def set_mcp_shared(self, document_id: str, shared: bool) -> LibraryDocument:
         with self._connect() as connection:
@@ -305,7 +342,9 @@ class LibraryRepository:
                 "UPDATE documents SET mcp_shared = ?, updated_at = ? WHERE document_id = ?",
                 (int(shared), datetime.now(timezone.utc).isoformat(), document_id),
             )
-        return self.get(document_id)
+        document = self.get(document_id)
+        self._publish_protected(document)
+        return document
 
     def move_to_trash(self, document_id: str) -> None:
         with self._connect() as connection:
@@ -317,6 +356,7 @@ class LibraryRepository:
                     document_id,
                 ),
             )
+        self.protected_library.withdraw(document_id)
 
     def restore_from_trash(self, document_id: str) -> None:
         with self._connect() as connection:
@@ -324,10 +364,12 @@ class LibraryRepository:
                 "UPDATE documents SET deleted_at = NULL, updated_at = ? WHERE document_id = ?",
                 (datetime.now(timezone.utc).isoformat(), document_id),
             )
+        self._publish_protected(self.get(document_id))
 
     def delete_permanently(self, document_id: str) -> None:
         with self._connect() as connection:
             connection.execute("DELETE FROM documents WHERE document_id = ?", (document_id,))
+        self.protected_library.withdraw(document_id)
 
     def delete(self, document_id: str) -> None:
         """Compatibility alias: deletion is recoverable in schema v2."""
@@ -378,6 +420,7 @@ class LibraryRepository:
             safety_backup = self.create_backup()
             os.replace(temporary_path, self.db_path)
             self._initialize()
+            self._synchronize_protected_library()
             return safety_backup
         finally:
             temporary_path.unlink(missing_ok=True)

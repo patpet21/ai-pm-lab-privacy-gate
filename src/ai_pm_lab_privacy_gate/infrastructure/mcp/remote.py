@@ -1,37 +1,41 @@
 from __future__ import annotations
 
 import os
-import re
-import shutil
 import socket
 import subprocess
-import sys
 import threading
 import time
 from dataclasses import dataclass
-from pathlib import Path
-from urllib.parse import urlparse
 
 from ai_pm_lab_privacy_gate.infrastructure.mcp.config import mcp_launch_spec
 from ai_pm_lab_privacy_gate.infrastructure.mcp.identity import ConnectionIdentityStore
-
-
-PUBLIC_URL_PATTERN = re.compile(r"https://[a-z0-9-]+\.trycloudflare\.com", re.IGNORECASE)
+from ai_pm_lab_privacy_gate.infrastructure.mcp.modes import ConnectionMode
+from ai_pm_lab_privacy_gate.infrastructure.mcp.provisioning import ProvisioningStore
+from ai_pm_lab_privacy_gate.infrastructure.mcp.tunnels import (
+    CloudflaredRuntime,
+    NamedTunnelProvider,
+    QuickTunnelProvider,
+    TunnelProvider,
+)
 
 
 @dataclass(frozen=True)
 class RemoteMcpStatus:
     state: str = "stopped"
+    mode: str = ConnectionMode.LOCAL.value
     public_url: str = ""
     error: str = ""
     local_port: int | None = None
 
 
 class RemoteMcpManager:
-    """Run the local HTTP MCP server and an outbound-only HTTPS quick tunnel."""
+    """Supervise the loopback MCP process and one explicit tunnel mode."""
 
     def __init__(self, identity_store: ConnectionIdentityStore | None = None) -> None:
         self.identity_store = identity_store or ConnectionIdentityStore()
+        self.provisioning_store = ProvisioningStore(
+            self.identity_store.data_dir, self.identity_store.secrets
+        )
         self._lock = threading.Lock()
         self._status = RemoteMcpStatus()
         self._server_process: subprocess.Popen[str] | None = None
@@ -43,12 +47,17 @@ class RemoteMcpManager:
         with self._lock:
             return self._status
 
-    def start(self) -> None:
+    def start(self, mode: ConnectionMode | None = None) -> None:
+        selected_mode = mode or self.identity_store.connection_mode()
+        if selected_mode is ConnectionMode.LOCAL:
+            raise ValueError("Local-only mode does not create a remote tunnel")
         if self.status.state in {"starting", "online"}:
             return
         self.stop()
-        self._set_status(RemoteMcpStatus(state="starting"))
-        self._monitor_thread = threading.Thread(target=self._start_worker, daemon=True)
+        self._set_status(RemoteMcpStatus(state="starting", mode=selected_mode.value))
+        self._monitor_thread = threading.Thread(
+            target=self._start_worker, args=(selected_mode,), daemon=True
+        )
         self._monitor_thread.start()
 
     def stop(self) -> None:
@@ -63,10 +72,9 @@ class RemoteMcpManager:
         self._server_process = None
         self._set_status(RemoteMcpStatus(state="stopped"))
 
-    def _start_worker(self) -> None:
+    def _start_worker(self, mode: ConnectionMode) -> None:
         try:
-            identity = self.identity_store.load_or_create()
-            port = self._available_port()
+            port, path, provider, auth_args = self._runtime(mode)
             command, base_args = mcp_launch_spec()
             server_args = [
                 *base_args,
@@ -77,36 +85,51 @@ class RemoteMcpManager:
                 "--port",
                 str(port),
                 "--path",
-                identity.mcp_path,
+                path,
+                *auth_args,
             ]
-            self._server_process = self._popen([command, *server_args])
+            self._server_process = self._popen_server([command, *server_args])
             self._wait_for_port(port, self._server_process)
-
-            cloudflared = self._find_cloudflared()
-            self._tunnel_process = self._popen(
-                [
-                    str(cloudflared),
-                    "tunnel",
-                    "--url",
-                    f"http://127.0.0.1:{port}",
-                    "--http-host-header",
-                    "127.0.0.1",
-                    "--no-autoupdate",
-                ],
-                merge_output=True,
-            )
-            public_base = self._read_public_url(self._tunnel_process)
-            self._wait_for_public_dns(public_base, self._tunnel_process)
-            public_url = f"{public_base}{identity.mcp_path}"
+            session = provider.start(port)
+            self._tunnel_process = session.process
+            public_url = session.public_url + (path if mode is ConnectionMode.DEV_QUICK else "")
             self._set_status(
-                RemoteMcpStatus(state="online", public_url=public_url, local_port=port)
+                RemoteMcpStatus(
+                    state="online",
+                    mode=mode.value,
+                    public_url=public_url,
+                    local_port=port,
+                )
             )
             return_code = self._tunnel_process.wait()
             if self.status.state != "stopped":
                 raise RuntimeError(f"Secure tunnel stopped unexpectedly ({return_code}).")
         except Exception as error:
             self._terminate_children()
-            self._set_status(RemoteMcpStatus(state="error", error=str(error)))
+            self._set_status(
+                RemoteMcpStatus(state="error", mode=mode.value, error=str(error))
+            )
+
+    def _runtime(
+        self, mode: ConnectionMode
+    ) -> tuple[int, str, TunnelProvider, list[str]]:
+        if mode is ConnectionMode.DEV_QUICK:
+            return self._available_port(), self.identity_store.dev_mcp_path(), QuickTunnelProvider(), []
+        configuration = self.provisioning_store.load()
+        if configuration is None:
+            raise RuntimeError("This installation has not been provisioned for a stable connection.")
+        configuration.validate()
+        auth_args = [
+            "--auth-mode",
+            "jwt",
+            "--resource",
+            f"https://{configuration.hostname}/mcp",
+            "--issuer",
+            configuration.oauth_issuer,
+            "--jwks-url",
+            configuration.oauth_jwks_url,
+        ]
+        return 8766, "/mcp", NamedTunnelProvider(configuration, self.provisioning_store), auth_args
 
     def _terminate_children(self) -> None:
         for process in (self._tunnel_process, self._server_process):
@@ -137,81 +160,12 @@ class RemoteMcpManager:
         raise TimeoutError("The local MCP service did not become ready in time.")
 
     @staticmethod
-    def _read_public_url(process: subprocess.Popen[str]) -> str:
-        if process.stdout is None:
-            raise RuntimeError("Secure tunnel output is unavailable.")
-        deadline = time.monotonic() + 50
-        public_url = ""
-        recent_lines: list[str] = []
-        while time.monotonic() < deadline:
-            line = process.stdout.readline()
-            if not line and process.poll() is not None:
-                break
-            if line:
-                recent_lines.append(line.strip())
-                recent_lines = recent_lines[-8:]
-            match = PUBLIC_URL_PATTERN.search(line)
-            if match:
-                public_url = match.group(0)
-            if public_url and "Registered tunnel connection" in line:
-                return public_url
-        details = " | ".join(recent_lines)
-        raise RuntimeError(f"The secure HTTPS link could not be created. {details}")
-
-    @staticmethod
-    def _wait_for_public_dns(url: str, process: subprocess.Popen[str]) -> None:
-        hostname = urlparse(url).hostname
-        if not hostname:
-            raise RuntimeError("The secure tunnel returned an invalid address.")
-        deadline = time.monotonic() + 35
-        last_error: OSError | None = None
-        while time.monotonic() < deadline:
-            if process.poll() is not None:
-                raise RuntimeError("The secure tunnel stopped before its address became ready.")
-            try:
-                socket.getaddrinfo(hostname, 443, type=socket.SOCK_STREAM)
-                return
-            except OSError as error:
-                last_error = error
-                time.sleep(0.5)
-        raise RuntimeError(f"The secure tunnel address is not reachable yet: {last_error}")
-
-    @staticmethod
-    def _find_cloudflared() -> Path:
-        override = os.environ.get("PRIVACY_GATE_CLOUDFLARED")
-        candidates: list[Path] = []
-        if override:
-            candidates.append(Path(override))
-        if getattr(sys, "frozen", False):
-            candidates.append(Path(sys.executable).with_name("cloudflared.exe"))
-        discovered = shutil.which("cloudflared")
-        if discovered:
-            candidates.append(Path(discovered))
-        for variable in ("ProgramFiles", "ProgramFiles(x86)"):
-            root = os.environ.get(variable)
-            if root:
-                candidates.append(Path(root) / "cloudflared" / "cloudflared.exe")
-        for candidate in candidates:
-            if candidate.is_file():
-                return candidate
-        raise FileNotFoundError(
-            "The secure-link component is missing. Reinstall Privacy Gate to restore cloudflared.exe."
-        )
-
-    @staticmethod
-    def _popen(command: list[str], *, merge_output: bool = False) -> subprocess.Popen[str]:
-        startupinfo = None
-        creationflags = 0
-        if os.name == "nt":
-            creationflags = subprocess.CREATE_NO_WINDOW
+    def _popen_server(command: list[str]) -> subprocess.Popen[str]:
+        creationflags = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
         return subprocess.Popen(
             command,
             stdin=subprocess.DEVNULL,
-            stdout=subprocess.PIPE if merge_output else subprocess.DEVNULL,
-            stderr=subprocess.STDOUT if merge_output else subprocess.DEVNULL,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            startupinfo=startupinfo,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
             creationflags=creationflags,
         )

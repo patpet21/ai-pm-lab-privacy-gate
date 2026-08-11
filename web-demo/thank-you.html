@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex">
+  <title>Thank you — AI PM LAB Privacy Gate</title>
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-EXTG3NF91E"></script>
+  <script src="analytics.js"></script>
+  <link rel="stylesheet" href="styles.css">
+  <style>
+    .thanks-hero{padding:80px clamp(24px,7vw,110px);background:radial-gradient(circle at 85% 15%,rgba(11,138,145,.25),transparent 30%),linear-gradient(135deg,#071f36,#0d3c56);color:#fff;text-align:center}.thanks-hero img{width:88px;height:88px;object-fit:contain}.thanks-hero h1{font-size:clamp(42px,6vw,72px);margin:18px 0 12px}.thanks-hero p{max-width:720px;margin:0 auto 28px;color:#cfdae3;font-size:18px;line-height:1.6}.thanks-actions{display:flex;justify-content:center;gap:12px;flex-wrap:wrap}.resource-section,.consult-section{padding:75px clamp(24px,7vw,110px)}.resource-section{text-align:center}.resource-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;max-width:1080px;margin:35px auto 0}.resource-grid article{display:grid;gap:12px;text-align:left;background:#fff;border:1px solid var(--line);border-radius:15px;padding:25px}.resource-grid p{color:var(--muted);line-height:1.55}.consult-section{display:grid;grid-template-columns:.8fr 1.2fr;gap:70px;background:#e8f1f2}.consult-section>div>p{color:var(--muted);line-height:1.65}.consult-form{display:grid;grid-template-columns:1fr 1fr;gap:16px;background:#fff;border:1px solid var(--line);border-radius:18px;padding:28px}.consult-form label{display:grid;gap:7px;font-size:12px;font-weight:800}.consult-form input,.consult-form select,.consult-form textarea{width:100%;border:1px solid #bdcbd4;border-radius:8px;padding:12px;font:14px Inter,Segoe UI,Arial,sans-serif}.consult-form textarea{min-height:130px}.consult-form .wide{grid-column:1/-1}@media(max-width:850px){.resource-grid,.consult-section{grid-template-columns:1fr}}@media(max-width:600px){.consult-form{grid-template-columns:1fr}.consult-form>*{grid-column:1}}
+  </style>
+</head>
+<body>
+  <header class="topbar"><a class="brand" href="index.html"><img src="assets/privacy-gate-icon.png" alt="AI PM LAB Privacy Gate logo"><span><strong>AI PM LAB</strong><small>PRIVACY GATE</small></span></a><nav><a href="index.html">Home</a><a href="index.html#download">Download</a><a href="index.html#guide">Guide</a><a href="#consult">Consulting</a></nav></header>
+  <main>
+    <section class="thanks-hero"><img src="assets/privacy-gate-icon.png" alt=""><p class="eyebrow">YOU'RE ON THE LIST</p><h1>Thank you.</h1><p>We’ll send useful Privacy Gate release news and workflow ideas—not customer data, noise, or daily sales emails.</p><div class="thanks-actions"><a class="button primary" href="index.html">Return to home</a><a class="button secondary" href="index.html#download">Download Privacy Gate</a></div></section>
+    <section class="resource-section"><p class="eyebrow">KEEP MOVING</p><h2>Your Privacy Gate resources</h2><div class="resource-grid">
+      <article><span class="platform-status">WINDOWS</span><h3>Download 0.4.0</h3><p>Install the full local Presidio engine, protected library, PDF workflow, and reversible restore.</p><a class="button primary" href="https://github.com/patpet21/ai-pm-lab-privacy-gate-downloads/releases/download/v0.4.0/AI_PM_LAB_Privacy_Gate_Setup_0.4.0.exe">Download .exe</a></article>
+      <article><span class="platform-status">PDF GUIDE</span><h3>Follow the complete workflow</h3><p>Learn how to protect, review, save, use AI, and restore approved results locally.</p><a class="button secondary" href="https://drive.google.com/uc?export=download&amp;id=1ncGskJP2y1WKu7D0BIp1qXXeYp2SzE-c">Download guide</a></article>
+      <article><span class="platform-status">OPEN SOURCE</span><h3>Inspect releases</h3><p>Review source code, release notes, checksums, privacy policy, and build evidence.</p><a class="button secondary" href="https://github.com/patpet21/ai-pm-lab-privacy-gate" target="_blank" rel="noopener noreferrer">Open GitHub</a></article>
+    </div></section>
+    <section class="consult-section" id="consult"><div><p class="eyebrow">FROM TOOL TO WORKFLOW</p><h2>Need more than the free app?</h2><p>We can design local n8n automations, protected AI workflows, MCP connectivity, document intake, email flows, and real-estate operations tailored to your business.</p><p><strong>The core app remains free.</strong> Consulting is for teams that want help connecting the pieces safely and productively.</p></div>
+      <form class="consult-form" id="thankyou-contact-form" action="https://formspree.io/f/mkodolrn" method="POST">
+        <input type="hidden" name="_subject" value="Privacy Gate workflow consultation request"><input type="hidden" name="form_type" value="consultation"><input type="hidden" name="source" value="Privacy Gate thank-you page">
+        <label>Name<input type="text" name="name" autocomplete="name" required></label><label>Email<input type="email" name="email" autocomplete="email" required></label>
+        <label>Company / role<input type="text" name="company_role" autocomplete="organization"></label><label>Workflow<select name="interest" required><option value="" selected disabled>Choose one</option><option>Local automation / n8n</option><option>ChatGPT / Claude MCP</option><option>Document or email workflow</option><option>Custom real-estate operations</option><option>Other consultation</option></select></label>
+        <label class="wide">What would you like to build?<textarea name="message" required placeholder="Describe the result you want. Do not include sensitive or customer information."></textarea></label>
+        <label class="honeypot" aria-hidden="true">Leave empty<input type="text" name="_gotcha" tabindex="-1" autocomplete="off"></label><p class="form-privacy wide">Processed by Formspree. Do not submit confidential documents or personal customer data.</p><div class="wide form-submit"><button class="button primary" type="submit">Request a workflow consultation</button><p id="thankyou-form-status" class="form-status" role="status" aria-live="polite"></p></div>
+      </form>
+    </section>
+  </main>
+  <footer><span>AI PM LAB Privacy Gate · by Trigosat Consulting</span><div><a href="index.html">Home</a><a href="mailto:peter@propertydex.xyz">peter@propertydex.xyz</a><a href="https://www.linkedin.com/in/pietro-forestieri/">LinkedIn</a></div></footer>
+  <script>
+    const form=document.querySelector('#thankyou-contact-form'),status=document.querySelector('#thankyou-form-status');form.addEventListener('submit',async(e)=>{e.preventDefault();const b=form.querySelector('button');b.disabled=true;b.textContent='Sending...';try{const r=await fetch(form.action,{method:'POST',body:new FormData(form),headers:{Accept:'application/json'}});if(!r.ok)throw new Error();form.reset();status.textContent='Thank you. We received your request.';status.className='form-status success'}catch{status.textContent='Could not send. Email peter@propertydex.xyz.';status.className='form-status error'}finally{b.disabled=false;b.textContent='Request a workflow consultation'}});
+  </script>
+</body>
+</html>

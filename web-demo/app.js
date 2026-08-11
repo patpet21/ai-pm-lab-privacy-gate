@@ -143,3 +143,30 @@ contactForm.addEventListener('submit', async (event) => {
     submitButton.textContent = 'Send message';
   }
 });
+
+const newsletterForm = document.querySelector('#newsletter-form');
+const newsletterStatus = document.querySelector('#newsletter-status');
+
+newsletterForm?.addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const submitButton = newsletterForm.querySelector('button[type="submit"]');
+  submitButton.disabled = true;
+  submitButton.textContent = 'Subscribing...';
+  newsletterStatus.textContent = '';
+  newsletterStatus.className = 'form-status';
+
+  try {
+    const response = await fetch(newsletterForm.action, {
+      method: 'POST',
+      body: new FormData(newsletterForm),
+      headers: {Accept: 'application/json'}
+    });
+    if (!response.ok) throw new Error('Newsletter submission failed');
+    window.location.assign('thank-you.html?source=updates');
+  } catch (error) {
+    newsletterStatus.textContent = 'Signup failed. You can email peter@propertydex.xyz.';
+    newsletterStatus.classList.add('error');
+    submitButton.disabled = false;
+    submitButton.textContent = 'Send me updates';
+  }
+});

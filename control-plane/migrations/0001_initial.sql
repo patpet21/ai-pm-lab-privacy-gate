@@ -1,0 +1,6 @@
+CREATE TABLE enrollment_sessions (session_id TEXT PRIMARY KEY, installation_id TEXT NOT NULL, session_secret_hash TEXT NOT NULL, activation_code_hash TEXT NOT NULL, device_public_jwk TEXT NOT NULL, state TEXT NOT NULL, expires_at INTEGER NOT NULL, created_at INTEGER NOT NULL);
+CREATE TABLE devices (installation_id TEXT PRIMARY KEY, device_public_jwk TEXT NOT NULL, tunnel_id TEXT NOT NULL UNIQUE, hostname TEXT NOT NULL UNIQUE, credential_version INTEGER NOT NULL DEFAULT 1, status TEXT NOT NULL DEFAULT 'active', created_at INTEGER NOT NULL, last_seen_at INTEGER);
+CREATE TABLE request_nonces (installation_id TEXT NOT NULL, nonce TEXT NOT NULL, expires_at INTEGER NOT NULL, PRIMARY KEY (installation_id, nonce));
+CREATE TABLE pairings (pairing_id TEXT PRIMARY KEY, installation_id TEXT NOT NULL, pairing_code_hash TEXT NOT NULL UNIQUE, browser_secret_hash TEXT NOT NULL, client_id TEXT NOT NULL, redirect_uri TEXT NOT NULL, state_parameter TEXT, resource TEXT NOT NULL, scope TEXT NOT NULL, code_challenge TEXT NOT NULL, status TEXT NOT NULL, auth_code_hash TEXT, auth_code_delivery TEXT, expires_at INTEGER NOT NULL, created_at INTEGER NOT NULL, FOREIGN KEY (installation_id) REFERENCES devices(installation_id));
+CREATE INDEX pairings_installation_idx ON pairings(installation_id, status);
+CREATE INDEX enrollment_expiry_idx ON enrollment_sessions(expires_at);

@@ -93,8 +93,10 @@ def main() -> None:
             status = manager.status
             if status.state != "online":
                 raise RuntimeError(status.error or f"Unexpected state: {status.state}")
-            identity = manager.identity_store.load_or_create()
-            local_url = f"http://127.0.0.1:{status.local_port}{identity.mcp_path}"
+            local_url = (
+                f"http://127.0.0.1:{status.local_port}"
+                f"{manager.identity_store.dev_mcp_path()}"
+            )
             print(f"Local HTTP MCP URL: {local_url}")
             probe_initialize(local_url)
             asyncio.run(exercise(local_url, document_id))
