@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import ssl
 from dataclasses import dataclass
 from typing import Protocol
 from urllib.parse import urlsplit
 
 import jwt
+import truststore
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
@@ -45,7 +47,12 @@ class JwtAccessTokenValidator:
 
     def __init__(self, configuration: OAuthResourceConfiguration) -> None:
         self.configuration = configuration
-        self.jwks = jwt.PyJWKClient(configuration.jwks_url, cache_keys=True)
+        self.jwks = jwt.PyJWKClient(
+            configuration.jwks_url,
+            cache_keys=True,
+            headers={"User-Agent": "AI-PM-LAB-Privacy-Gate/0.4"},
+            ssl_context=truststore.SSLContext(ssl.PROTOCOL_TLS_CLIENT),
+        )
 
     def validate(self, token: str, required_scope: str) -> dict[str, object]:
         signing_key = self.jwks.get_signing_key_from_jwt(token)
