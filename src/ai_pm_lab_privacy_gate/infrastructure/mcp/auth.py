@@ -12,7 +12,7 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 
 
-REQUIRED_SCOPE = "protected:read"
+REQUIRED_SCOPE = "email"
 
 
 @dataclass(frozen=True)
@@ -20,6 +20,8 @@ class OAuthResourceConfiguration:
     resource: str
     issuer: str
     jwks_url: str
+    token_audience: str
+    expected_subject: str
     required_scope: str = REQUIRED_SCOPE
 
     @property
@@ -27,7 +29,7 @@ class OAuthResourceConfiguration:
         return {
             "resource": self.resource,
             "authorization_servers": [self.issuer],
-            "scopes_supported": ["protected:metadata", "protected:read"],
+            "scopes_supported": ["email"],
             "resource_documentation": "https://privacygate.propertydex.xyz/#mcp",
         }
 
@@ -43,7 +45,7 @@ class AccessTokenValidator(Protocol):
 
 
 class JwtAccessTokenValidator:
-    """Validate short-lived asymmetric access tokens issued for this exact MCP resource."""
+    """Validate Supabase OAuth tokens and bind them to this device owner."""
 
     def __init__(self, configuration: OAuthResourceConfiguration) -> None:
         self.configuration = configuration
@@ -60,7 +62,7 @@ class JwtAccessTokenValidator:
             token,
             signing_key.key,
             algorithms=["RS256", "ES256"],
-            audience=self.configuration.resource,
+            audience=self.configuration.token_audience,
             issuer=self.configuration.issuer,
             options={"require": ["exp", "iat", "iss", "aud"]},
         )
@@ -68,6 +70,12 @@ class JwtAccessTokenValidator:
         scopes = set(raw_scopes.split()) if isinstance(raw_scopes, str) else set(raw_scopes or ())
         if required_scope not in scopes:
             raise jwt.InvalidTokenError("Required scope is missing")
+        if claims.get("sub") != self.configuration.expected_subject:
+            raise jwt.InvalidTokenError("The OAuth account does not own this Privacy Gate device")
+        if claims.get("role") != "authenticated" or claims.get("is_anonymous") is not False:
+            raise jwt.InvalidTokenError("A permanent authenticated account is required")
+        if not claims.get("client_id"):
+            raise jwt.InvalidTokenError("A third-party OAuth client token is required")
         return dict(claims)
 
 

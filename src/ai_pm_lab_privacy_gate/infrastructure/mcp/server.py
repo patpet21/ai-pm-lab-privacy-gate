@@ -185,6 +185,8 @@ def main() -> None:
     parser.add_argument("--resource", default="")
     parser.add_argument("--issuer", default="")
     parser.add_argument("--jwks-url", default="")
+    parser.add_argument("--token-audience", default="authenticated")
+    parser.add_argument("--expected-subject", default="")
     arguments = parser.parse_args()
     server = create_mcp_server()
     if arguments.transport == "stdio":
@@ -204,8 +206,8 @@ def main() -> None:
             transport_security=transport_security,
         )
         return
-    if not all((arguments.resource, arguments.issuer, arguments.jwks_url)):
-        parser.error("JWT mode requires --resource, --issuer and --jwks-url")
+    if not all((arguments.resource, arguments.issuer, arguments.jwks_url, arguments.expected_subject)):
+        parser.error("JWT mode requires resource, issuer, JWKS URL and an account owner")
     if not arguments.resource.startswith("https://"):
         parser.error("The OAuth resource must use HTTPS")
     app = server.streamable_http_app(
@@ -221,6 +223,8 @@ def main() -> None:
             resource=arguments.resource.rstrip("/"),
             issuer=arguments.issuer.rstrip("/"),
             jwks_url=arguments.jwks_url,
+            token_audience=arguments.token_audience,
+            expected_subject=arguments.expected_subject,
         ),
     )
 

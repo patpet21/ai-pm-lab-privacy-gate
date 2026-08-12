@@ -21,6 +21,9 @@ from PySide6.QtWidgets import (
 )
 
 from ai_pm_lab_privacy_gate.infrastructure.mcp.config import client_config_json, mcp_launch_spec
+from ai_pm_lab_privacy_gate.infrastructure.auth.supabase_account import (
+    SupabaseAccountClient,
+)
 from ai_pm_lab_privacy_gate.infrastructure.mcp.modes import ConnectionMode
 from ai_pm_lab_privacy_gate.infrastructure.mcp.provisioning_client import ProvisioningHttpClient
 from ai_pm_lab_privacy_gate.infrastructure.mcp.remote import RemoteMcpManager
@@ -161,6 +164,17 @@ class ConnectionsPage(QWidget):
         if self.remote_mcp is None:
             QMessageBox.critical(self, "Remote MCP unavailable", "The remote MCP manager is unavailable.")
             return
+        account_client = SupabaseAccountClient(self.remote_mcp.identity_store)
+        session = None
+        if account_client.current_user_id:
+            try:
+                session = account_client.restore_session()
+            except Exception:
+                session = None
+        if session is None:
+            session = self._mcp_account_dialog(account_client)
+        if session is None:
+            return
         identity = self.remote_mcp.identity_store.load_or_create()
         dialog = QDialog(self)
         dialog.setWindowTitle("ChatGPT & Claude connection")
@@ -183,6 +197,13 @@ class ConnectionsPage(QWidget):
             f"Protected documents available: {len(self.library.list_mcp_documents(limit=200)) if self.library else 0}"
         )
         layout.addWidget(identity_label)
+
+        account_row = QHBoxLayout()
+        account_row.addWidget(QLabel(f"MCP account: {session.email}"))
+        account_row.addStretch(1)
+        sign_out_button = QPushButton("Sign out", objectName="Secondary")
+        account_row.addWidget(sign_out_button)
+        layout.addLayout(account_row)
 
         mode_row = QHBoxLayout()
         mode_row.addWidget(QLabel("Connection mode"))
@@ -532,12 +553,116 @@ class ConnectionsPage(QWidget):
         chatgpt_button.clicked.connect(lambda: QDesktopServices.openUrl(QUrl("https://chatgpt.com/")))
         claude_button.clicked.connect(lambda: QDesktopServices.openUrl(QUrl("https://claude.ai/")))
         close_button.clicked.connect(dialog.accept)
+        def sign_out_account() -> None:
+            self.remote_mcp.stop()
+            account_client.sign_out()
+            QMessageBox.information(
+                dialog,
+                "Signed out",
+                "Remote MCP access is disconnected. Local protection, Library and Restore still work without an account.",
+            )
+            dialog.accept()
+
+        sign_out_button.clicked.connect(sign_out_account)
 
         timer = QTimer(dialog)
         timer.timeout.connect(refresh_status)
         timer.start(350)
         refresh_status()
         dialog.exec()
+
+    def _mcp_account_dialog(self, account_client: SupabaseAccountClient):
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Privacy Gate MCP account")
+        dialog.resize(520, 390)
+        layout = QVBoxLayout(dialog)
+        layout.addWidget(QLabel("Sign in to use remote MCP", objectName="PageTitle"))
+        explanation = QLabel(
+            "An account is required only for ChatGPT/Claude remote access. Privacy Gate protection, "
+            "Library and Restore remain local and work without registration. Supabase stores your account "
+            "and an anonymous device fingerprint—never documents, original PII or restore mappings.",
+            objectName="Muted",
+        )
+        explanation.setWordWrap(True)
+        layout.addWidget(explanation)
+
+        email = QLineEdit()
+        email.setPlaceholderText("Email address")
+        password = QLineEdit()
+        password.setPlaceholderText("Password (minimum 8 characters)")
+        password.setEchoMode(QLineEdit.EchoMode.Password)
+        layout.addWidget(QLabel("Email"))
+        layout.addWidget(email)
+        layout.addWidget(QLabel("Password"))
+        layout.addWidget(password)
+        status = QLabel("", objectName="Muted")
+        status.setWordWrap(True)
+        layout.addWidget(status)
+
+        actions = QHBoxLayout()
+        register_button = QPushButton("Create free account", objectName="Secondary")
+        sign_in_button = QPushButton("Sign in", objectName="Primary")
+        cancel_button = QPushButton("Not now", objectName="Secondary")
+        actions.addWidget(register_button)
+        actions.addWidget(sign_in_button)
+        actions.addStretch(1)
+        actions.addWidget(cancel_button)
+        layout.addLayout(actions)
+        result = {"session": None}
+
+        def valid_fields() -> bool:
+            if "@" not in email.text().strip():
+                status.setText("Enter a valid email address.")
+                return False
+            if len(password.text()) < 8:
+                status.setText("Use a password with at least 8 characters.")
+                return False
+            return True
+
+        def set_busy(busy: bool) -> None:
+            register_button.setEnabled(not busy)
+            sign_in_button.setEnabled(not busy)
+            cancel_button.setEnabled(not busy)
+            status.setText("Connecting securely…" if busy else status.text())
+            QApplication.processEvents()
+
+        def register() -> None:
+            if not valid_fields():
+                return
+            set_busy(True)
+            try:
+                registration = account_client.register(email.text(), password.text())
+            except Exception as error:
+                status.setText(str(error))
+                set_busy(False)
+                return
+            set_busy(False)
+            if registration.confirmation_required:
+                password.clear()
+                status.setText(
+                    "Account created. Check your email, confirm the address, then return here and sign in."
+                )
+                return
+            result["session"] = registration.session
+            dialog.accept()
+
+        def sign_in() -> None:
+            if not valid_fields():
+                return
+            set_busy(True)
+            try:
+                result["session"] = account_client.sign_in(email.text(), password.text())
+            except Exception as error:
+                status.setText(str(error))
+                set_busy(False)
+                return
+            dialog.accept()
+
+        register_button.clicked.connect(register)
+        sign_in_button.clicked.connect(sign_in)
+        cancel_button.clicked.connect(dialog.reject)
+        dialog.exec()
+        return result["session"]
 
     @staticmethod
     def _contact() -> None:

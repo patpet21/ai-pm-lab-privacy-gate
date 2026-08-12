@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex">
+  <title>Authorize Privacy Gate MCP</title>
+  <link rel="stylesheet" href="/oauth/consent/consent.css">
+</head>
+<body>
+  <main class="shell">
+    <a class="brand" href="/"><img src="/assets/privacy-gate-icon.png" alt=""><span><strong>AI PM LAB</strong><small>PRIVACY GATE</small></span></a>
+    <section class="card">
+      <p class="eyebrow">SECURE MCP AUTHORIZATION</p>
+      <h1 id="title">Authorize AI access</h1>
+      <p class="lead">Use the same free account signed in on this Privacy Gate installation.</p>
+      <div id="status" class="status" role="status">Loading authorization request…</div>
+      <div id="details" hidden>
+        <dl><div><dt>Application</dt><dd id="client-name"></dd></div><div><dt>Permission</dt><dd>Read protected Library copies while your PC and Privacy Gate are online</dd></div></dl>
+        <div class="boundary"><strong>Never exposed</strong><span>Original files, original PII, restore mappings, encryption keys and local credentials.</span></div>
+        <div class="actions"><button class="primary" id="approve" type="button">Authorize protected files</button><button class="secondary" id="deny" type="button">Cancel</button></div>
+      </div>
+      <form id="login" hidden>
+        <label>Email<input id="email" type="email" autocomplete="email" required></label>
+        <label>Password<input id="password" type="password" autocomplete="current-password" minlength="8" required></label>
+        <div class="actions"><button class="primary" type="submit">Sign in and continue</button><a class="secondary button-link" href="/#download">Get Privacy Gate</a></div>
+        <p class="help">Create the free account from the MCP window inside the desktop app, then sign in here with the same email. No email verification step is required.</p>
+      </form>
+    </section>
+    <a class="home" href="/">← Back to Privacy Gate</a>
+  </main>
+  <script type="module" src="/oauth/consent/consent.js"></script>
+</body>
+</html>

@@ -11,7 +11,7 @@ from ai_pm_lab_privacy_gate.infrastructure.mcp.auth import (
 
 class FakeValidator:
     def validate(self, token: str, required_scope: str) -> dict[str, object]:
-        if token != "valid" or required_scope != "protected:read":
+        if token != "valid" or required_scope != "email":
             raise ValueError("invalid")
         return {"sub": "connector-test", "scope": required_scope}
 
@@ -22,8 +22,10 @@ def _app() -> Starlette:
         McpOAuthMiddleware,
         configuration=OAuthResourceConfiguration(
             resource="https://mcp-pg-test.propertydex.xyz/mcp",
-            issuer="https://auth.propertydex.xyz",
-            jwks_url="https://auth.propertydex.xyz/.well-known/jwks.json",
+            issuer="https://project.supabase.co/auth/v1",
+            jwks_url="https://project.supabase.co/auth/v1/.well-known/jwks.json",
+            token_audience="authenticated",
+            expected_subject="account-owner",
         ),
         validator=FakeValidator(),
     )
@@ -49,6 +51,7 @@ def test_resource_metadata_is_public_but_mcp_requires_valid_scope() -> None:
 
     assert metadata.status_code == 200
     assert metadata.json()["resource"] == "https://mcp-pg-test.propertydex.xyz/mcp"
-    assert metadata.json()["authorization_servers"] == ["https://auth.propertydex.xyz"]
+    assert metadata.json()["authorization_servers"] == ["https://project.supabase.co/auth/v1"]
+    assert metadata.json()["scopes_supported"] == ["email"]
     assert denied.status_code == 401
     assert allowed.json() == {"ok": True}

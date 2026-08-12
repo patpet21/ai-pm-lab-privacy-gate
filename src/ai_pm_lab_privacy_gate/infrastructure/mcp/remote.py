@@ -17,6 +17,12 @@ from ai_pm_lab_privacy_gate.infrastructure.mcp.tunnels import (
     QuickTunnelProvider,
     TunnelProvider,
 )
+from ai_pm_lab_privacy_gate.infrastructure.auth.supabase_account import (
+    SUPABASE_ISSUER,
+    SUPABASE_JWKS_URL,
+    SUPABASE_TOKEN_AUDIENCE,
+    USER_ID_SECRET,
+)
 
 
 @dataclass(frozen=True)
@@ -119,15 +125,22 @@ class RemoteMcpManager:
         if configuration is None:
             raise RuntimeError("This installation has not been provisioned for a stable connection.")
         configuration.validate()
+        account_user_id = self.identity_store.secrets.get(USER_ID_SECRET)
+        if not account_user_id:
+            raise RuntimeError("Sign in to your Privacy Gate account before starting remote MCP.")
         auth_args = [
             "--auth-mode",
             "jwt",
             "--resource",
             f"https://{configuration.hostname}/mcp",
             "--issuer",
-            configuration.oauth_issuer,
+            SUPABASE_ISSUER,
             "--jwks-url",
-            configuration.oauth_jwks_url,
+            SUPABASE_JWKS_URL,
+            "--token-audience",
+            SUPABASE_TOKEN_AUDIENCE,
+            "--expected-subject",
+            account_user_id,
         ]
         return 8766, "/mcp", NamedTunnelProvider(configuration, self.provisioning_store), auth_args
 
