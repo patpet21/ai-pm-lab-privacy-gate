@@ -8,6 +8,22 @@ const authorizationId = new URLSearchParams(location.search).get("authorization_
 const status = document.querySelector("#status");
 const details = document.querySelector("#details");
 const login = document.querySelector("#login");
+const emailInput = document.querySelector("#email");
+const passwordInput = document.querySelector("#password");
+const signInButton = document.querySelector("#sign-in");
+const signUpButton = document.querySelector("#sign-up");
+
+function setBusy(busy) {
+  signInButton.disabled = busy;
+  signUpButton.disabled = busy;
+}
+
+function credentials() {
+  return {
+    email: emailInput.value.trim(),
+    password: passwordInput.value,
+  };
+}
 
 async function loadConsent() {
   if (!authorizationId) {
@@ -40,13 +56,37 @@ async function loadConsent() {
 
 login.addEventListener("submit", async (event) => {
   event.preventDefault();
+  setBusy(true);
   status.textContent = "Signing in…";
-  const { error } = await supabase.auth.signInWithPassword({
-    email: document.querySelector("#email").value.trim(),
-    password: document.querySelector("#password").value,
-  });
-  if (error) status.textContent = error.message;
-  else await loadConsent();
+  try {
+    const { error } = await supabase.auth.signInWithPassword(credentials());
+    if (error) status.textContent = error.message;
+    else await loadConsent();
+  } catch (error) {
+    status.textContent = error?.message || "Unable to sign in. Please try again.";
+  } finally {
+    setBusy(false);
+  }
+});
+
+signUpButton.addEventListener("click", async () => {
+  if (!login.reportValidity()) return;
+  setBusy(true);
+  status.textContent = "Creating your free MCP account…";
+  try {
+    const { data, error } = await supabase.auth.signUp(credentials());
+    if (error) {
+      status.textContent = error.message;
+    } else if (!data.session) {
+      status.textContent = "Account created, but no session was returned. Email confirmation must remain disabled in Privacy Gate Auth.";
+    } else {
+      await loadConsent();
+    }
+  } catch (error) {
+    status.textContent = error?.message || "Unable to create the account. Please try again.";
+  } finally {
+    setBusy(false);
+  }
 });
 
 document.querySelector("#approve").addEventListener("click", async () => {
@@ -62,4 +102,6 @@ document.querySelector("#deny").addEventListener("click", async () => {
   else location.assign(data.redirect_url);
 });
 
-loadConsent();
+loadConsent().catch((error) => {
+  status.textContent = error?.message || "Unable to load the authorization request.";
+});

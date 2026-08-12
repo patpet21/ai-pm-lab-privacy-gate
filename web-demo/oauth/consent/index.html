@@ -23,8 +23,11 @@
       <form id="login" hidden>
         <label>Email<input id="email" type="email" autocomplete="email" required></label>
         <label>Password<input id="password" type="password" autocomplete="current-password" minlength="8" required></label>
-        <div class="actions"><button class="primary" type="submit">Sign in and continue</button><a class="secondary button-link" href="/#download">Get Privacy Gate</a></div>
-        <p class="help">Create the free account from the MCP window inside the desktop app, then sign in here with the same email. No email verification step is required.</p>
+        <div class="actions">
+          <button class="primary" id="sign-in" type="submit">Sign in and continue</button>
+          <button class="secondary" id="sign-up" type="button">Create free account</button>
+        </div>
+        <p class="help">This free account is used only to authenticate remote MCP access. Local Privacy Gate features never require an account. No email verification or OTP is required.</p>
       </form>
     </section>
     <a class="home" href="/">← Back to Privacy Gate</a>
