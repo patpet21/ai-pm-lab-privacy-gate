@@ -1,0 +1,43 @@
+name: Build macOS installers
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: [".github/workflows/build-macos.yml"]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15
+            artifact: apple-silicon
+          - runner: macos-15-intel
+            artifact: intel
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install locked dependencies
+        run: |
+          python -m venv .venv
+          .venv/bin/python -m pip install --upgrade pip
+          .venv/bin/python -m pip install -r requirements-lock.txt
+          .venv/bin/python -m pip install -e . --no-deps
+      - name: Build and verify macOS DMG
+        run: bash scripts/build_macos.sh
+      - name: Upload unsigned macOS build
+        uses: actions/upload-artifact@v4
+        with:
+          name: ai-pm-lab-privacy-gate-macos-${{ matrix.artifact }}-unsigned
+          path: release/macos-*/
+          if-no-files-found: error
+          retention-days: 30

@@ -8,6 +8,7 @@ import sqlite3
 import tempfile
 import uuid
 import zipfile
+import sys
 from contextlib import closing, contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
@@ -26,7 +27,12 @@ def default_data_dir() -> Path:
     if override:
         return Path(override)
     local_app_data = os.environ.get("LOCALAPPDATA")
-    root = Path(local_app_data) if local_app_data else Path.home() / ".local" / "share"
+    if local_app_data:
+        root = Path(local_app_data)
+    elif sys.platform == "darwin":
+        root = Path.home() / "Library" / "Application Support"
+    else:
+        root = Path.home() / ".local" / "share"
     return root / "AI PM LAB Privacy Gate" / "Data"
 
 
@@ -387,7 +393,7 @@ class LibraryRepository:
                 "format": BACKUP_FORMAT,
                 "schema_version": SCHEMA_VERSION,
                 "created_at": datetime.now(timezone.utc).isoformat(),
-                "protection": "Windows DPAPI current user",
+                "protection": "Operating-system current-user protection",
             }
             archive = io.BytesIO()
             with zipfile.ZipFile(archive, "w", compression=zipfile.ZIP_DEFLATED) as bundle:

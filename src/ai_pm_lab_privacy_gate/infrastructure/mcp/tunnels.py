@@ -39,7 +39,10 @@ class CloudflaredRuntime:
         if override:
             candidates.append(Path(override))
         if getattr(sys, "frozen", False):
-            candidates.append(Path(sys.executable).with_name("cloudflared.exe"))
+            if sys.platform == "darwin":
+                candidates.append(Path(sys.executable).parents[1] / "Resources" / "cloudflared")
+            else:
+                candidates.append(Path(sys.executable).with_name("cloudflared.exe"))
         discovered = shutil.which("cloudflared")
         if discovered:
             candidates.append(Path(discovered))
@@ -51,7 +54,7 @@ class CloudflaredRuntime:
             if candidate.is_file():
                 return candidate
         raise FileNotFoundError(
-            "The secure-link component is missing. Reinstall Privacy Gate to restore cloudflared.exe."
+            "The secure-link component is missing. Reinstall Privacy Gate to restore cloudflared."
         )
 
     @staticmethod

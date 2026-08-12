@@ -5,14 +5,17 @@ import sys
 from pathlib import Path
 
 
-MCP_EXECUTABLE_NAME = "AI PM LAB Privacy Gate MCP.exe"
+MCP_EXECUTABLE_BASENAME = "AI PM LAB Privacy Gate MCP"
 
 
 def mcp_launch_spec() -> tuple[str, list[str]]:
     """Return the command and arguments for the installed or development server."""
     if getattr(sys, "frozen", False):
-        server_dir = Path(sys.executable).with_name("AI PM LAB Privacy Gate MCP")
-        return str(server_dir / MCP_EXECUTABLE_NAME), []
+        if sys.platform == "darwin":
+            server_dir = Path(sys.executable).parents[1] / "Resources" / MCP_EXECUTABLE_BASENAME
+            return str(server_dir / MCP_EXECUTABLE_BASENAME), []
+        server_dir = Path(sys.executable).with_name(MCP_EXECUTABLE_BASENAME)
+        return str(server_dir / f"{MCP_EXECUTABLE_BASENAME}.exe"), []
     return sys.executable, ["-m", "ai_pm_lab_privacy_gate.infrastructure.mcp.server"]
 
 
