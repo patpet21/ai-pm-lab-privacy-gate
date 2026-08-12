@@ -13,6 +13,7 @@ from starlette.responses import JSONResponse, Response
 
 
 REQUIRED_SCOPE = "email"
+TOKEN_CLOCK_SKEW_SECONDS = 60
 
 
 @dataclass(frozen=True)
@@ -64,6 +65,7 @@ class JwtAccessTokenValidator:
             algorithms=["RS256", "ES256"],
             audience=self.configuration.token_audience,
             issuer=self.configuration.issuer,
+            leeway=TOKEN_CLOCK_SKEW_SECONDS,
             options={"require": ["exp", "iat", "iss", "aud"]},
         )
         raw_scopes = claims.get("scope", "")
