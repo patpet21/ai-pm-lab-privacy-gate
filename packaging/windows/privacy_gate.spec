@@ -26,6 +26,9 @@ for package in (
     "pdfplumber",
     "pdfminer",
     "pypdfium2",
+    "docx",
+    "openpyxl",
+    "defusedxml",
 ):
     package_datas, package_binaries, package_hidden = collect_all(package)
     datas += package_datas
@@ -41,6 +44,9 @@ for distribution in (
     "pdfplumber",
     "pdfminer.six",
     "pypdfium2",
+    "python-docx",
+    "openpyxl",
+    "defusedxml",
 ):
     try:
         datas += copy_metadata(distribution)
