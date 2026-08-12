@@ -4,7 +4,7 @@ Windows desktop app local-first for detecting and protecting sensitive data befo
 
 ## Current customer release: 0.4.0
 
-- pasted text and PDF files with selectable text;
+- pasted text, selectable-text PDF, Word (.docx), and Excel (.xlsx) files;
 - Property Management, Realtor / Brokerage, and Projects & Renovations profiles;
 - selectable entity categories and individual findings;
 - manual sensitive-item tagging;
@@ -17,7 +17,7 @@ Windows desktop app local-first for detecting and protecting sensitive data befo
 
 No cloud service, account, telemetry, LLM, or external database is required for the core desktop workflow. The optional Remote MCP beta uses an outbound encrypted tunnel only when the user starts it. Reversible mappings are encrypted with Windows DPAPI for the current Windows user. The SQLite library lives outside the installation folder under `%LOCALAPPDATA%\AI PM LAB Privacy Gate\Data`, so installing an update does not overwrite customer documents.
 
-Version 0.4.0 can generate a layout-preserving protected PDF with secure overlays as well as a protected text view. OCR for image-only PDFs is not included.
+Version 0.4.0 can generate a layout-preserving protected PDF, a protected Word copy retaining paragraphs, tables, headers and formatting, and a protected Excel copy retaining worksheets, cell styles and comments. OCR for image-only PDFs is not included.
 
 ## Protection and MCP in 0.4.0
 
@@ -67,7 +67,7 @@ Release builds install the exact dependency versions in `requirements-lock.txt`,
 ## One repository, two deliverables
 
 - Netlify publishes only `web-demo/` as the public website and text-only demo.
-- The Windows application is built from `src/`, `resources/` and `packaging/`.
+- The Windows and macOS applications are built from `src/`, `resources/` and `packaging/`.
 - Installers and generated build folders are release artifacts and are not committed to Git.
 - Customer library data stays outside the repository and installation directory in `%LOCALAPPDATA%`.
 
