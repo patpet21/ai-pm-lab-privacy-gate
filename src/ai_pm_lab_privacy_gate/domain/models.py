@@ -9,6 +9,7 @@ from pathlib import Path
 class PageContent:
     page_number: int
     text: str
+    location: str = \"\"
 
 
 @dataclass(frozen=True, slots=True)
