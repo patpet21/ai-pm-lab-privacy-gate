@@ -12,7 +12,7 @@ hiddenimports = []
 for package in (
     "presidio_analyzer", "presidio_anonymizer", "spacy", "spacy_legacy",
     "spacy_loggers", "thinc", "srsly", "tldextract", "en_core_web_sm",
-    "reportlab", "pdfplumber", "pdfminer", "pypdfium2",
+    "reportlab", "pdfplumber", "pdfminer", "pypdfium2", "docx", "openpyxl", "defusedxml",
 ):
     package_datas, package_binaries, package_hidden = collect_all(package)
     datas += package_datas
@@ -21,7 +21,7 @@ for package in (
 
 for distribution in (
     "presidio-analyzer", "presidio-anonymizer", "spacy", "en-core-web-sm",
-    "reportlab", "pdfplumber", "pdfminer.six", "pypdfium2",
+    "reportlab", "pdfplumber", "pdfminer.six", "pypdfium2", "python-docx", "openpyxl", "defusedxml",
 ):
     try:
         datas += copy_metadata(distribution)
