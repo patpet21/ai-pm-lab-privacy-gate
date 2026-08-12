@@ -136,7 +136,9 @@ class ProtectionPage(QWidget):
         self.setup_toggle.setChecked(True)
         setup_bar.addWidget(self.setup_toggle)
         setup_bar.addStretch(1)
-        setup_bar.addWidget(QLabel("Load text or PDF, choose a profile, then scan.", objectName="Muted"))
+        setup_bar.addWidget(
+            QLabel("Load text, PDF, Word or Excel, choose a profile, then scan.", objectName="Muted")
+        )
         root.addLayout(setup_bar)
 
         self.setup_card = QFrame(objectName="Card")
@@ -231,15 +233,18 @@ class ProtectionPage(QWidget):
         pdf_row = QHBoxLayout()
         self.pdf_path = QLineEdit()
         self.pdf_path.setReadOnly(True)
-        self.pdf_path.setPlaceholderText("Choose a PDF with selectable text")
-        self.browse_button = QPushButton("Browse PDF", objectName="Secondary")
+        self.pdf_path.setPlaceholderText("Choose PDF, Word (.docx) or Excel (.xlsx)")
+        self.browse_button = QPushButton("Browse document", objectName="Secondary")
         pdf_row.addWidget(self.pdf_path, 1)
         pdf_row.addWidget(self.browse_button)
         pdf_layout.addLayout(pdf_row)
         pdf_layout.addWidget(
-            QLabel("Image-only PDFs require OCR, which is planned for a later build.", objectName="Muted")
+            QLabel(
+                "PDFs need selectable text. Word paragraphs/tables and Excel cells/comments are processed locally.",
+                objectName="Muted",
+            )
         )
-        self.input_tabs.addTab(pdf_tab, "PDF file")
+        self.input_tabs.addTab(pdf_tab, "Document file")
         setup.addWidget(self.input_tabs)
 
         scan_row = QHBoxLayout()
@@ -308,7 +313,7 @@ class ProtectionPage(QWidget):
         findings_layout.addLayout(filter_row)
         self.findings_table = QTableWidget(0, 5)
         self.findings_table.setHorizontalHeaderLabels(
-            ["Protect", "Type", "Value", "Page", "Confidence"]
+            ["Protect", "Type", "Value", "Location", "Confidence"]
         )
         self.findings_table.setAlternatingRowColors(True)
         self.findings_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
@@ -415,7 +420,7 @@ class ProtectionPage(QWidget):
         actions.addWidget(
             self._info_button(
                 "Protected result actions",
-                "Copy keeps the result in memory. Save stores it locally. Download creates a protected TXT or PDF.",
+                "Copy keeps the result in memory. Save stores it locally. Download creates a protected TXT, PDF, DOCX or XLSX.",
             )
         )
         self.copy_button = QPushButton("Copy protected text", objectName="Secondary")
@@ -423,7 +428,9 @@ class ProtectionPage(QWidget):
         self.save_copy_button = QPushButton("Save + Copy", objectName="Primary")
         self.save_copy_button.setToolTip("Save to the encrypted local library and copy the protected text.")
         self.save_download_button = QPushButton("Save + Download", objectName="Gold")
-        self.save_download_button.setToolTip("Save locally and export the protected TXT or layout-preserving PDF.")
+        self.save_download_button.setToolTip(
+            "Save locally and export the protected TXT, PDF, Word or Excel copy."
+        )
         self.ai_button = QToolButton()
         self.ai_button.setText("Open with AI")
         self.ai_button.setObjectName("SecondaryTool")
@@ -491,7 +498,7 @@ class ProtectionPage(QWidget):
         self.scope_combo.currentIndexChanged.connect(self._update_scope_description)
         self.mode_combo.currentIndexChanged.connect(self._refresh_preview)
         self.mode_combo.currentIndexChanged.connect(self._update_mode_help)
-        self.browse_button.clicked.connect(self._browse_pdf)
+        self.browse_button.clicked.connect(self._browse_document)
         self.scan_button.clicked.connect(self._start_analysis)
         self.clear_button.clicked.connect(self.clear)
         self.findings_table.itemChanged.connect(self._refresh_preview)
@@ -541,8 +548,13 @@ class ProtectionPage(QWidget):
         }
         self.mode_help.setText(messages.get(self.mode_combo.currentData(), ""))
 
-    def _browse_pdf(self) -> None:
-        path, _ = QFileDialog.getOpenFileName(self, "Choose PDF", "", "PDF files (*.pdf)")
+    def _browse_document(self) -> None:
+        path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Choose a document",
+            "",
+            "Supported documents (*.pdf *.docx *.xlsx);;PDF files (*.pdf);;Word files (*.docx);;Excel files (*.xlsx)",
+        )
         if path:
             self.pdf_path.setText(path)
             self.input_tabs.setCurrentIndex(1)
@@ -556,16 +568,24 @@ class ProtectionPage(QWidget):
         )
         tab = self.input_tabs.currentIndex()
         text = self.text_input.toPlainText().strip()
-        pdf_path = self.pdf_path.text().strip()
+        document_path = self.pdf_path.text().strip()
         if tab == 0 and not text:
             QMessageBox.information(self, "Nothing to scan", "Paste text before starting the scan.")
             return
-        if tab == 1 and not pdf_path:
-            QMessageBox.information(self, "No PDF selected", "Choose a PDF before starting the scan.")
+        if tab == 1 and not document_path:
+            QMessageBox.information(
+                self,
+                "No document selected",
+                "Choose a PDF, Word or Excel document before scanning.",
+            )
             return
 
         def task():
-            document = self.service.document_from_text(text) if tab == 0 else self.service.document_from_pdf(pdf_path)
+            document = (
+                self.service.document_from_text(text)
+                if tab == 0
+                else self.service.document_from_file(document_path)
+            )
             return document, self.service.analyze(document, profile)
 
         self._set_busy(True)
@@ -597,8 +617,18 @@ class ProtectionPage(QWidget):
             value = QTableWidgetItem(finding.text)
             value.setToolTip(finding.context)
             self.findings_table.setItem(row, 2, value)
-            page = str(finding.page_number) if self.current_document and self.current_document.source_kind == "pdf" else "Text"
-            self.findings_table.setItem(row, 3, QTableWidgetItem(page))
+            if self.current_document and self.current_document.source_kind == "pdf":
+                location = f"Page {finding.page_number}"
+            elif self.current_document and self.current_document.source_kind in {"docx", "xlsx"}:
+                source_page = next(
+                    page
+                    for page in self.current_document.pages
+                    if page.page_number == finding.page_number
+                )
+                location = source_page.location
+            else:
+                location = "Text"
+            self.findings_table.setItem(row, 3, QTableWidgetItem(location))
             confidence = QTableWidgetItem(f"{finding.score:.0%}")
             if finding.score < 0.6:
                 confidence.setForeground(QColor("#B7791F"))
@@ -609,9 +639,16 @@ class ProtectionPage(QWidget):
         pages = len(self.current_document.pages) if self.current_document else 0
         self.findings_metric.setText(f"{len(self.current_findings)} findings")
         self.types_metric.setText(f"{types} categories")
-        self.pages_metric.setText(f"{pages} page{'s' if pages != 1 else ''}")
+        unit = (
+            "page"
+            if self.current_document and self.current_document.source_kind == "pdf"
+            else "segment"
+        )
+        self.pages_metric.setText(f"{pages} {unit}{'s' if pages != 1 else ''}")
         if self.current_document and self.current_document.source_path:
-            self.source_metric.setText(f"PDF  |  {self.current_document.source_path.name}")
+            self.source_metric.setText(
+                f"{self.current_document.source_kind.upper()}  |  {self.current_document.source_path.name}"
+            )
             self.source_metric.setToolTip(str(self.current_document.source_path))
         else:
             self.source_metric.setText("Pasted text")
@@ -670,9 +707,13 @@ class ProtectionPage(QWidget):
     def _finding_selected(self, row: int, _column: int) -> None:
         if not self.current_document or self.current_document.source_kind != "pdf":
             return
-        item = self.findings_table.item(row, 3)
-        if item and item.text().isdigit():
-            self._set_pdf_page(max(0, int(item.text()) - 1))
+        finding_id = self.findings_table.item(row, 0).data(Qt.ItemDataRole.UserRole)
+        finding = next(
+            (item for item in self.current_findings if item.finding_id == finding_id),
+            None,
+        )
+        if finding is not None:
+            self._set_pdf_page(max(0, finding.page_number - 1))
             self.preview_tabs.setCurrentIndex(1)
 
     def _selected_findings(self) -> tuple[Finding, ...]:
@@ -943,6 +984,22 @@ class ProtectionPage(QWidget):
                 self.service.save_protected_pdf(
                     self.current_result,
                     path if path.lower().endswith(".pdf") else path + ".pdf",
+                    source_document=self.current_document,
+                )
+        elif self.current_document.source_kind in {"docx", "xlsx"}:
+            suffix = f".{self.current_document.source_kind}"
+            label = "Word" if suffix == ".docx" else "Excel"
+            suggested = f"{document.title}_protected{suffix}"
+            path, _ = QFileDialog.getSaveFileName(
+                self,
+                f"Save protected {label} document",
+                suggested,
+                f"{label} files (*{suffix})",
+            )
+            if path:
+                self.service.save_protected_office(
+                    self.current_result,
+                    path if path.lower().endswith(suffix) else path + suffix,
                     source_document=self.current_document,
                 )
         else:
