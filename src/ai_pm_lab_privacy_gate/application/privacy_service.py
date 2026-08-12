@@ -13,6 +13,7 @@ from ai_pm_lab_privacy_gate.domain.models import (
     ReplacementMapping,
 )
 from ai_pm_lab_privacy_gate.domain.profiles import PrivacyProfile
+from ai_pm_lab_privacy_gate.infrastructure.documents.office_service import OfficeDocumentService
 from ai_pm_lab_privacy_gate.infrastructure.documents.pdf_service import PdfDocumentService
 from ai_pm_lab_privacy_gate.infrastructure.pii.presidio_engine import PresidioPrivacyEngine
 
@@ -24,9 +25,11 @@ class PrivacyGateService:
         self,
         pii_engine: PresidioPrivacyEngine | None = None,
         pdf_service: PdfDocumentService | None = None,
+        office_service: OfficeDocumentService | None = None,
     ) -> None:
         self._pii = pii_engine or PresidioPrivacyEngine()
         self._pdf = pdf_service or PdfDocumentService()
+        self._office = office_service or OfficeDocumentService()
 
     def document_from_text(self, text: str) -> AnalysisDocument:
         return AnalysisDocument(
@@ -36,6 +39,16 @@ class PrivacyGateService:
 
     def document_from_pdf(self, path: str | Path) -> AnalysisDocument:
         return self._pdf.extract(path)
+
+    def document_from_file(self, path: str | Path) -> AnalysisDocument:
+        source = Path(path)
+        if source.suffix.lower() == ".pdf":
+            return self.document_from_pdf(source)
+        if source.suffix.lower() in {".docx", ".xlsx"}:
+            return self._office.extract(source)
+        raise ValueError(
+            "Supported document formats are PDF, Word (.docx) and Excel (.xlsx)."
+        )
 
     def analyze(self, document: AnalysisDocument, profile: PrivacyProfile) -> tuple[Finding, ...]:
         if not document.has_text:
@@ -113,7 +126,13 @@ class PrivacyGateService:
                 source_cursor = item.end
 
             chunks.append(page.text[source_cursor:])
-            protected_pages.append(PageContent(page_number=page.page_number, text="".join(chunks)))
+            protected_pages.append(
+                PageContent(
+                    page_number=page.page_number,
+                    text="".join(chunks),
+                    location=page.location,
+                )
+            )
         return ProtectionResult(
             protected_pages=tuple(protected_pages),
             applied_findings=selected,
@@ -187,3 +206,11 @@ class PrivacyGateService:
         ):
             return self._pdf.write_layout_preserving(source_document.source_path, result, path)
         return self._pdf.write_protected(result.protected_pages, path)
+
+    def save_protected_office(
+        self,
+        result: ProtectionResult,
+        path: str | Path,
+        source_document: AnalysisDocument,
+    ) -> Path:
+        return self._office.write_protected(source_document, result, path)
