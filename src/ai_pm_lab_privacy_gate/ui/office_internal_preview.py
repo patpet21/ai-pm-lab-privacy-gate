@@ -67,6 +67,19 @@ class OfficeInternalPreview(QWidget):
             return True
         return False
 
+    def synchronize_with(self, other: "OfficeInternalPreview") -> None:
+        """Keep matching Word/Excel preview panes aligned while scrolling."""
+        for index in range(min(self.tabs.count(), other.tabs.count())):
+            source = self.tabs.widget(index)
+            target = other.tabs.widget(index)
+            for accessor in ("horizontalScrollBar", "verticalScrollBar"):
+                source_bar = getattr(source, accessor, lambda: None)()
+                target_bar = getattr(target, accessor, lambda: None)()
+                if source_bar is None or target_bar is None:
+                    continue
+                source_bar.valueChanged.connect(target_bar.setValue)
+                target_bar.valueChanged.connect(source_bar.setValue)
+
     def load(self, path: str | Path, protected: bool = False) -> None:
         source = Path(path)
         self.clear()

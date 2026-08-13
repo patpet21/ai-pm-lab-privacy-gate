@@ -98,8 +98,8 @@ def main() -> int:
         raise RuntimeError("Unable to save PDF comparison screenshot")
     page.focus_preview_button.setChecked(True)
     app.processEvents()
-    if not page.findings_card.isVisible() or page.setup_card.isVisible():
-        raise RuntimeError("Review studio did not preserve findings while hiding setup")
+    if page.findings_card.isVisible() or page.setup_card.isVisible():
+        raise RuntimeError("Full document view did not hide the review panels")
     if not window.grab().save(str(focus_output)):
         raise RuntimeError("Unable to save focused preview screenshot")
     page.focus_preview_button.setChecked(False)
