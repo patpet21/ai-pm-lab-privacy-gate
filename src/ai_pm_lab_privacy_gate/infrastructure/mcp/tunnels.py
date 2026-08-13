@@ -58,13 +58,18 @@ class CloudflaredRuntime:
         )
 
     @staticmethod
-    def popen(command: list[str], *, environment: dict[str, str] | None = None) -> subprocess.Popen[str]:
+    def popen(
+        command: list[str],
+        *,
+        environment: dict[str, str] | None = None,
+        capture_output: bool = True,
+    ) -> subprocess.Popen[str]:
         creationflags = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
         return subprocess.Popen(
             command,
             stdin=subprocess.DEVNULL,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
+            stdout=subprocess.PIPE if capture_output else subprocess.DEVNULL,
+            stderr=subprocess.STDOUT if capture_output else subprocess.DEVNULL,
             text=True,
             encoding="utf-8",
             errors="replace",
@@ -161,13 +166,15 @@ class NamedTunnelProvider:
                 "run",
             ],
             environment=environment,
+            # A long-running named tunnel must not write into an unread pipe:
+            # once the OS buffer fills cloudflared would otherwise stall.
+            capture_output=False,
         )
         started = time.monotonic()
         deadline = started + 12
         while time.monotonic() < deadline:
             if process.poll() is not None:
-                details = process.stdout.read()[-1000:] if process.stdout else ""
-                raise RuntimeError(f"The production tunnel could not start. {details}")
+                raise RuntimeError("The production tunnel could not start.")
             time.sleep(0.2)
             if time.monotonic() - started >= 2:
                 return TunnelSession(process=process, public_url=self.configuration.mcp_url)

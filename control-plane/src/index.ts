@@ -2,6 +2,7 @@ interface Env {
   DB: D1Database;
   BASE_URL: string;
   MCP_DOMAIN: string;
+  SUPABASE_ISSUER: string;
   CF_ACCOUNT_ID: string;
   CF_ZONE_ID: string;
   CF_API_TOKEN: string;
@@ -55,6 +56,23 @@ function installationFromResource(resource: string, domain: string): string | nu
     const supportedPath = url.pathname === "/" || url.pathname === "/mcp";
     return url.protocol === "https:" && supportedPath ? match?.[1] ?? null : null;
   } catch { return null; }
+}
+
+async function protectedResourceMetadata(request: Request, env: Env): Promise<Response> {
+  const url = new URL(request.url);
+  const resource = `https://${url.hostname}/mcp`;
+  const installationId = installationFromResource(resource, env.MCP_DOMAIN);
+  if (!installationId) return json({error:"not_found"},404);
+  const device: any = await env.DB.prepare(
+    "SELECT status FROM devices WHERE installation_id = ?"
+  ).bind(installationId).first();
+  if (!device || device.status !== "active") return json({error:"not_found"},404);
+  return json({
+    resource,
+    authorization_servers:[env.SUPABASE_ISSUER],
+    scopes_supported:["email"],
+    bearer_methods_supported:["header"]
+  },200,{"cache-control":"public, max-age=30","access-control-allow-origin":"*"});
 }
 
 async function cf(env: Env, path: string, init: RequestInit): Promise<any> {
@@ -142,7 +160,7 @@ async function pollEnrollment(request: Request, env: Env, sessionId: string): Pr
   if (row.state === "ready") {
     const device:any = await env.DB.prepare("SELECT * FROM devices WHERE installation_id = ? AND status = 'active'").bind(row.installation_id).first();
     if (!device) return json({state:"revoked"},410);
-    return json({state:"ready",configuration:{installation_id:row.installation_id,tunnel_id:device.tunnel_id,hostname:device.hostname,oauth_issuer:env.BASE_URL,oauth_jwks_url:`${env.BASE_URL}/.well-known/jwks.json`,credential_version:device.credential_version,state:"ready"},tunnel_token:await tunnelToken(env,device.tunnel_id)});
+    return json({state:"ready",configuration:{installation_id:row.installation_id,tunnel_id:device.tunnel_id,hostname:device.hostname,oauth_issuer:env.SUPABASE_ISSUER,oauth_jwks_url:`${env.SUPABASE_ISSUER}/.well-known/jwks.json`,credential_version:device.credential_version,state:"ready"},tunnel_token:await tunnelToken(env,device.tunnel_id)});
   }
   if (row.state !== "approved") return json({state:row.state});
   const lock = await env.DB.prepare("UPDATE enrollment_sessions SET state = 'provisioning' WHERE session_id = ? AND state = 'approved'").bind(sessionId).run();
@@ -155,7 +173,7 @@ async function pollEnrollment(request: Request, env: Env, sessionId: string): Pr
       ? env.DB.prepare("UPDATE devices SET device_public_jwk = ?, tunnel_id = ?, hostname = ?, credential_version = ?, status = 'active', last_seen_at = ? WHERE installation_id = ?").bind(row.device_public_jwk,provisioned.tunnelId,provisioned.hostname,credentialVersion,now,row.installation_id)
       : env.DB.prepare("INSERT INTO devices(installation_id,device_public_jwk,tunnel_id,hostname,created_at,last_seen_at) VALUES (?, ?, ?, ?, ?, ?)").bind(row.installation_id,row.device_public_jwk,provisioned.tunnelId,provisioned.hostname,now,now);
     await env.DB.batch([deviceWrite,env.DB.prepare("UPDATE enrollment_sessions SET state = 'ready' WHERE session_id = ?").bind(sessionId)]);
-    return json({state:"ready",configuration:{installation_id:row.installation_id,tunnel_id:provisioned.tunnelId,hostname:provisioned.hostname,oauth_issuer:env.BASE_URL,oauth_jwks_url:`${env.BASE_URL}/.well-known/jwks.json`,credential_version:credentialVersion,state:"ready"},tunnel_token:provisioned.token});
+    return json({state:"ready",configuration:{installation_id:row.installation_id,tunnel_id:provisioned.tunnelId,hostname:provisioned.hostname,oauth_issuer:env.SUPABASE_ISSUER,oauth_jwks_url:`${env.SUPABASE_ISSUER}/.well-known/jwks.json`,credential_version:credentialVersion,state:"ready"},tunnel_token:provisioned.token});
   } catch { await env.DB.prepare("UPDATE enrollment_sessions SET state = 'approved' WHERE session_id = ?").bind(sessionId).run(); return json({error:"provisioning_failed"},502); }
 }
 
@@ -174,7 +192,7 @@ async function deviceLifecycle(request: Request, env: Env, action: "rotate"|"rev
   await cf(env, `/accounts/${env.CF_ACCOUNT_ID}/cfd_tunnel/${device.tunnel_id}`, {method:"DELETE"});
   const replacement = await provisionTunnel(env,installationId);
   await env.DB.prepare("UPDATE devices SET tunnel_id = ?, hostname = ?, credential_version = credential_version + 1, last_seen_at = ? WHERE installation_id = ?").bind(replacement.tunnelId,replacement.hostname,Math.floor(Date.now()/1000),installationId).run();
-  return json({state:"ready",configuration:{installation_id:installationId,tunnel_id:replacement.tunnelId,hostname:replacement.hostname,oauth_issuer:env.BASE_URL,oauth_jwks_url:`${env.BASE_URL}/.well-known/jwks.json`,credential_version:Number(device.credential_version)+1,state:"ready"},tunnel_token:replacement.token});
+  return json({state:"ready",configuration:{installation_id:installationId,tunnel_id:replacement.tunnelId,hostname:replacement.hostname,oauth_issuer:env.SUPABASE_ISSUER,oauth_jwks_url:`${env.SUPABASE_ISSUER}/.well-known/jwks.json`,credential_version:Number(device.credential_version)+1,state:"ready"},tunnel_token:replacement.token});
 }
 
 async function verifyDevice(request: Request, env: Env, body: Uint8Array): Promise<string|null> {
@@ -232,6 +250,7 @@ async function token(request:Request,env:Env):Promise<Response>{
 export default {async fetch(request:Request,env:Env):Promise<Response>{
   const url=new URL(request.url);
   try{
+    if(request.method==="GET"&&url.pathname.startsWith("/.well-known/oauth-protected-resource"))return protectedResourceMetadata(request,env);
     if(request.method==="GET"&&url.pathname==="/health")return json({status:"ok",content_storage:false});
     if(request.method==="GET"&&url.pathname==="/.well-known/oauth-authorization-server")return json({issuer:env.BASE_URL,authorization_endpoint:`${env.BASE_URL}/authorize`,token_endpoint:`${env.BASE_URL}/token`,jwks_uri:`${env.BASE_URL}/.well-known/jwks.json`,client_id_metadata_document_supported:true,response_types_supported:["code"],grant_types_supported:["authorization_code"],token_endpoint_auth_methods_supported:["none"],code_challenge_methods_supported:["S256"],scopes_supported:["protected:metadata","protected:read"]});
     if(request.method==="GET"&&url.pathname==="/.well-known/jwks.json")return json({keys:[JSON.parse(env.JWT_PUBLIC_JWK)]},200,{"cache-control":"public, max-age=300"});
