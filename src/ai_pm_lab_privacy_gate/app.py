@@ -4,11 +4,9 @@ import ctypes
 import os
 import sys
 
-from PySide6.QtWidgets import QApplication
-
-from ai_pm_lab_privacy_gate.ui.main_window import MainWindow
-from ai_pm_lab_privacy_gate.ui.fonts import install_app_font
-from ai_pm_lab_privacy_gate.ui.styles import APP_STYLE
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QColor, QPixmap
+from PySide6.QtWidgets import QApplication, QSplashScreen
 
 
 def _packaged_smoke_test() -> int:
@@ -36,10 +34,41 @@ def main() -> int:
     app = QApplication(sys.argv)
     app.setApplicationName("AI PM LAB Privacy Gate")
     app.setOrganizationName("AI PM LAB")
+    from ai_pm_lab_privacy_gate.ui.fonts import install_app_font
+    from ai_pm_lab_privacy_gate.ui.resources import resource_path
+    from ai_pm_lab_privacy_gate.ui.styles import APP_STYLE
+
     install_app_font(app)
     app.setStyleSheet(APP_STYLE)
+
+    logo_path = resource_path("resources", "branding", "privacy-gate-logo.png")
+    pixmap = QPixmap(str(logo_path)) if logo_path.exists() else QPixmap(560, 260)
+    if pixmap.isNull():
+        pixmap = QPixmap(560, 260)
+        pixmap.fill(QColor("#f4f7fb"))
+    else:
+        pixmap = pixmap.scaled(
+            560,
+            300,
+            Qt.AspectRatioMode.KeepAspectRatio,
+            Qt.TransformationMode.SmoothTransformation,
+        )
+    splash = QSplashScreen(pixmap)
+    splash.showMessage(
+        "Starting local privacy protection…",
+        Qt.AlignmentFlag.AlignBottom | Qt.AlignmentFlag.AlignHCenter,
+        QColor("#06243c"),
+    )
+    splash.show()
+    app.processEvents()
+
+    # Import the full UI only after the user can see immediate startup feedback.
+    # Presidio itself remains lazy and is loaded on the first analysis.
+    from ai_pm_lab_privacy_gate.ui.main_window import MainWindow
+
     window = MainWindow()
     window.show()
+    splash.finish(window)
     return app.exec()
 
 

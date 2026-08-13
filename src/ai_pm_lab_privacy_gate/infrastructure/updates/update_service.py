@@ -2,8 +2,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import platform
+import ssl
 
 import httpx
+import truststore
 
 
 MANIFEST_URL = "https://privacygate.propertydex.xyz/release.json"
@@ -26,7 +28,10 @@ class UpdateService:
         self.manifest_url = manifest_url
 
     def check(self, current_version: str) -> UpdateInfo | None:
-        with httpx.Client(timeout=8, follow_redirects=True) as client:
+        # Use the operating-system trust store so corporate proxies and local
+        # security products such as AVG do not break the optional update check.
+        context = truststore.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+        with httpx.Client(timeout=8, follow_redirects=True, verify=context) as client:
             response = client.get(self.manifest_url, headers={"Accept": "application/json"})
             response.raise_for_status()
             payload = response.json()

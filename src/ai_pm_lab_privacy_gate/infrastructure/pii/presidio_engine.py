@@ -3,24 +3,10 @@ from __future__ import annotations
 import threading
 import re
 from collections.abc import Iterable
-
-import tldextract
-from presidio_analyzer import AnalyzerEngine, RecognizerResult
-from presidio_analyzer.nlp_engine import NlpEngineProvider
-from presidio_anonymizer import AnonymizerEngine
-from presidio_anonymizer.entities import OperatorConfig
+from typing import Any
 
 from ai_pm_lab_privacy_gate.domain.models import Finding, PageContent
 from ai_pm_lab_privacy_gate.domain.profiles import PrivacyProfile
-from ai_pm_lab_privacy_gate.infrastructure.pii.recognizers.registry import install_custom_recognizers
-
-
-# Presidio's email recognizer calls tldextract. Its default singleton attempts to
-# refresh the Public Suffix List over the network on first use. Replace only that
-# singleton function with the bundled snapshot implementation to enforce offline
-# behavior while retaining Presidio's email validation.
-_offline_tld_extract = tldextract.TLDExtract(suffix_list_urls=(), cache_dir=None)
-tldextract.extract = _offline_tld_extract
 
 
 class PresidioPrivacyEngine:
@@ -28,15 +14,28 @@ class PresidioPrivacyEngine:
 
     def __init__(self, model_name: str = "en_core_web_sm") -> None:
         self._model_name = model_name
-        self._analyzer: AnalyzerEngine | None = None
-        self._anonymizer: AnonymizerEngine | None = None
+        self._analyzer: Any | None = None
+        self._anonymizer: Any | None = None
         self._lock = threading.Lock()
 
-    def _ensure_loaded(self) -> tuple[AnalyzerEngine, AnonymizerEngine]:
+    def _ensure_loaded(self) -> tuple[Any, Any]:
         if self._analyzer is not None and self._anonymizer is not None:
             return self._analyzer, self._anonymizer
         with self._lock:
             if self._analyzer is None:
+                import tldextract
+                from presidio_analyzer import AnalyzerEngine
+                from presidio_analyzer.nlp_engine import NlpEngineProvider
+                from ai_pm_lab_privacy_gate.infrastructure.pii.recognizers.registry import (
+                    install_custom_recognizers,
+                )
+
+                # Presidio's email recognizer normally lets tldextract refresh
+                # the suffix list online. Use its bundled snapshot so the first
+                # scan remains local-only.
+                tldextract.extract = tldextract.TLDExtract(
+                    suffix_list_urls=(), cache_dir=None
+                )
                 configuration = {
                     "nlp_engine_name": "spacy",
                     "models": [{"lang_code": "en", "model_name": self._model_name}],
@@ -46,6 +45,8 @@ class PresidioPrivacyEngine:
                 install_custom_recognizers(analyzer.registry)
                 self._analyzer = analyzer
             if self._anonymizer is None:
+                from presidio_anonymizer import AnonymizerEngine
+
                 self._anonymizer = AnonymizerEngine()
         return self._analyzer, self._anonymizer
 
@@ -76,7 +77,7 @@ class PresidioPrivacyEngine:
         return [self._to_finding(page, result, index) for index, result in enumerate(resolved)]
 
     @staticmethod
-    def _without_overlaps(results: list[RecognizerResult]) -> list[RecognizerResult]:
+    def _without_overlaps(results: list[Any]) -> list[Any]:
         """Prefer high-confidence contextual IDs over generic numeric guesses."""
         accepted: list[RecognizerResult] = []
         for candidate in sorted(
@@ -92,6 +93,9 @@ class PresidioPrivacyEngine:
         selected = list(findings)
         if not selected:
             return text
+        from presidio_analyzer import RecognizerResult
+        from presidio_anonymizer.entities import OperatorConfig
+
         _, anonymizer = self._ensure_loaded()
         results = [
             RecognizerResult(

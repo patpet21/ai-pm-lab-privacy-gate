@@ -24,7 +24,14 @@ class FunctionWorker(QRunnable):
             self.signals.result.emit(self.function())
         except Exception as exc:
             detail = "".join(traceback.format_exception_only(type(exc), exc)).strip()
-            self.signals.error.emit(detail)
+            try:
+                self.signals.error.emit(detail)
+            except RuntimeError:
+                # The owning window may have closed while background I/O was
+                # finishing. There is no UI left to receive this result.
+                pass
         finally:
-            self.signals.finished.emit()
-
+            try:
+                self.signals.finished.emit()
+            except RuntimeError:
+                pass
