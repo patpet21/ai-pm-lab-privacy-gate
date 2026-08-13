@@ -4,15 +4,15 @@
   "downloads": {
     "windows": {
       "url": "https://github.com/patpet21/ai-pm-lab-privacy-gate-downloads/releases/download/v0.4.0/AI_PM_LAB_Privacy_Gate_Setup_0.4.0.exe",
-      "sha256": "70379fda56f778a7abc63b395092f2718a721e9f1bdd5afe7acdd63a32d5bc4b"
+      "sha256": "8b1cfe4bbeea9fec1b94cc04529f416d2b3d258dc3d31613808e466d43b3bcde"
     },
     "macos_apple_silicon": {
       "url": "https://github.com/patpet21/ai-pm-lab-privacy-gate-downloads/releases/download/v0.4.0/AI_PM_LAB_Privacy_Gate_0.4.0_Apple-Silicon.dmg",
-      "sha256": "689b520e953b243cba5518066be700eba36bf548be68a61a386e4c711b875c7f"
+      "sha256": "b436db2e8da0ab0f955b283671a31688288fbba8ad555f71de5de5347437e0cf"
     },
     "macos_intel": {
       "url": "https://github.com/patpet21/ai-pm-lab-privacy-gate-downloads/releases/download/v0.4.0/AI_PM_LAB_Privacy_Gate_0.4.0_Intel.dmg",
-      "sha256": "de6162858bc3838a87db9a8c927b65ab458a72b2c26b98f0a5269cdd3b479708"
+      "sha256": "aa9099937c6928235c55ca4c4ed794a260e168cf95a7a2484b17809fb16e1e73"
     }
   }
 }
