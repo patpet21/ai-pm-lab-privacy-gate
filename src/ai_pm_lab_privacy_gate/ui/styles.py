@@ -15,6 +15,11 @@ QPushButton#SidebarToggle:hover { background: #168492; color: white; }
 QLabel#SidebarBrand { color: #071F36; font-size: 15pt; font-weight: 800; letter-spacing: 2px; }
 QLabel#SidebarProduct { color: #B58A36; font-size: 8pt; font-weight: 800; letter-spacing: 2px; }
 QLabel#SidebarNote { color: #9DB4C7; font-size: 8pt; padding: 14px; border-top: 1px solid #24435D; }
+QLabel#ProductFooter {
+    background: #E8EFF3; color: #61798A; border-top: 1px solid #D2DDE5;
+    padding: 7px 12px; font-size: 8pt;
+}
+QLabel#ProductFooter a { color: #137B87; text-decoration: none; }
 QPushButton#NavButton {
     background: transparent; color: #C9D6E1; border: none; border-radius: 9px;
     padding: 12px 14px; text-align: left; font-weight: 650; min-height: 24px;
@@ -75,6 +80,7 @@ QTableWidget::item:selected { background: #D9EEF1; color: #10263A; }
 QTabBar::tab { background: #E3EBF0; color: #38566B; padding: 8px 18px; margin-right: 3px; border-radius: 6px; }
 QTabBar::tab:selected { background: #168492; color: white; }
 QSplitter::handle { background: #E3EBF0; width: 5px; margin: 8px 2px; border-radius: 2px; }
+QSplitter::handle:hover { background: #72B9C1; }
 QMenu { background: white; border: 1px solid #C9D6DF; padding: 6px; }
 QMenu::item { padding: 8px 24px; border-radius: 5px; }
 QMenu::item:selected { background: #D9EEF1; color: #10263A; }

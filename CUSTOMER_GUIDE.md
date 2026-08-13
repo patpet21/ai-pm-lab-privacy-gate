@@ -25,6 +25,16 @@ Open the **Document file** tab and choose a Word `.docx` or Excel `.xlsx` file. 
 
 If selected sensitive data appears inside an Excel formula, the protected copy converts that cell to protected text so the original value cannot leak. Other formulas and workbook formatting remain unchanged. Legacy `.doc`/`.xls`, macro-enabled Office files and password-protected files are not supported in this release.
 
+When LibreOffice is installed, Privacy Gate renders the original and protected Word/Excel documents locally for a side-by-side page comparison. No document is uploaded. Without LibreOffice, scanning, protection and same-format download continue to work normally.
+
+Select **Focus preview** to temporarily hide setup and findings and give the document comparison the full workspace. Select **Show review panels** to restore every review control.
+
+## 4.1 Updates and custom workflows
+
+Privacy Gate checks the official public release manifest without blocking local use. When a newer version exists, it offers the official download. Library data and settings remain stored separately from the application installation.
+
+Open **Contact / Workflows** for optional help with n8n, MCP, email, document and real-estate workflows.
+
 ## 5. Use the protected text with AI
 
 The free workflow does not require an API key:

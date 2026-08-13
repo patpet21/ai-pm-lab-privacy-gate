@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from PySide6.QtCore import QSize, Qt
+from PySide6.QtCore import QSize, QTimer, Qt
 from PySide6.QtGui import QCloseEvent, QIcon, QPixmap
 from PySide6.QtWidgets import (
     QButtonGroup,
@@ -21,6 +21,7 @@ from ai_pm_lab_privacy_gate.infrastructure.storage.library_repository import Lib
 from ai_pm_lab_privacy_gate.infrastructure.mcp.identity import ConnectionIdentityStore
 from ai_pm_lab_privacy_gate.infrastructure.mcp.remote import RemoteMcpManager
 from ai_pm_lab_privacy_gate.ui.connections_page import ConnectionsPage
+from ai_pm_lab_privacy_gate.ui.contact_page import ContactPage
 from ai_pm_lab_privacy_gate.ui.library_page import LibraryPage
 from ai_pm_lab_privacy_gate.ui.protection_page import ProtectionPage
 from ai_pm_lab_privacy_gate.ui.resources import resource_path
@@ -97,6 +98,7 @@ class MainWindow(QMainWindow):
             ("Restore", "nav-restore.svg", 2),
             ("Local Automation / n8n", "nav-automation.svg", 3),
             ("Cloud / MCP / Email", "nav-cloud.svg", 4),
+            ("Contact / Workflows", "nav-contact.svg", 5),
         ]
         for label, icon_name, page_index in navigation:
             button = QPushButton(label, objectName="NavButton")
@@ -126,15 +128,26 @@ class MainWindow(QMainWindow):
         self.cloud_automation_page = ConnectionsPage(
             "cloud", self.library, remote_mcp=self.remote_mcp
         )
+        self.contact_page = ContactPage()
         for page in (
             self.protection_page,
             self.library_page,
             self.restore_page,
             self.local_automation_page,
             self.cloud_automation_page,
+            self.contact_page,
         ):
             self.pages.addWidget(page)
         content_layout.addWidget(self.pages)
+        product_footer = QLabel(
+            'Created by Pietro Forestieri  •  Presented by Trigosat Consulting &amp; PropertyDex  •  '
+            '<a href="https://aipmlab.propertydex.xyz">AI PM LAB</a>  •  '
+            '<a href="https://framework.propertydex.xyz/?open=signup">PropertyDex Framework</a>',
+            objectName="ProductFooter",
+        )
+        product_footer.setOpenExternalLinks(True)
+        product_footer.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        content_layout.addWidget(product_footer)
 
         shell.addWidget(self.sidebar)
         shell.addWidget(content, 1)
@@ -147,6 +160,7 @@ class MainWindow(QMainWindow):
         self._show_page(0)
         if self.connection_identity.is_remote_enabled():
             self.remote_mcp.start()
+        QTimer.singleShot(3500, lambda: self.contact_page.check_updates(silent=True))
 
     def _toggle_sidebar(self) -> None:
         self.sidebar_expanded = not self.sidebar_expanded
