@@ -13,6 +13,9 @@ os.environ.setdefault(
 
 from PySide6.QtWidgets import QApplication
 from PySide6.QtTest import QTest
+from docx import Document
+from openpyxl import Workbook
+from openpyxl.styles import Font, PatternFill
 
 from ai_pm_lab_privacy_gate.application.privacy_service import PrivacyGateService
 from ai_pm_lab_privacy_gate.domain.models import PageContent
@@ -25,11 +28,15 @@ from ai_pm_lab_privacy_gate.ui.styles import APP_STYLE
 def main() -> int:
     output_dir = Path(tempfile.gettempdir()) / "privacy-gate-ui-smoke-output"
     output = output_dir / "privacy_gate_main.png"
+    setup_output = output_dir / "privacy_gate_compact_setup.png"
     collapsed_output = output_dir / "privacy_gate_collapsed.png"
     library_output = output_dir / "privacy_gate_library.png"
+    contact_output = output_dir / "privacy_gate_contact.png"
     mask_output = output_dir / "privacy_gate_mask_colors.png"
     pdf_output = output_dir / "privacy_gate_pdf_comparison.png"
     focus_output = output_dir / "privacy_gate_focus_preview.png"
+    word_output = output_dir / "privacy_gate_word_comparison.png"
+    excel_output = output_dir / "privacy_gate_excel_comparison.png"
     output.parent.mkdir(parents=True, exist_ok=True)
     app = QApplication([])
     install_app_font(app)
@@ -46,6 +53,11 @@ def main() -> int:
     page._analysis_ready((document, findings))
     window.show()
     app.processEvents()
+    page.setup_toggle.setChecked(True)
+    app.processEvents()
+    if not window.grab().save(str(setup_output)):
+        raise RuntimeError("Unable to save compact setup screenshot")
+    page.setup_toggle.setChecked(False)
     if not window.grab().save(str(output)):
         raise RuntimeError("Unable to save UI screenshot")
     page.mode_combo.setCurrentIndex(page.mode_combo.findData("mask"))
@@ -73,15 +85,78 @@ def main() -> int:
     app.processEvents()
     if page.original_pdf_document.pageCount() != 2 or page.protected_pdf_document.pageCount() != 2:
         raise RuntimeError("PDF comparison did not load both two-page documents")
+    page._finding_selected(0, 0)
+    page.keep_this_button.click()
+    app.processEvents()
+    if not page.current_result or len(page.current_result.applied_findings) != len(pdf_findings) - 1:
+        raise RuntimeError("Keep original did not remove the selected item from protection")
+    page.protect_this_button.click()
+    app.processEvents()
+    if not page.current_result or len(page.current_result.applied_findings) != len(pdf_findings):
+        raise RuntimeError("Protect this did not restore the selected item to protection")
     if not window.grab().save(str(pdf_output)):
         raise RuntimeError("Unable to save PDF comparison screenshot")
     page.focus_preview_button.setChecked(True)
     app.processEvents()
-    if page.findings_card.isVisible() or page.setup_card.isVisible():
-        raise RuntimeError("Focus preview did not hide the review panels")
+    if not page.findings_card.isVisible() or page.setup_card.isVisible():
+        raise RuntimeError("Review studio did not preserve findings while hiding setup")
     if not window.grab().save(str(focus_output)):
         raise RuntimeError("Unable to save focused preview screenshot")
     page.focus_preview_button.setChecked(False)
+    page.mode_combo.setCurrentIndex(page.mode_combo.findData("reversible"))
+
+    source_docx = output_dir / "privacy_gate_source.docx"
+    word = Document()
+    word.add_heading("Property inspection report", level=1)
+    word.add_paragraph("Prepared for Jane Smith at 125 Main Street, New York, NY 10001.")
+    word_table = word.add_table(rows=2, cols=2)
+    word_table.style = "Table Grid"
+    word_table.cell(0, 0).text = "Tenant email"
+    word_table.cell(0, 1).text = "jane.smith@example.com"
+    word_table.cell(1, 0).text = "Phone"
+    word_table.cell(1, 1).text = "212-555-5555"
+    word.save(source_docx)
+    word_document = service.document_from_file(source_docx)
+    word_findings = service.analyze(word_document, page._current_profile())
+    page.pdf_path.setText(str(source_docx.resolve()))
+    page.input_tabs.setCurrentIndex(1)
+    page._analysis_ready((word_document, word_findings))
+    QTest.qWait(700)
+    app.processEvents()
+    if page.original_view_stack.currentIndex() != 1 or page.original_office_view.tabs.count() != 1:
+        raise RuntimeError(
+            "Built-in Word comparison did not load: "
+            f"stack={page.original_view_stack.currentIndex()} tabs={page.original_office_view.tabs.count()} "
+            f"note={page.comparison_note.text()}"
+        )
+    if not window.grab().save(str(word_output)):
+        raise RuntimeError("Unable to save Word comparison screenshot")
+
+    source_xlsx = output_dir / "privacy_gate_source.xlsx"
+    workbook = Workbook()
+    worksheet = workbook.active
+    worksheet.title = "Tenants"
+    worksheet.append(["Tenant", "Email", "Phone", "Rent"])
+    worksheet.append(["Jane Smith", "jane.smith@example.com", "212-555-5555", 2450])
+    worksheet.append(["Robert Brown", "robert.brown@example.com", "646-555-0104", 2875])
+    for cell in worksheet[1]:
+        cell.font = Font(bold=True, color="FFFFFF")
+        cell.fill = PatternFill("solid", fgColor="0B7189")
+    notes = workbook.create_sheet("Notes")
+    notes["A1"] = "Property"
+    notes["B1"] = "125 Main Street, New York, NY 10001"
+    workbook.save(source_xlsx)
+    workbook.close()
+    excel_document = service.document_from_file(source_xlsx)
+    excel_findings = service.analyze(excel_document, page._current_profile())
+    page.pdf_path.setText(str(source_xlsx.resolve()))
+    page._analysis_ready((excel_document, excel_findings))
+    QTest.qWait(700)
+    app.processEvents()
+    if page.original_view_stack.currentIndex() != 1 or page.original_office_view.tabs.count() != 2:
+        raise RuntimeError("Built-in Excel comparison did not load worksheet tabs")
+    if not window.grab().save(str(excel_output)):
+        raise RuntimeError("Unable to save Excel comparison screenshot")
 
     window._toggle_sidebar()
     app.processEvents()
@@ -108,9 +183,16 @@ def main() -> int:
         raise RuntimeError("Library backup action is unavailable")
     if not window.grab().save(str(library_output)):
         raise RuntimeError("Unable to save library UI screenshot")
+    window._show_page(5)
+    app.processEvents()
+    if window.contact_page.message_input.height() > 96:
+        raise RuntimeError("Contact form is not using the compact layout")
+    if not window.grab().save(str(contact_output)):
+        raise RuntimeError("Unable to save Contact screenshot")
     print(
-        f"UI_OK {output.resolve()} {mask_output.resolve()} {pdf_output.resolve()} "
-        f"{focus_output.resolve()} {collapsed_output.resolve()} {library_output.resolve()} "
+        f"UI_OK {setup_output.resolve()} {output.resolve()} {mask_output.resolve()} {pdf_output.resolve()} "
+        f"{focus_output.resolve()} {word_output.resolve()} {excel_output.resolve()} "
+        f"{collapsed_output.resolve()} {library_output.resolve()} {contact_output.resolve()} "
         f"{len(findings)} findings sidebar={window.sidebar.width()}"
     )
     window.close()

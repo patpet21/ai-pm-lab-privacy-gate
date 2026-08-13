@@ -526,6 +526,7 @@ class ConnectionsPage(QWidget):
             labels = {
                 "stopped": "OFFLINE",
                 "starting": "CREATING SECURE LINK…",
+                "reconnecting": "RECONNECTING — SAME STABLE ADDRESS…",
                 "online": "ONLINE — STABLE ADDRESS — PROTECTED DOCUMENTS ONLY",
                 "error": "CONNECTION ERROR",
             }
@@ -538,9 +539,10 @@ class ConnectionsPage(QWidget):
                 copy_feedback.setText(status.error)
             copy_button.setEnabled(bool(display_url))
             url_copy_button.setEnabled(bool(display_url))
-            stop_button.setEnabled(status.state in {"starting", "online", "error"})
-            start_button.setEnabled(status.state not in {"starting", "online"})
-            mode_selector.setEnabled(status.state not in {"starting", "online"})
+            active_states = {"starting", "reconnecting", "online"}
+            stop_button.setEnabled(status.state in active_states | {"error"})
+            start_button.setEnabled(status.state not in active_states)
+            mode_selector.setEnabled(status.state not in active_states)
 
         start_button.clicked.connect(start_connection)
         provision_button.clicked.connect(begin_provisioning)

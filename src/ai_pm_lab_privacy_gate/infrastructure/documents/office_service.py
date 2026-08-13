@@ -224,10 +224,10 @@ class OfficeDocumentService:
 
     @classmethod
     def _iter_table_parts(cls, table: Table) -> Iterator[_DocxPart]:
-        seen_cells: set[int] = set()
+        seen_cells: set[object] = set()
         for row in table.rows:
             for cell in row.cells:
-                marker = id(cell._tc)
+                marker = cell._tc
                 if marker in seen_cells:
                     continue
                 seen_cells.add(marker)

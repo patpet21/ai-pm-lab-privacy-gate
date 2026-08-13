@@ -27,6 +27,7 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QPlainTextEdit,
     QPushButton,
+    QStackedWidget,
     QSplitter,
     QTabWidget,
     QTableWidget,
@@ -47,6 +48,7 @@ from ai_pm_lab_privacy_gate.domain.profiles import (
 )
 from ai_pm_lab_privacy_gate.infrastructure.storage.library_repository import LibraryRepository
 from ai_pm_lab_privacy_gate.infrastructure.documents.office_preview import OfficePreviewRenderer
+from ai_pm_lab_privacy_gate.ui.office_internal_preview import OfficeInternalPreview
 from ai_pm_lab_privacy_gate.ui.workers import FunctionWorker
 
 
@@ -98,6 +100,7 @@ class ProtectionPage(QWidget):
         self.current_result: ProtectionResult | None = None
         self._active_worker: FunctionWorker | None = None
         self._category_sync = False
+        self._reviewed_row: int | None = None
         self._last_residual: tuple[Finding, ...] = ()
         self._preview_directory = Path(tempfile.gettempdir()) / "AI_PM_LAB_Privacy_Gate"
         self._preview_directory.mkdir(parents=True, exist_ok=True)
@@ -110,6 +113,7 @@ class ProtectionPage(QWidget):
         self._office_original_directory = self._preview_directory / f"office-original-{os.getpid()}"
         self._office_protected_directory = self._preview_directory / f"office-protected-{os.getpid()}"
         self._office_preview_renderer = OfficePreviewRenderer()
+        self._libreoffice_available = self._office_preview_renderer.find_executable() is not None
         self._build_ui()
         self._connect_signals()
         self._update_profile_description()
@@ -164,7 +168,7 @@ class ProtectionPage(QWidget):
         self.profile_description = QLabel(objectName="Muted")
         profile_description = self.profile_description
         profile_description.setWordWrap(True)
-        profile_col.addWidget(profile_description)
+        profile_description.setVisible(False)
         scope_col = QVBoxLayout()
         scope_col.addLayout(
             self._info_heading(
@@ -179,7 +183,7 @@ class ProtectionPage(QWidget):
         scope_col.addWidget(self.scope_combo)
         self.scope_description = QLabel(objectName="Muted")
         self.scope_description.setWordWrap(True)
-        scope_col.addWidget(self.scope_description)
+        self.scope_description.setVisible(False)
         mode_col = QVBoxLayout()
         mode_col.addLayout(
             self._info_heading(
@@ -194,9 +198,10 @@ class ProtectionPage(QWidget):
         self.mode_combo.addItem("Permanent redaction", "redact")
         mode_col.addWidget(self.mode_combo)
         self.mode_help = QLabel("Reversible mode enables local restore.", objectName="Muted")
-        mode_col.addWidget(self.mode_help)
+        self.mode_help.setVisible(False)
+        confidence_col = QVBoxLayout()
         threshold_row = QHBoxLayout()
-        threshold_row.addWidget(QLabel("Detection confidence", objectName="FieldLabel"))
+        threshold_row.addWidget(QLabel("Confidence", objectName="FieldLabel"))
         threshold_row.addWidget(
             self._info_button(
                 "Detection confidence",
@@ -210,12 +215,32 @@ class ProtectionPage(QWidget):
         self.threshold_input.setValue(0.35)
         self.threshold_input.setToolTip("Lower values find more possible PII; higher values reduce false positives.")
         threshold_row.addWidget(self.threshold_input)
-        mode_col.addLayout(threshold_row)
+        confidence_col.addLayout(threshold_row)
+        document_col = QVBoxLayout()
+        document_col.addLayout(
+            self._info_heading(
+                "Document file",
+                "Choose a local PDF, Word or Excel file. Its original contents stay on this computer.",
+            )
+        )
+        document_row = QHBoxLayout()
+        document_row.setSpacing(6)
+        self.pdf_path = QLineEdit()
+        self.pdf_path.setReadOnly(True)
+        self.pdf_path.setPlaceholderText("PDF, Word or Excel")
+        self.browse_button = QPushButton("Browse", objectName="Secondary")
+        document_row.addWidget(self.pdf_path, 1)
+        document_row.addWidget(self.browse_button)
+        document_col.addLayout(document_row)
         profile_row.addLayout(profile_col, 2)
-        profile_row.addSpacing(16)
+        profile_row.addSpacing(10)
         profile_row.addLayout(scope_col, 2)
-        profile_row.addSpacing(16)
-        profile_row.addLayout(mode_col, 1)
+        profile_row.addSpacing(10)
+        profile_row.addLayout(mode_col, 2)
+        profile_row.addSpacing(10)
+        profile_row.addLayout(confidence_col, 1)
+        profile_row.addSpacing(10)
+        profile_row.addLayout(document_col, 3)
         setup.addLayout(profile_row)
 
         self.input_tabs = QTabWidget()
@@ -223,8 +248,8 @@ class ProtectionPage(QWidget):
         text_layout = QVBoxLayout(text_tab)
         text_layout.setContentsMargins(0, 10, 0, 0)
         self.text_input = QPlainTextEdit()
-        self.text_input.setMinimumHeight(115)
-        self.text_input.setMaximumHeight(155)
+        self.text_input.setMinimumHeight(72)
+        self.text_input.setMaximumHeight(92)
         self.text_input.setPlaceholderText(
             "Paste an email, lease excerpt, offer, contractor proposal or other business text."
         )
@@ -233,18 +258,10 @@ class ProtectionPage(QWidget):
 
         pdf_tab = QWidget()
         pdf_layout = QVBoxLayout(pdf_tab)
-        pdf_layout.setContentsMargins(0, 14, 0, 6)
-        pdf_row = QHBoxLayout()
-        self.pdf_path = QLineEdit()
-        self.pdf_path.setReadOnly(True)
-        self.pdf_path.setPlaceholderText("Choose PDF, Word (.docx) or Excel (.xlsx)")
-        self.browse_button = QPushButton("Browse document", objectName="Secondary")
-        pdf_row.addWidget(self.pdf_path, 1)
-        pdf_row.addWidget(self.browse_button)
-        pdf_layout.addLayout(pdf_row)
+        pdf_layout.setContentsMargins(0, 7, 0, 2)
         pdf_layout.addWidget(
             QLabel(
-                "PDFs need selectable text. Word paragraphs/tables and Excel cells/comments are processed locally.",
+                "Use the Document file selector above. PDF, Word and Excel content is processed locally.",
                 objectName="Muted",
             )
         )
@@ -315,6 +332,22 @@ class ProtectionPage(QWidget):
         self.filter_input.setMaximumWidth(220)
         filter_row.addWidget(self.filter_input)
         findings_layout.addLayout(filter_row)
+
+        selection_row = QHBoxLayout()
+        selection_row.addWidget(
+            QLabel("Checked = protect  |  Unchecked = keep", objectName="ReviewGuide")
+        )
+        selection_row.addStretch(1)
+        self.protect_all_button = QPushButton("Protect all", objectName="Tiny")
+        self.keep_all_button = QPushButton("Keep all", objectName="Tiny")
+        self.invert_selection_button = QPushButton("Invert", objectName="Tiny")
+        self.protect_all_button.setToolTip("Protect every detected item in the document.")
+        self.keep_all_button.setToolTip("Keep every detected value visible in the protected copy.")
+        self.invert_selection_button.setToolTip("Reverse all protected and unprotected items.")
+        selection_row.addWidget(self.protect_all_button)
+        selection_row.addWidget(self.keep_all_button)
+        selection_row.addWidget(self.invert_selection_button)
+        findings_layout.addLayout(selection_row)
         self.findings_table = QTableWidget(0, 5)
         self.findings_table.setHorizontalHeaderLabels(
             ["Protect", "Type", "Value", "Location", "Confidence"]
@@ -334,18 +367,35 @@ class ProtectionPage(QWidget):
         self.add_sensitive_button = QPushButton("+ Add sensitive item", objectName="Secondary")
         findings_actions.addWidget(self.add_sensitive_button)
         findings_actions.addStretch(1)
-        findings_actions.addWidget(QLabel("Click a row to review context", objectName="Muted"))
+        findings_actions.addWidget(QLabel("Select a row to inspect it", objectName="Muted"))
         findings_layout.addLayout(findings_actions)
+
+        self.finding_context = QLabel(
+            "Select a detected item to see its location and surrounding text.",
+            objectName="ReviewContext",
+        )
+        self.finding_context.setWordWrap(True)
+        self.finding_context.setMinimumHeight(48)
+        findings_layout.addWidget(self.finding_context)
+        finding_decision_row = QHBoxLayout()
+        self.protect_this_button = QPushButton("Protect this", objectName="Primary")
+        self.keep_this_button = QPushButton("Keep original", objectName="Secondary")
+        self.protect_this_button.setEnabled(False)
+        self.keep_this_button.setEnabled(False)
+        finding_decision_row.addWidget(self.protect_this_button)
+        finding_decision_row.addWidget(self.keep_this_button)
+        finding_decision_row.addStretch(1)
+        findings_layout.addLayout(finding_decision_row)
 
         preview_card = QFrame(objectName="Card")
         preview_layout = QVBoxLayout(preview_card)
         preview_header = QHBoxLayout()
         preview_header.addWidget(QLabel("Protected preview", objectName="SectionTitle"))
         preview_header.addStretch(1)
-        self.focus_preview_button = QPushButton("Focus preview", objectName="Secondary")
+        self.focus_preview_button = QPushButton("Review studio", objectName="Secondary")
         self.focus_preview_button.setCheckable(True)
         self.focus_preview_button.setToolTip(
-            "Temporarily hide setup and findings to give the document comparison maximum space."
+            "Open a large document workspace while keeping item-by-item protection controls available."
         )
         preview_header.addWidget(self.focus_preview_button)
         preview_header.addWidget(QLabel("Color-coded by protected category", objectName="TokenHint"))
@@ -375,6 +425,21 @@ class ProtectionPage(QWidget):
         )
         self.comparison_note.setWordWrap(True)
         pdf_comparison_layout.addWidget(self.comparison_note)
+        office_preview_options = QHBoxLayout()
+        self.high_fidelity_button = QPushButton("High-fidelity preview", objectName="Secondary")
+        self.high_fidelity_button.setCheckable(True)
+        self.high_fidelity_button.setToolTip(
+            "Use LibreOffice locally for a page-accurate Word or Excel preview."
+        )
+        self.libreoffice_note = QLabel(objectName="Muted")
+        self.libreoffice_note.setOpenExternalLinks(True)
+        self.libreoffice_note.setTextFormat(Qt.TextFormat.RichText)
+        office_preview_options.addWidget(self.high_fidelity_button)
+        office_preview_options.addWidget(self.libreoffice_note, 1)
+        self.office_preview_options_widget = QWidget()
+        self.office_preview_options_widget.setLayout(office_preview_options)
+        self.office_preview_options_widget.setVisible(False)
+        pdf_comparison_layout.addWidget(self.office_preview_options_widget)
         pdf_controls = QHBoxLayout()
         self.pdf_previous_button = QPushButton("‹", objectName="Tiny")
         self.pdf_previous_button.setToolTip("Previous page in both previews")
@@ -396,8 +461,18 @@ class ProtectionPage(QWidget):
         pdf_controls.addWidget(self.pdf_zoom_in_button)
         pdf_comparison_layout.addLayout(pdf_controls)
         self.document_preview_splitter = QSplitter(Qt.Orientation.Horizontal)
-        original_panel, self.original_pdf_view = self._build_pdf_panel("Original document", "Local source")
-        protected_panel, self.protected_pdf_view = self._build_pdf_panel(
+        (
+            original_panel,
+            self.original_pdf_view,
+            self.original_office_view,
+            self.original_view_stack,
+        ) = self._build_document_panel("Original document", "Local source")
+        (
+            protected_panel,
+            self.protected_pdf_view,
+            self.protected_office_view,
+            self.protected_view_stack,
+        ) = self._build_document_panel(
             "Protected document", "Safe copy preview"
         )
         self.original_pdf_document = QPdfDocument(self)
@@ -481,8 +556,9 @@ class ProtectionPage(QWidget):
         button.clicked.connect(lambda _checked=False: QMessageBox.information(self, title, message))
         return button
 
-    @staticmethod
-    def _build_pdf_panel(title: str, subtitle: str) -> tuple[QFrame, QPdfView]:
+    def _build_document_panel(
+        self, title: str, subtitle: str
+    ) -> tuple[QFrame, QPdfView, OfficeInternalPreview, QStackedWidget]:
         panel = QFrame(objectName="PdfPanel")
         layout = QVBoxLayout(panel)
         layout.setContentsMargins(10, 10, 10, 10)
@@ -493,8 +569,12 @@ class ProtectionPage(QWidget):
         layout.addLayout(heading)
         view = QPdfView()
         view.setObjectName("PdfView")
-        layout.addWidget(view, 1)
-        return panel, view
+        office_view = OfficeInternalPreview(self.TOKEN_COLORS)
+        stack = QStackedWidget()
+        stack.addWidget(view)
+        stack.addWidget(office_view)
+        layout.addWidget(stack, 1)
+        return panel, view, office_view, stack
 
     def _build_ai_menu(self):
         from PySide6.QtWidgets import QMenu
@@ -522,6 +602,15 @@ class ProtectionPage(QWidget):
         self.select_none_button.clicked.connect(lambda: self._set_all_categories(False))
         self.categories_button.clicked.connect(self._open_categories)
         self.reset_selections_button.clicked.connect(self._reset_selections)
+        self.protect_all_button.clicked.connect(lambda: self._set_all_findings(True))
+        self.keep_all_button.clicked.connect(lambda: self._set_all_findings(False))
+        self.invert_selection_button.clicked.connect(self._invert_findings)
+        self.protect_this_button.clicked.connect(
+            lambda: self._set_reviewed_finding_protection(True)
+        )
+        self.keep_this_button.clicked.connect(
+            lambda: self._set_reviewed_finding_protection(False)
+        )
         self.filter_input.textChanged.connect(self._apply_filter)
         self.focus_preview_button.toggled.connect(self._toggle_preview_focus)
         self.findings_table.cellClicked.connect(self._finding_selected)
@@ -536,19 +625,31 @@ class ProtectionPage(QWidget):
         self.pdf_fit_button.clicked.connect(self._fit_pdf_width)
         self.pdf_zoom_in_button.clicked.connect(lambda: self._zoom_pdf(1.22))
         self.original_pdf_view.pageNavigator().currentPageChanged.connect(self._sync_pdf_page)
+        self.high_fidelity_button.toggled.connect(lambda _checked: self._pdf_preview_timer.start())
+        self.original_office_view.tabs.currentChanged.connect(
+            lambda index: self._sync_office_tab(self.protected_office_view, index)
+        )
+        self.protected_office_view.tabs.currentChanged.connect(
+            lambda index: self._sync_office_tab(self.original_office_view, index)
+        )
+
+    @staticmethod
+    def _sync_office_tab(target: OfficeInternalPreview, index: int) -> None:
+        if index >= 0 and target.tabs.currentIndex() != index and index < target.tabs.count():
+            target.tabs.setCurrentIndex(index)
 
     def _toggle_setup(self, visible: bool) -> None:
         self.setup_card.setVisible(visible)
         self.setup_toggle.setText("Document setup  -" if visible else "Document setup  +")
 
     def _toggle_preview_focus(self, focused: bool) -> None:
-        """Give the document maximum room without removing any review controls."""
-        self.findings_card.setVisible(not focused)
-        self.setup_card.setVisible(not focused)
+        """Provide a large comparison workspace without losing review controls."""
+        self.findings_card.setVisible(True)
+        self.setup_card.setVisible(not focused and self.setup_toggle.isChecked())
         self.setup_toggle.setVisible(not focused)
-        self.focus_preview_button.setText("Show review panels" if focused else "Focus preview")
+        self.focus_preview_button.setText("Exit review studio" if focused else "Review studio")
         if focused:
-            self.workspace.setSizes([0, max(1200, self.width())])
+            self.workspace.setSizes([390, max(1050, self.width() - 390)])
         else:
             self.workspace.setSizes([430, 1050])
 
@@ -731,17 +832,96 @@ class ProtectionPage(QWidget):
         self.filter_input.clear()
         self._set_all_categories(True)
 
-    def _finding_selected(self, row: int, _column: int) -> None:
-        if not self.current_document or self.current_document.source_kind != "pdf":
+    def _set_all_findings(self, protected: bool) -> None:
+        state = Qt.CheckState.Checked if protected else Qt.CheckState.Unchecked
+        self.findings_table.blockSignals(True)
+        for row in range(self.findings_table.rowCount()):
+            self.findings_table.item(row, 0).setCheckState(state)
+        self.findings_table.blockSignals(False)
+        self._sync_category_check_states()
+        self._refresh_preview()
+
+    def _invert_findings(self) -> None:
+        self.findings_table.blockSignals(True)
+        for row in range(self.findings_table.rowCount()):
+            item = self.findings_table.item(row, 0)
+            state = (
+                Qt.CheckState.Unchecked
+                if item.checkState() == Qt.CheckState.Checked
+                else Qt.CheckState.Checked
+            )
+            item.setCheckState(state)
+        self.findings_table.blockSignals(False)
+        self._sync_category_check_states()
+        self._refresh_preview()
+
+    def _sync_category_check_states(self) -> None:
+        self._category_sync = True
+        try:
+            for index in range(self.category_list.count()):
+                category = self.category_list.item(index)
+                entity_type = category.data(Qt.ItemDataRole.UserRole)
+                states = [
+                    self.findings_table.item(row, 0).checkState()
+                    for row in range(self.findings_table.rowCount())
+                    if self.findings_table.item(row, 1).text() == entity_type
+                ]
+                if states and all(state == Qt.CheckState.Checked for state in states):
+                    category.setCheckState(Qt.CheckState.Checked)
+                elif states and all(state == Qt.CheckState.Unchecked for state in states):
+                    category.setCheckState(Qt.CheckState.Unchecked)
+                else:
+                    category.setCheckState(Qt.CheckState.PartiallyChecked)
+        finally:
+            self._category_sync = False
+
+    def _set_reviewed_finding_protection(self, protected: bool) -> None:
+        if self._reviewed_row is None or self._reviewed_row >= self.findings_table.rowCount():
             return
+        state = Qt.CheckState.Checked if protected else Qt.CheckState.Unchecked
+        self.findings_table.item(self._reviewed_row, 0).setCheckState(state)
+        self._sync_category_check_states()
+        self._update_review_context(self._reviewed_row)
+
+    def _finding_selected(self, row: int, _column: int) -> None:
+        if not self.current_document:
+            return
+        self._reviewed_row = row
+        self._update_review_context(row)
         finding_id = self.findings_table.item(row, 0).data(Qt.ItemDataRole.UserRole)
         finding = next(
             (item for item in self.current_findings if item.finding_id == finding_id),
             None,
         )
-        if finding is not None:
+        if finding is not None and self.current_document.source_kind == "pdf":
             self._set_pdf_page(max(0, finding.page_number - 1))
             self.preview_tabs.setCurrentIndex(1)
+        elif finding is not None and self.current_document.source_kind == "xlsx":
+            location = self.findings_table.item(row, 3).text()
+            self.original_office_view.focus_location(location)
+            self.protected_office_view.focus_location(location)
+            self.preview_tabs.setCurrentIndex(1)
+
+    def _update_review_context(self, row: int) -> None:
+        finding_id = self.findings_table.item(row, 0).data(Qt.ItemDataRole.UserRole)
+        finding = next(
+            (item for item in self.current_findings if item.finding_id == finding_id),
+            None,
+        )
+        if finding is None:
+            return
+        location = self.findings_table.item(row, 3).text()
+        decision = (
+            "PROTECTED"
+            if self.findings_table.item(row, 0).checkState() == Qt.CheckState.Checked
+            else "KEPT ORIGINAL"
+        )
+        context = " ".join(finding.context.split())
+        self.finding_context.setText(
+            f"{decision} · {finding.entity_type.replace('_', ' ').title()} · {location}\n{context}"
+        )
+        self.protect_this_button.setEnabled(True)
+        self.keep_this_button.setEnabled(True)
 
     def _selected_findings(self) -> tuple[Finding, ...]:
         selected_ids = {
@@ -801,6 +981,10 @@ class ProtectionPage(QWidget):
             self.protected_pdf_document.close()
             self.original_pdf_document.close()
             if self.current_document.source_kind == "pdf":
+                self.office_preview_options_widget.setVisible(False)
+                self.original_view_stack.setCurrentIndex(0)
+                self.protected_view_stack.setCurrentIndex(0)
+                self._set_pdf_controls_enabled(True)
                 original_path = self.current_document.source_path
                 protected_path = self._preview_path
                 self.service.save_protected_pdf(
@@ -811,6 +995,9 @@ class ProtectionPage(QWidget):
                 self.comparison_note.setText(
                     "Original PDF on the left. The secure, layout-preserving protected PDF on the right."
                 )
+                self.original_pdf_document.load(str(original_path))
+                self.protected_pdf_document.load(str(protected_path))
+                self._set_pdf_page(0)
             elif self.current_document.source_kind in {"docx", "xlsx"}:
                 suffix = self.current_document.source_path.suffix
                 protected_office_path = self._preview_directory / f"protected-office-{os.getpid()}{suffix}"
@@ -819,20 +1006,47 @@ class ProtectionPage(QWidget):
                     protected_office_path,
                     source_document=self.current_document,
                 )
-                original_path = self._office_preview_renderer.render(
-                    self.current_document.source_path, self._office_original_directory
-                )
-                protected_path = self._office_preview_renderer.render(
-                    protected_office_path, self._office_protected_directory
-                )
-                self.comparison_note.setText(
-                    "Local Office rendering: original on the left, same-format protected copy on the right. "
-                    "The exported DOCX/XLSX remains editable."
-                )
+                self.office_preview_options_widget.setVisible(True)
+                self.high_fidelity_button.setVisible(self._libreoffice_available)
+                if self._libreoffice_available:
+                    self.libreoffice_note.setText(
+                        "Internal preview is always available. LibreOffice was detected for optional page rendering."
+                    )
+                else:
+                    self.high_fidelity_button.setChecked(False)
+                    self.libreoffice_note.setText(
+                        "Internal preview active. For optional page-accurate rendering, install "
+                        "<a href='https://www.libreoffice.org/download/download-libreoffice/'>LibreOffice (free)</a>."
+                    )
+                if self._libreoffice_available and self.high_fidelity_button.isChecked():
+                    original_path = self._office_preview_renderer.render(
+                        self.current_document.source_path, self._office_original_directory
+                    )
+                    protected_path = self._office_preview_renderer.render(
+                        protected_office_path, self._office_protected_directory
+                    )
+                    self.original_view_stack.setCurrentIndex(0)
+                    self.protected_view_stack.setCurrentIndex(0)
+                    self._set_pdf_controls_enabled(True)
+                    self.original_pdf_document.load(str(original_path))
+                    self.protected_pdf_document.load(str(protected_path))
+                    self.comparison_note.setText(
+                        "High-fidelity local rendering: original on the left and protected copy on the right."
+                    )
+                    self._set_pdf_page(0)
+                else:
+                    self.original_office_view.load(self.current_document.source_path, protected=False)
+                    self.protected_office_view.load(protected_office_path, protected=True)
+                    self.original_view_stack.setCurrentIndex(1)
+                    self.protected_view_stack.setCurrentIndex(1)
+                    self._set_pdf_controls_enabled(False)
+                    kind = "worksheet" if self.current_document.source_kind == "xlsx" else "document"
+                    self.comparison_note.setText(
+                        f"Built-in {kind} preview: original on the left and editable protected copy on the right. "
+                        "No additional software is required."
+                    )
             else:
                 return
-            self.original_pdf_document.load(str(original_path))
-            self.protected_pdf_document.load(str(protected_path))
         except Exception as exc:
             self.preview_tabs.setTabToolTip(1, f"Preview unavailable: {exc}")
             self.comparison_note.setText(str(exc))
@@ -842,7 +1056,17 @@ class ProtectionPage(QWidget):
                 1, "Compare the local source with the secure layout-preserving copy generated by Privacy Gate."
             )
             self.preview_tabs.setCurrentIndex(1)
-            self._set_pdf_page(0)
+
+    def _set_pdf_controls_enabled(self, enabled: bool) -> None:
+        for widget in (
+            self.pdf_previous_button,
+            self.pdf_next_button,
+            self.pdf_page_label,
+            self.pdf_zoom_out_button,
+            self.pdf_fit_button,
+            self.pdf_zoom_in_button,
+        ):
+            widget.setVisible(enabled)
 
     def _set_pdf_page(self, page: int) -> None:
         page_count = max(
@@ -1116,6 +1340,12 @@ class ProtectionPage(QWidget):
         self.current_document = None
         self.current_findings = ()
         self.current_result = None
+        self._reviewed_row = None
+        self.finding_context.setText(
+            "Select a detected item to see its location and surrounding text."
+        )
+        self.protect_this_button.setEnabled(False)
+        self.keep_this_button.setEnabled(False)
         self.findings_metric.setText("0 findings")
         self.types_metric.setText("0 categories")
         self.pages_metric.setText("0 pages")

@@ -36,6 +36,20 @@ QLabel#PageTitle { color: #071F36; font-size: 22pt; font-weight: 800; }
 QLabel#SectionTitle { color: #0B2A45; font-size: 12pt; font-weight: 750; }
 QLabel#FieldLabel { color: #183E5B; font-weight: 700; }
 QLabel#Muted { color: #64788A; }
+QLabel#ReviewGuide {
+    color: #0A6F75;
+    background: #E3F5F2;
+    border-radius: 6px;
+    padding: 5px 8px;
+    font-weight: 700;
+}
+QLabel#ReviewContext {
+    color: #294C60;
+    background: #F4F8FA;
+    border: 1px solid #D3E0E7;
+    border-radius: 7px;
+    padding: 7px 9px;
+}
 QLabel#SafeBadge { background: #DFF5F0; color: #136A5D; border-radius: 12px; padding: 7px 12px; font-weight: 700; }
 QLabel#ConnectionBadge { background: #E8F1F5; color: #176777; border-radius: 10px; padding: 5px 9px; font-size: 8pt; font-weight: 700; }
 QLabel#CopyFeedback { color: #136A5D; font-size: 8pt; font-weight: 750; min-width: 58px; }
@@ -71,6 +85,13 @@ QLabel#PdfTitle { color: #0B2A45; font-weight: 750; font-size: 10pt; }
 QLabel#PdfBadge { background: #E4F3F1; color: #146B61; border-radius: 7px; padding: 4px 7px; font-size: 7.5pt; font-weight: 700; }
 QLabel#PdfPageLabel { color: #244B63; font-weight: 700; padding: 3px 8px; }
 QPdfView#PdfView { background: #DDE5EA; border: 1px solid #C5D1DA; border-radius: 6px; }
+QTextBrowser#OfficeDocumentView, QTableWidget#OfficeSheetView {
+    background: #FFFFFF;
+    border: 1px solid #C5D1DA;
+    border-radius: 6px;
+    color: #102A43;
+}
+QTableWidget#OfficeSheetView::item { padding: 3px 6px; }
 QListWidget { padding: 5px; }
 QListWidget::item { padding: 8px; border-radius: 6px; }
 QListWidget::item:hover { background: #EDF5F7; }

@@ -47,6 +47,7 @@ class RemoteMcpManager:
         self._server_process: subprocess.Popen[str] | None = None
         self._tunnel_process: subprocess.Popen[str] | None = None
         self._monitor_thread: threading.Thread | None = None
+        self._stop_event = threading.Event()
 
     @property
     def status(self) -> RemoteMcpStatus:
@@ -57,16 +58,18 @@ class RemoteMcpManager:
         selected_mode = mode or self.identity_store.connection_mode()
         if selected_mode is ConnectionMode.LOCAL:
             raise ValueError("Local-only mode does not create a remote tunnel")
-        if self.status.state in {"starting", "online"}:
+        if self.status.state in {"starting", "online", "reconnecting"}:
             return
         self.stop()
+        self._stop_event = threading.Event()
         self._set_status(RemoteMcpStatus(state="starting", mode=selected_mode.value))
         self._monitor_thread = threading.Thread(
-            target=self._start_worker, args=(selected_mode,), daemon=True
+            target=self._supervise, args=(selected_mode, self._stop_event), daemon=True
         )
         self._monitor_thread.start()
 
     def stop(self) -> None:
+        self._stop_event.set()
         for process in (self._tunnel_process, self._server_process):
             if process and process.poll() is None:
                 process.terminate()
@@ -76,45 +79,75 @@ class RemoteMcpManager:
                     process.kill()
         self._tunnel_process = None
         self._server_process = None
+        monitor = self._monitor_thread
+        if monitor and monitor.is_alive() and monitor is not threading.current_thread():
+            monitor.join(timeout=5)
+        self._monitor_thread = None
         self._set_status(RemoteMcpStatus(state="stopped"))
 
-    def _start_worker(self, mode: ConnectionMode) -> None:
-        try:
-            port, path, provider, auth_args = self._runtime(mode)
-            command, base_args = mcp_launch_spec()
-            server_args = [
-                *base_args,
-                "--transport",
-                "streamable-http",
-                "--host",
-                "127.0.0.1",
-                "--port",
-                str(port),
-                "--path",
-                path,
-                *auth_args,
-            ]
-            self._server_process = self._popen_server([command, *server_args])
-            self._wait_for_port(port, self._server_process)
-            session = provider.start(port)
-            self._tunnel_process = session.process
-            public_url = session.public_url + (path if mode is ConnectionMode.DEV_QUICK else "")
-            self._set_status(
-                RemoteMcpStatus(
-                    state="online",
-                    mode=mode.value,
-                    public_url=public_url,
-                    local_port=port,
+    def _supervise(self, mode: ConnectionMode, stop_event: threading.Event) -> None:
+        retry_delay = 1.0
+        while not stop_event.is_set():
+            try:
+                self._run_once(mode, stop_event)
+                if stop_event.is_set():
+                    return
+                raise RuntimeError("The secure connection stopped unexpectedly.")
+            except Exception as error:
+                self._terminate_children()
+                if stop_event.is_set():
+                    return
+                if mode is ConnectionMode.DEV_QUICK:
+                    self._set_status(
+                        RemoteMcpStatus(state="error", mode=mode.value, error=str(error))
+                    )
+                    return
+                self._set_status(
+                    RemoteMcpStatus(
+                        state="reconnecting",
+                        mode=mode.value,
+                        error=f"Connection interrupted. Reconnecting automatically: {error}",
+                    )
                 )
+                if stop_event.wait(retry_delay):
+                    return
+                retry_delay = min(retry_delay * 2, 30.0)
+
+    def _run_once(self, mode: ConnectionMode, stop_event: threading.Event) -> None:
+        port, path, provider, auth_args = self._runtime(mode)
+        command, base_args = mcp_launch_spec()
+        server_args = [
+            *base_args,
+            "--transport",
+            "streamable-http",
+            "--host",
+            "127.0.0.1",
+            "--port",
+            str(port),
+            "--path",
+            path,
+            *auth_args,
+        ]
+        self._server_process = self._popen_server([command, *server_args])
+        self._wait_for_port(port, self._server_process)
+        session = provider.start(port)
+        self._tunnel_process = session.process
+        public_url = session.public_url + (path if mode is ConnectionMode.DEV_QUICK else "")
+        self._set_status(
+            RemoteMcpStatus(
+                state="online",
+                mode=mode.value,
+                public_url=public_url,
+                local_port=port,
             )
-            return_code = self._tunnel_process.wait()
-            if self.status.state != "stopped":
-                raise RuntimeError(f"Secure tunnel stopped unexpectedly ({return_code}).")
-        except Exception as error:
-            self._terminate_children()
-            self._set_status(
-                RemoteMcpStatus(state="error", mode=mode.value, error=str(error))
-            )
+        )
+        while not stop_event.wait(0.5):
+            server_code = self._server_process.poll()
+            tunnel_code = self._tunnel_process.poll()
+            if server_code is not None:
+                raise RuntimeError(f"Local protected-library service stopped ({server_code}).")
+            if tunnel_code is not None:
+                raise RuntimeError(f"Secure tunnel stopped ({tunnel_code}).")
 
     def _runtime(
         self, mode: ConnectionMode
