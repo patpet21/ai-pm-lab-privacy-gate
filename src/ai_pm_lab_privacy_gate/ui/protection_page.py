@@ -392,10 +392,10 @@ class ProtectionPage(QWidget):
         preview_header = QHBoxLayout()
         preview_header.addWidget(QLabel("Protected preview", objectName="SectionTitle"))
         preview_header.addStretch(1)
-        self.focus_preview_button = QPushButton("Review studio", objectName="Secondary")
+        self.focus_preview_button = QPushButton("Full document view", objectName="Secondary")
         self.focus_preview_button.setCheckable(True)
         self.focus_preview_button.setToolTip(
-            "Open a large document workspace while keeping item-by-item protection controls available."
+            "Use the full window for the original/protected comparison. The review panel remains one click away."
         )
         preview_header.addWidget(self.focus_preview_button)
         preview_header.addWidget(QLabel("Color-coded by protected category", objectName="TokenHint"))
@@ -643,13 +643,15 @@ class ProtectionPage(QWidget):
         self.setup_toggle.setText("Document setup  -" if visible else "Document setup  +")
 
     def _toggle_preview_focus(self, focused: bool) -> None:
-        """Provide a large comparison workspace without losing review controls."""
-        self.findings_card.setVisible(True)
+        """Switch between maximum document space and item-by-item review controls."""
+        self.findings_card.setVisible(not focused)
         self.setup_card.setVisible(not focused and self.setup_toggle.isChecked())
         self.setup_toggle.setVisible(not focused)
-        self.focus_preview_button.setText("Exit review studio" if focused else "Review studio")
+        self.focus_preview_button.setText(
+            "Show review panel" if focused else "Full document view"
+        )
         if focused:
-            self.workspace.setSizes([390, max(1050, self.width() - 390)])
+            self.workspace.setSizes([0, max(1200, self.width())])
         else:
             self.workspace.setSizes([430, 1050])
 
@@ -729,6 +731,8 @@ class ProtectionPage(QWidget):
         self._populate_findings()
         self._refresh_preview()
         self.setup_toggle.setChecked(False)
+        if self.current_document.source_kind in {"pdf", "docx", "xlsx"}:
+            self.focus_preview_button.setChecked(True)
 
     def _populate_findings(self) -> None:
         self.findings_table.blockSignals(True)
@@ -1037,6 +1041,7 @@ class ProtectionPage(QWidget):
                 else:
                     self.original_office_view.load(self.current_document.source_path, protected=False)
                     self.protected_office_view.load(protected_office_path, protected=True)
+                    self.original_office_view.synchronize_with(self.protected_office_view)
                     self.original_view_stack.setCurrentIndex(1)
                     self.protected_view_stack.setCurrentIndex(1)
                     self._set_pdf_controls_enabled(False)
