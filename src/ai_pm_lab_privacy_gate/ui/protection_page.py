@@ -46,6 +46,7 @@ from ai_pm_lab_privacy_gate.domain.profiles import (
     list_scopes,
 )
 from ai_pm_lab_privacy_gate.infrastructure.storage.library_repository import LibraryRepository
+from ai_pm_lab_privacy_gate.infrastructure.documents.office_preview import OfficePreviewRenderer
 from ai_pm_lab_privacy_gate.ui.workers import FunctionWorker
 
 
@@ -106,6 +107,9 @@ class ProtectionPage(QWidget):
             except OSError:
                 pass
         self._preview_path = self._preview_directory / f"protected-preview-{os.getpid()}.pdf"
+        self._office_original_directory = self._preview_directory / f"office-original-{os.getpid()}"
+        self._office_protected_directory = self._preview_directory / f"office-protected-{os.getpid()}"
+        self._office_preview_renderer = OfficePreviewRenderer()
         self._build_ui()
         self._connect_signals()
         self._update_profile_description()
@@ -338,6 +342,12 @@ class ProtectionPage(QWidget):
         preview_header = QHBoxLayout()
         preview_header.addWidget(QLabel("Protected preview", objectName="SectionTitle"))
         preview_header.addStretch(1)
+        self.focus_preview_button = QPushButton("Focus preview", objectName="Secondary")
+        self.focus_preview_button.setCheckable(True)
+        self.focus_preview_button.setToolTip(
+            "Temporarily hide setup and findings to give the document comparison maximum space."
+        )
+        preview_header.addWidget(self.focus_preview_button)
         preview_header.addWidget(QLabel("Color-coded by protected category", objectName="TokenHint"))
         preview_layout.addLayout(preview_header)
 
@@ -359,12 +369,12 @@ class ProtectionPage(QWidget):
         pdf_comparison_tab = QWidget()
         pdf_comparison_layout = QVBoxLayout(pdf_comparison_tab)
         pdf_comparison_layout.setContentsMargins(0, 8, 0, 0)
-        comparison_note = QLabel(
+        self.comparison_note = QLabel(
             "Original source on the left. The secure, layout-preserving protected copy on the right.",
             objectName="Muted",
         )
-        comparison_note.setWordWrap(True)
-        pdf_comparison_layout.addWidget(comparison_note)
+        self.comparison_note.setWordWrap(True)
+        pdf_comparison_layout.addWidget(self.comparison_note)
         pdf_controls = QHBoxLayout()
         self.pdf_previous_button = QPushButton("‹", objectName="Tiny")
         self.pdf_previous_button.setToolTip("Previous page in both previews")
@@ -385,10 +395,10 @@ class ProtectionPage(QWidget):
         pdf_controls.addWidget(self.pdf_fit_button)
         pdf_controls.addWidget(self.pdf_zoom_in_button)
         pdf_comparison_layout.addLayout(pdf_controls)
-        pdf_splitter = QSplitter(Qt.Orientation.Horizontal)
-        original_panel, self.original_pdf_view = self._build_pdf_panel("Original PDF", "Local source")
+        self.document_preview_splitter = QSplitter(Qt.Orientation.Horizontal)
+        original_panel, self.original_pdf_view = self._build_pdf_panel("Original document", "Local source")
         protected_panel, self.protected_pdf_view = self._build_pdf_panel(
-            "Protected PDF", "Exact download preview"
+            "Protected document", "Safe copy preview"
         )
         self.original_pdf_document = QPdfDocument(self)
         self.protected_pdf_document = QPdfDocument(self)
@@ -397,23 +407,28 @@ class ProtectionPage(QWidget):
         for view in (self.original_pdf_view, self.protected_pdf_view):
             view.setPageMode(QPdfView.PageMode.MultiPage)
             view.setZoomMode(QPdfView.ZoomMode.FitToWidth)
-        pdf_splitter.addWidget(original_panel)
-        pdf_splitter.addWidget(protected_panel)
-        pdf_splitter.setChildrenCollapsible(False)
-        pdf_splitter.setSizes([500, 500])
-        pdf_comparison_layout.addWidget(pdf_splitter, 1)
-        self.preview_tabs.addTab(pdf_comparison_tab, "PDF comparison")
+        self.document_preview_splitter.addWidget(original_panel)
+        self.document_preview_splitter.addWidget(protected_panel)
+        self.document_preview_splitter.setChildrenCollapsible(False)
+        self.document_preview_splitter.setSizes([600, 600])
+        pdf_comparison_layout.addWidget(self.document_preview_splitter, 1)
+        self.preview_tabs.addTab(pdf_comparison_tab, "Document comparison")
         self.preview_tabs.setTabVisible(1, False)
         preview_layout.addWidget(self.preview_tabs, 1)
         self.labels_input = QLineEdit()
         self.labels_input.setPlaceholderText("Library labels, comma separated (e.g. Lease, Property 014)")
         preview_layout.addWidget(self.labels_input)
 
-        workspace.addWidget(findings_card)
-        workspace.addWidget(preview_card)
-        workspace.setChildrenCollapsible(False)
-        workspace.setSizes([650, 650])
-        root.addWidget(workspace, 1)
+        self.workspace = workspace
+        self.findings_card = findings_card
+        self.preview_card = preview_card
+        self.workspace.addWidget(findings_card)
+        self.workspace.addWidget(preview_card)
+        self.workspace.setChildrenCollapsible(False)
+        self.workspace.setStretchFactor(0, 2)
+        self.workspace.setStretchFactor(1, 5)
+        self.workspace.setSizes([430, 1050])
+        root.addWidget(self.workspace, 1)
 
         action_bar = QFrame(objectName="ActionBar")
         actions = QHBoxLayout(action_bar)
@@ -448,7 +463,7 @@ class ProtectionPage(QWidget):
         self._pdf_preview_timer = QTimer(self)
         self._pdf_preview_timer.setSingleShot(True)
         self._pdf_preview_timer.setInterval(220)
-        self._pdf_preview_timer.timeout.connect(self._update_pdf_comparison)
+        self._pdf_preview_timer.timeout.connect(self._update_document_comparison)
 
     def _info_heading(self, title: str, message: str) -> QHBoxLayout:
         row = QHBoxLayout()
@@ -508,6 +523,7 @@ class ProtectionPage(QWidget):
         self.categories_button.clicked.connect(self._open_categories)
         self.reset_selections_button.clicked.connect(self._reset_selections)
         self.filter_input.textChanged.connect(self._apply_filter)
+        self.focus_preview_button.toggled.connect(self._toggle_preview_focus)
         self.findings_table.cellClicked.connect(self._finding_selected)
         self.add_sensitive_button.clicked.connect(self._add_sensitive_item)
         self.copy_button.clicked.connect(self._copy_result)
@@ -524,6 +540,17 @@ class ProtectionPage(QWidget):
     def _toggle_setup(self, visible: bool) -> None:
         self.setup_card.setVisible(visible)
         self.setup_toggle.setText("Document setup  -" if visible else "Document setup  +")
+
+    def _toggle_preview_focus(self, focused: bool) -> None:
+        """Give the document maximum room without removing any review controls."""
+        self.findings_card.setVisible(not focused)
+        self.setup_card.setVisible(not focused)
+        self.setup_toggle.setVisible(not focused)
+        self.focus_preview_button.setText("Show review panels" if focused else "Focus preview")
+        if focused:
+            self.workspace.setSizes([0, max(1200, self.width())])
+        else:
+            self.workspace.setSizes([430, 1050])
 
     def _open_categories(self) -> None:
         self.categories_dialog.show()
@@ -737,7 +764,7 @@ class ProtectionPage(QWidget):
         self.findings_metric.setText(
             f"{len(self.current_findings)} detected  |  {protected_count} protected"
         )
-        if self.current_document.source_kind == "pdf":
+        if self.current_document.source_kind in {"pdf", "docx", "xlsx"}:
             self.preview_tabs.setTabVisible(1, True)
             self._pdf_preview_timer.start()
         else:
@@ -763,31 +790,58 @@ class ProtectionPage(QWidget):
             token_format.setFontWeight(int(QFont.Weight.DemiBold))
             cursor.mergeCharFormat(token_format)
 
-    def _update_pdf_comparison(self) -> None:
+    def _update_document_comparison(self) -> None:
         if (
             self.current_document is None
             or self.current_result is None
-            or self.current_document.source_kind != "pdf"
             or self.current_document.source_path is None
         ):
             return
-        protected_path = self._preview_path
         try:
             self.protected_pdf_document.close()
-            self.service.save_protected_pdf(
-                self.current_result,
-                protected_path,
-                source_document=self.current_document,
-            )
             self.original_pdf_document.close()
-            self.original_pdf_document.load(str(self.current_document.source_path))
+            if self.current_document.source_kind == "pdf":
+                original_path = self.current_document.source_path
+                protected_path = self._preview_path
+                self.service.save_protected_pdf(
+                    self.current_result,
+                    protected_path,
+                    source_document=self.current_document,
+                )
+                self.comparison_note.setText(
+                    "Original PDF on the left. The secure, layout-preserving protected PDF on the right."
+                )
+            elif self.current_document.source_kind in {"docx", "xlsx"}:
+                suffix = self.current_document.source_path.suffix
+                protected_office_path = self._preview_directory / f"protected-office-{os.getpid()}{suffix}"
+                self.service.save_protected_office(
+                    self.current_result,
+                    protected_office_path,
+                    source_document=self.current_document,
+                )
+                original_path = self._office_preview_renderer.render(
+                    self.current_document.source_path, self._office_original_directory
+                )
+                protected_path = self._office_preview_renderer.render(
+                    protected_office_path, self._office_protected_directory
+                )
+                self.comparison_note.setText(
+                    "Local Office rendering: original on the left, same-format protected copy on the right. "
+                    "The exported DOCX/XLSX remains editable."
+                )
+            else:
+                return
+            self.original_pdf_document.load(str(original_path))
             self.protected_pdf_document.load(str(protected_path))
         except Exception as exc:
             self.preview_tabs.setTabToolTip(1, f"Preview unavailable: {exc}")
+            self.comparison_note.setText(str(exc))
+            self.preview_tabs.setCurrentIndex(0)
         else:
             self.preview_tabs.setTabToolTip(
-                1, "Compare the local source with the secure layout-preserving PDF generated by Privacy Gate."
+                1, "Compare the local source with the secure layout-preserving copy generated by Privacy Gate."
             )
+            self.preview_tabs.setCurrentIndex(1)
             self._set_pdf_page(0)
 
     def _set_pdf_page(self, page: int) -> None:
@@ -1027,7 +1081,7 @@ class ProtectionPage(QWidget):
             self._active_worker = None
 
     def cleanup_pdf_preview(self) -> None:
-        """Release Windows PDF file handles before removing the temporary preview."""
+        """Release document handles before removing local temporary previews."""
         self._pdf_preview_timer.stop()
         self.original_pdf_view.setDocument(None)
         self.protected_pdf_view.setDocument(None)
@@ -1036,6 +1090,12 @@ class ProtectionPage(QWidget):
         QApplication.processEvents()
         try:
             self._preview_path.unlink(missing_ok=True)
+            for directory in (self._office_original_directory, self._office_protected_directory):
+                for preview in (directory.glob("*") if directory.exists() else ()):
+                    preview.unlink(missing_ok=True)
+                directory.rmdir() if directory.exists() else None
+            for office_copy in self._preview_directory.glob(f"protected-office-{os.getpid()}.*"):
+                office_copy.unlink(missing_ok=True)
         except OSError:
             # Qt's renderer can release the handle just after shutdown. Any stale
             # preview is removed automatically at the next application start.
@@ -1065,4 +1125,5 @@ class ProtectionPage(QWidget):
         self.verification_metric.setText("Second scan before export")
         self._last_residual = ()
         self._set_result_actions(False)
+        self.focus_preview_button.setChecked(False)
         self.setup_toggle.setChecked(True)

@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 import os
+import tempfile
 import uuid
 from pathlib import Path
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 os.environ.setdefault(
     "PRIVACY_GATE_DATA_DIR",
-    str((Path("tmp/ui/sessions") / uuid.uuid4().hex).resolve()),
+    str((Path(tempfile.gettempdir()) / "privacy-gate-ui-smoke" / uuid.uuid4().hex).resolve()),
 )
 
 from PySide6.QtWidgets import QApplication
@@ -22,11 +23,13 @@ from ai_pm_lab_privacy_gate.ui.styles import APP_STYLE
 
 
 def main() -> int:
-    output = Path("tmp/ui/privacy_gate_main.png")
-    collapsed_output = Path("tmp/ui/privacy_gate_collapsed.png")
-    library_output = Path("tmp/ui/privacy_gate_library.png")
-    mask_output = Path("tmp/ui/privacy_gate_mask_colors.png")
-    pdf_output = Path("tmp/ui/privacy_gate_pdf_comparison.png")
+    output_dir = Path(tempfile.gettempdir()) / "privacy-gate-ui-smoke-output"
+    output = output_dir / "privacy_gate_main.png"
+    collapsed_output = output_dir / "privacy_gate_collapsed.png"
+    library_output = output_dir / "privacy_gate_library.png"
+    mask_output = output_dir / "privacy_gate_mask_colors.png"
+    pdf_output = output_dir / "privacy_gate_pdf_comparison.png"
+    focus_output = output_dir / "privacy_gate_focus_preview.png"
     output.parent.mkdir(parents=True, exist_ok=True)
     app = QApplication([])
     install_app_font(app)
@@ -52,7 +55,7 @@ def main() -> int:
     if not window.grab().save(str(mask_output)):
         raise RuntimeError("Unable to save mask color screenshot")
 
-    source_pdf = Path("tmp/ui/privacy_gate_source.pdf")
+    source_pdf = output_dir / "privacy_gate_source.pdf"
     PdfDocumentService().write_protected(
         (
             PageContent(1, "Tenant Jane Smith\nEmail jane.smith@example.com\nPhone 212-555-5555"),
@@ -72,6 +75,13 @@ def main() -> int:
         raise RuntimeError("PDF comparison did not load both two-page documents")
     if not window.grab().save(str(pdf_output)):
         raise RuntimeError("Unable to save PDF comparison screenshot")
+    page.focus_preview_button.setChecked(True)
+    app.processEvents()
+    if page.findings_card.isVisible() or page.setup_card.isVisible():
+        raise RuntimeError("Focus preview did not hide the review panels")
+    if not window.grab().save(str(focus_output)):
+        raise RuntimeError("Unable to save focused preview screenshot")
+    page.focus_preview_button.setChecked(False)
 
     window._toggle_sidebar()
     app.processEvents()
@@ -100,7 +110,7 @@ def main() -> int:
         raise RuntimeError("Unable to save library UI screenshot")
     print(
         f"UI_OK {output.resolve()} {mask_output.resolve()} {pdf_output.resolve()} "
-        f"{collapsed_output.resolve()} {library_output.resolve()} "
+        f"{focus_output.resolve()} {collapsed_output.resolve()} {library_output.resolve()} "
         f"{len(findings)} findings sidebar={window.sidebar.width()}"
     )
     window.close()

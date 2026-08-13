@@ -5,6 +5,9 @@ Windows desktop app local-first for detecting and protecting sensitive data befo
 ## Current customer release: 0.4.0
 
 - pasted text, selectable-text PDF, Word (.docx), and Excel (.xlsx) files;
+- a resizable document workspace with full-width focus mode and side-by-side original/protected previews;
+- optional local Word/Excel page previews through LibreOffice (protection and same-format export do not require it);
+- an in-app Contact & Custom Workflows page and non-blocking update discovery;
 - Property Management, Realtor / Brokerage, and Projects & Renovations profiles;
 - selectable entity categories and individual findings;
 - manual sensitive-item tagging;
