@@ -75,3 +75,22 @@ def test_restores_searchable_pdf_to_layout_preserving_copy(tmp_path: Path) -> No
     assert report.output_path.is_file()
     assert report.output_path.stat().st_size > 0
     assert report.restored_occurrences == 1
+
+
+def test_repeated_restore_uses_a_new_output_when_preview_path_already_exists(tmp_path: Path) -> None:
+    source = tmp_path / "analysis.pdf"
+    pdf = canvas.Canvas(str(source))
+    pdf.drawString(72, 720, "Report for [[PG_PERSON_001]]")
+    pdf.save()
+
+    service = DocumentRestoreService()
+    destination = tmp_path / "restored.pdf"
+    first = service.restore(source, MAPPINGS, destination)
+    second = service.restore(source, MAPPINGS, destination)
+
+    assert first.output_path == destination
+    assert second.output_path != destination
+    assert second.output_path.parent == destination.parent
+    assert second.output_path.suffix == ".pdf"
+    assert second.output_path.is_file()
+    assert second.restored_occurrences == 1
