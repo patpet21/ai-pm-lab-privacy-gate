@@ -12,7 +12,7 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 
 
-REQUIRED_SCOPE = "email"
+REQUIRED_SCOPES = ("openid", "email", "offline_access")
 TOKEN_CLOCK_SKEW_SECONDS = 60
 
 
@@ -23,14 +23,14 @@ class OAuthResourceConfiguration:
     jwks_url: str
     token_audience: str
     expected_subject: str
-    required_scope: str = REQUIRED_SCOPE
+    required_scopes: tuple[str, ...] = REQUIRED_SCOPES
 
     @property
     def metadata(self) -> dict[str, object]:
         return {
             "resource": self.resource,
             "authorization_servers": [self.issuer],
-            "scopes_supported": ["email"],
+            "scopes_supported": list(self.required_scopes),
             "resource_documentation": "https://privacygate.propertydex.xyz/#mcp",
         }
 
@@ -42,7 +42,9 @@ class OAuthResourceConfiguration:
 
 
 class AccessTokenValidator(Protocol):
-    def validate(self, token: str, required_scope: str) -> dict[str, object]: ...
+    def validate(
+        self, token: str, required_scopes: tuple[str, ...]
+    ) -> dict[str, object]: ...
 
 
 class JwtAccessTokenValidator:
@@ -57,7 +59,9 @@ class JwtAccessTokenValidator:
             ssl_context=truststore.SSLContext(ssl.PROTOCOL_TLS_CLIENT),
         )
 
-    def validate(self, token: str, required_scope: str) -> dict[str, object]:
+    def validate(
+        self, token: str, required_scopes: tuple[str, ...]
+    ) -> dict[str, object]:
         signing_key = self.jwks.get_signing_key_from_jwt(token)
         claims = jwt.decode(
             token,
@@ -70,8 +74,11 @@ class JwtAccessTokenValidator:
         )
         raw_scopes = claims.get("scope", "")
         scopes = set(raw_scopes.split()) if isinstance(raw_scopes, str) else set(raw_scopes or ())
-        if required_scope not in scopes:
-            raise jwt.InvalidTokenError("Required scope is missing")
+        missing_scopes = set(required_scopes) - scopes
+        if missing_scopes:
+            raise jwt.InvalidTokenError(
+                f"Required OAuth scopes are missing: {', '.join(sorted(missing_scopes))}"
+            )
         if claims.get("sub") != self.configuration.expected_subject:
             raise jwt.InvalidTokenError("The OAuth account does not own this Privacy Gate device")
         if claims.get("role") != "authenticated" or claims.get("is_anonymous") is not False:
@@ -111,7 +118,7 @@ class McpOAuthMiddleware(BaseHTTPMiddleware):
             return self._unauthorized()
         token = authorization.removeprefix("Bearer ").strip()
         try:
-            claims = self.validator.validate(token, self.configuration.required_scope)
+            claims = self.validator.validate(token, self.configuration.required_scopes)
         except Exception:
             return self._unauthorized()
         request.state.oauth_claims = claims
@@ -119,9 +126,10 @@ class McpOAuthMiddleware(BaseHTTPMiddleware):
 
     def _unauthorized(self) -> JSONResponse:
         metadata_url = self.configuration.metadata_url
+        requested_scopes = " ".join(self.configuration.required_scopes)
         challenge = (
             f'Bearer resource_metadata="{metadata_url}", '
-            f'scope="{self.configuration.required_scope}"'
+            f'scope="{requested_scopes}"'
         )
         return JSONResponse(
             {"error": "unauthorized"},

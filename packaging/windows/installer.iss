@@ -33,7 +33,9 @@ WizardStyle=modern
 SetupIconFile=..\..\resources\branding\privacy-gate.ico
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
-CloseApplications=yes
+; MCP-enabled builds minimize to the notification area on a normal close.
+; During an update, Restart Manager must be allowed to terminate the old process.
+CloseApplications=force
 RestartApplications=no
 UninstallDisplayIcon={app}\{#MyAppExeName}
 VersionInfoVersion={#MyAppVersionInfo}

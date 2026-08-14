@@ -6,8 +6,6 @@ interface Env {
   CF_ACCOUNT_ID: string;
   CF_ZONE_ID: string;
   CF_API_TOKEN: string;
-  JWT_PRIVATE_JWK: string;
-  JWT_PUBLIC_JWK: string;
   PROVISIONING_FINGERPRINT_SALT: string;
 }
 
@@ -70,7 +68,7 @@ async function protectedResourceMetadata(request: Request, env: Env): Promise<Re
   return json({
     resource,
     authorization_servers:[env.SUPABASE_ISSUER],
-    scopes_supported:["email"],
+    scopes_supported:["openid","email","offline_access"],
     bearer_methods_supported:["header"]
   },200,{"cache-control":"public, max-age=30","access-control-allow-origin":"*"});
 }
@@ -184,7 +182,6 @@ async function deviceLifecycle(request: Request, env: Env, action: "rotate"|"rev
   if (!device) return json({error:"device_not_found"},404);
   if (action === "revoke") {
     await env.DB.prepare("UPDATE devices SET status = 'revoked' WHERE installation_id = ?").bind(installationId).run();
-    await env.DB.prepare("UPDATE pairings SET status = 'revoked', auth_code_delivery = NULL WHERE installation_id = ? AND status NOT IN ('consumed','expired')").bind(installationId).run();
     await removeTunnelResources(env,device.tunnel_id,device.hostname);
     return json({state:"revoked"});
   }
@@ -207,57 +204,14 @@ async function verifyDevice(request: Request, env: Env, body: Uint8Array): Promi
   return inserted.meta.changes ? installationId : null;
 }
 
-async function clientRedirectAllowed(clientId:string, redirectUri:string):Promise<boolean>{
-  try{const url=new URL(clientId);if(url.protocol!=="https:"||!["chatgpt.com","claude.ai","anthropic.com"].some(domain=>url.hostname===domain||url.hostname.endsWith(`.${domain}`)))return false;const response=await fetch(url.toString(),{headers:{accept:"application/json"}});if(!response.ok)return false;const metadata:any=await response.json();return metadata.client_id===clientId&&Array.isArray(metadata.redirect_uris)&&metadata.redirect_uris.includes(redirectUri);}catch{return false;}
-}
-
-async function authorize(request:Request,env:Env):Promise<Response>{
-  const url=new URL(request.url),clientId=url.searchParams.get("client_id")??"",redirectUri=url.searchParams.get("redirect_uri")??"",resource=url.searchParams.get("resource")??"",codeChallenge=url.searchParams.get("code_challenge")??"",state=url.searchParams.get("state")??"",scope=url.searchParams.get("scope")||"protected:read",installationId=installationFromResource(resource,env.MCP_DOMAIN);
-  if(url.searchParams.get("response_type")!=="code"||url.searchParams.get("code_challenge_method")!=="S256"||!installationId||!codeChallenge)return json({error:"invalid_request"},400);
-  const device:any=await env.DB.prepare("SELECT status FROM devices WHERE installation_id=?").bind(installationId).first();
-  if(!device||device.status!=="active")return json({error:"invalid_resource"},400);
-  if(!await clientRedirectAllowed(clientId,redirectUri))return json({error:"invalid_client"},400);
-  const pairingId=crypto.randomUUID(),browserSecret=randomToken(),now=Math.floor(Date.now()/1000);
-  const unusedCodeHash=await sha256(randomToken());
-  await env.DB.prepare("INSERT INTO pairings VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', NULL, NULL, ?, ?)").bind(pairingId,installationId,unusedCodeHash,await sha256(browserSecret),clientId,redirectUri,state,resource,scope,codeChallenge,now+600,now).run();
-  return html(`<!doctype html><meta name="viewport" content="width=device-width"><title>Authorize Privacy Gate</title><style>:root{color-scheme:light}body{font:16px system-ui;max-width:620px;margin:60px auto;padding:24px;color:#08243b;background:#f4f7f8}.card{background:white;border:1px solid #d8e2e7;border-radius:18px;padding:32px;box-shadow:0 18px 55px rgba(8,36,59,.12)}.badge{display:inline-block;padding:7px 10px;border-radius:999px;background:#def3ee;color:#087064;font-weight:800;font-size:12px}button{width:100%;background:#078f98;color:white;border:0;padding:15px 20px;border-radius:9px;font-weight:800;font-size:15px;cursor:pointer}small{display:block;color:#607587;line-height:1.55;margin-top:18px}</style><div class="card"><span class="badge">PROTECTED LIBRARY ONLY</span><h1>Authorize AI access</h1><p>Allow this AI client to read documents you saved in Privacy Gate's Protected Library on device <strong>${escapeHtml(installationId.slice(0,8).toUpperCase())}</strong>.</p><p>Original documents, reversible mappings and restore keys are never available through this connection.</p><form method="post" action="/authorize/confirm"><input type="hidden" name="pairing_id" value="${escapeHtml(pairingId)}"><input type="hidden" name="browser_secret" value="${escapeHtml(browserSecret)}"><button type="submit">Authorize protected files</button></form><small>This permission is read-only and can be stopped or revoked from Privacy Gate. No AI PM LAB account is required.</small></div>`);
-}
-
-async function confirmAuthorization(request:Request,env:Env):Promise<Response>{
-  const form=await request.formData(),pairingId=String(form.get("pairing_id")??""),browserSecret=String(form.get("browser_secret")??"");
-  const row:any=await env.DB.prepare("SELECT * FROM pairings WHERE pairing_id=? AND status='pending'").bind(pairingId).first();
-  if(!row||row.browser_secret_hash!==await sha256(browserSecret)||row.expires_at<Date.now()/1000)return html("<h1>Authorization request expired</h1><p>Return to ChatGPT or Claude and try connecting again.</p>",400);
-  const authCode=randomToken();
-  await env.DB.prepare("UPDATE pairings SET status='delivered',auth_code_hash=?,auth_code_delivery=NULL WHERE pairing_id=?").bind(await sha256(authCode),pairingId).run();
-  const redirect=new URL(row.redirect_uri);redirect.searchParams.set("code",authCode);if(row.state_parameter)redirect.searchParams.set("state",row.state_parameter);
-  return Response.redirect(redirect.toString(),302);
-}
-
-async function signJwt(env:Env,claims:Json):Promise<string>{
-  const privateJwk=JSON.parse(env.JWT_PRIVATE_JWK),publicJwk=JSON.parse(env.JWT_PUBLIC_JWK),header=b64url(encoder.encode(JSON.stringify({alg:"ES256",typ:"JWT",kid:publicJwk.kid}))),payload=b64url(encoder.encode(JSON.stringify(claims))),key=await crypto.subtle.importKey("jwk",privateJwk,{name:"ECDSA",namedCurve:"P-256"},false,["sign"]),signature=new Uint8Array(await crypto.subtle.sign({name:"ECDSA",hash:"SHA-256"},key,encoder.encode(`${header}.${payload}`)));
-  return `${header}.${payload}.${b64url(signature)}`;
-}
-
-async function token(request:Request,env:Env):Promise<Response>{
-  const form=await request.formData();if(form.get("grant_type")!=="authorization_code")return json({error:"unsupported_grant_type"},400);
-  const code=String(form.get("code")??""),verifier=String(form.get("code_verifier")??""),row:any=await env.DB.prepare("SELECT * FROM pairings WHERE auth_code_hash=? AND status='delivered'").bind(await sha256(code)).first();
-  const requestedResource=form.get("resource");
-  if(!row||row.expires_at<Date.now()/1000||row.client_id!==form.get("client_id")||row.redirect_uri!==form.get("redirect_uri")||(requestedResource&&row.resource!==requestedResource)||await sha256(verifier)!==row.code_challenge)return json({error:"invalid_grant"},400);
-  await env.DB.prepare("UPDATE pairings SET status='consumed' WHERE pairing_id=?").bind(row.pairing_id).run();const now=Math.floor(Date.now()/1000);
-  return json({access_token:await signJwt(env,{iss:env.BASE_URL,sub:row.installation_id,aud:row.resource,scope:row.scope,iat:now,exp:now+600,jti:crypto.randomUUID()}),token_type:"Bearer",expires_in:600,scope:row.scope});
-}
-
 export default {async fetch(request:Request,env:Env):Promise<Response>{
   const url=new URL(request.url);
   try{
     if(request.method==="GET"&&url.pathname.startsWith("/.well-known/oauth-protected-resource"))return protectedResourceMetadata(request,env);
     if(request.method==="GET"&&url.pathname==="/health")return json({status:"ok",content_storage:false});
-    if(request.method==="GET"&&url.pathname==="/.well-known/oauth-authorization-server")return json({issuer:env.BASE_URL,authorization_endpoint:`${env.BASE_URL}/authorize`,token_endpoint:`${env.BASE_URL}/token`,jwks_uri:`${env.BASE_URL}/.well-known/jwks.json`,client_id_metadata_document_supported:true,response_types_supported:["code"],grant_types_supported:["authorization_code"],token_endpoint_auth_methods_supported:["none"],code_challenge_methods_supported:["S256"],scopes_supported:["protected:metadata","protected:read"]});
-    if(request.method==="GET"&&url.pathname==="/.well-known/jwks.json")return json({keys:[JSON.parse(env.JWT_PUBLIC_JWK)]},200,{"cache-control":"public, max-age=300"});
     if(request.method==="POST"&&url.pathname==="/v1/enrollments")return startEnrollment(request,env);
     const enrollment=/^\/v1\/enrollments\/([a-f0-9-]+)$/.exec(url.pathname);if(request.method==="GET"&&enrollment)return pollEnrollment(request,env,enrollment[1]);
     if(request.method==="GET"&&url.pathname==="/activate")return activationPage(request,env);if(request.method==="POST"&&url.pathname==="/activate")return approveActivation(request,env);
-    if(request.method==="GET"&&url.pathname==="/authorize")return authorize(request,env);if(request.method==="POST"&&url.pathname==="/authorize/confirm")return confirmAuthorization(request,env);if(request.method==="POST"&&url.pathname==="/token")return token(request,env);
     if(request.method==="POST"&&url.pathname==="/v1/device/rotate")return deviceLifecycle(request,env,"rotate");
     if(request.method==="POST"&&url.pathname==="/v1/device/revoke")return deviceLifecycle(request,env,"revoke");
     return json({error:"not_found"},404);

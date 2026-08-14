@@ -9,5 +9,5 @@
   ],
   "d1_databases": [{ "binding": "DB", "database_name": "privacy-gate-control-plane", "database_id": "a3924143-052e-4941-89a1-b4d17dc31d00", "migrations_dir": "migrations" }],
   "vars": {"BASE_URL":"https://auth.propertydex.xyz","MCP_DOMAIN":"propertydex.xyz","SUPABASE_ISSUER":"https://miihsvfvklwvwvvgeboh.supabase.co/auth/v1","CF_ACCOUNT_ID":"ee77e23772774beb4c2c499ace77441c","CF_ZONE_ID":"a73901b6bacc6810532d922f54546799"},
-  "secrets": {"required":["CF_API_TOKEN","JWT_PRIVATE_JWK","JWT_PUBLIC_JWK","PROVISIONING_FINGERPRINT_SALT"]}
+  "secrets": {"required":["CF_API_TOKEN","PROVISIONING_FINGERPRINT_SALT"]}
 }

@@ -12,6 +12,8 @@ from ai_pm_lab_privacy_gate.infrastructure.security.secret_store import SecretSt
 
 TUNNEL_TOKEN_SECRET = "mcp.production_tunnel_token"
 HOSTNAME_PATTERN = re.compile(r"mcp-pg-[a-z0-9-]+\.propertydex\.xyz")
+PRODUCTION_OAUTH_ISSUER = "https://miihsvfvklwvwvvgeboh.supabase.co/auth/v1"
+PRODUCTION_OAUTH_JWKS_URL = f"{PRODUCTION_OAUTH_ISSUER}/.well-known/jwks.json"
 
 
 class ProvisioningState(StrEnum):
@@ -38,10 +40,27 @@ class NamedTunnelConfiguration:
     def validate(self) -> None:
         if not HOSTNAME_PATTERN.fullmatch(self.hostname):
             raise ValueError("Provisioning returned an unexpected production hostname")
-        if not self.oauth_issuer.startswith("https://"):
-            raise ValueError("OAuth issuer must use HTTPS")
-        if not self.oauth_jwks_url.startswith("https://"):
-            raise ValueError("OAuth JWKS endpoint must use HTTPS")
+        if self.oauth_issuer != PRODUCTION_OAUTH_ISSUER:
+            raise ValueError("Production MCP must use the approved Supabase OAuth issuer")
+        if self.oauth_jwks_url != PRODUCTION_OAUTH_JWKS_URL:
+            raise ValueError("Production MCP must use the approved Supabase JWKS endpoint")
+
+    def normalized(self) -> "NamedTunnelConfiguration":
+        """Migrate pre-release metadata away from the retired control-plane OAuth issuer."""
+        if (
+            self.oauth_issuer == PRODUCTION_OAUTH_ISSUER
+            and self.oauth_jwks_url == PRODUCTION_OAUTH_JWKS_URL
+        ):
+            return self
+        return NamedTunnelConfiguration(
+            installation_id=self.installation_id,
+            tunnel_id=self.tunnel_id,
+            hostname=self.hostname,
+            oauth_issuer=PRODUCTION_OAUTH_ISSUER,
+            oauth_jwks_url=PRODUCTION_OAUTH_JWKS_URL,
+            credential_version=self.credential_version,
+            state=self.state,
+        )
 
 
 class ProvisioningClient(Protocol):
@@ -64,8 +83,13 @@ class ProvisioningStore:
             return None
         configuration = NamedTunnelConfiguration(
             **json.loads(self.path.read_text(encoding="utf-8"))
-        )
+        ).normalized()
         configuration.validate()
+        serialized = json.dumps(asdict(configuration), indent=2)
+        if self.path.read_text(encoding="utf-8").strip() != serialized.strip():
+            temporary = self.path.with_suffix(".tmp")
+            temporary.write_text(serialized, encoding="utf-8")
+            temporary.replace(self.path)
         return configuration
 
     def save(self, configuration: NamedTunnelConfiguration, tunnel_token: str) -> None:
@@ -84,4 +108,3 @@ class ProvisioningStore:
     def remove(self) -> None:
         self.clear_runtime_credential()
         self.path.unlink(missing_ok=True)
-

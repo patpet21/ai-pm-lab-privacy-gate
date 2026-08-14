@@ -2,10 +2,17 @@ from __future__ import annotations
 
 import os
 import socket
+import ssl
 import subprocess
 import threading
 import time
 from dataclasses import dataclass
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import TextIO
+
+import httpx
+import truststore
 
 from ai_pm_lab_privacy_gate.infrastructure.mcp.config import mcp_launch_spec
 from ai_pm_lab_privacy_gate.infrastructure.mcp.identity import ConnectionIdentityStore
@@ -18,8 +25,6 @@ from ai_pm_lab_privacy_gate.infrastructure.mcp.tunnels import (
     TunnelProvider,
 )
 from ai_pm_lab_privacy_gate.infrastructure.auth.supabase_account import (
-    SUPABASE_ISSUER,
-    SUPABASE_JWKS_URL,
     SUPABASE_TOKEN_AUDIENCE,
     USER_ID_SECRET,
 )
@@ -48,6 +53,8 @@ class RemoteMcpManager:
         self._tunnel_process: subprocess.Popen[str] | None = None
         self._monitor_thread: threading.Thread | None = None
         self._stop_event = threading.Event()
+        self._log_handle: TextIO | None = None
+        self.log_path = Path(self.identity_store.data_dir) / "Logs" / "mcp-runtime.log"
 
     @property
     def status(self) -> RemoteMcpStatus:
@@ -61,7 +68,9 @@ class RemoteMcpManager:
         if self.status.state in {"starting", "online", "reconnecting"}:
             return
         self.stop()
+        self._open_log()
         self._stop_event = threading.Event()
+        self._append_log(f"starting mode={selected_mode.value}")
         self._set_status(RemoteMcpStatus(state="starting", mode=selected_mode.value))
         self._monitor_thread = threading.Thread(
             target=self._supervise, args=(selected_mode, self._stop_event), daemon=True
@@ -84,16 +93,20 @@ class RemoteMcpManager:
             monitor.join(timeout=5)
         self._monitor_thread = None
         self._set_status(RemoteMcpStatus(state="stopped"))
+        self._append_log("stopped")
+        self._close_log()
 
     def _supervise(self, mode: ConnectionMode, stop_event: threading.Event) -> None:
         retry_delay = 1.0
         while not stop_event.is_set():
             try:
+                self._append_log(f"connection attempt mode={mode.value}")
                 self._run_once(mode, stop_event)
                 if stop_event.is_set():
                     return
                 raise RuntimeError("The secure connection stopped unexpectedly.")
             except Exception as error:
+                self._append_log(f"connection error type={type(error).__name__} message={error}")
                 self._terminate_children()
                 if stop_event.is_set():
                     return
@@ -133,6 +146,13 @@ class RemoteMcpManager:
         session = provider.start(port)
         self._tunnel_process = session.process
         public_url = session.public_url + (path if mode is ConnectionMode.DEV_QUICK else "")
+        if mode is ConnectionMode.PROD_NAMED:
+            self._wait_for_public_endpoint(
+                public_url,
+                self._server_process,
+                self._tunnel_process,
+                stop_event,
+            )
         self._set_status(
             RemoteMcpStatus(
                 state="online",
@@ -141,6 +161,7 @@ class RemoteMcpManager:
                 local_port=port,
             )
         )
+        self._append_log(f"online url={public_url}")
         while not stop_event.wait(0.5):
             server_code = self._server_process.poll()
             tunnel_code = self._tunnel_process.poll()
@@ -167,15 +188,17 @@ class RemoteMcpManager:
             "--resource",
             f"https://{configuration.hostname}/mcp",
             "--issuer",
-            SUPABASE_ISSUER,
+            configuration.oauth_issuer,
             "--jwks-url",
-            SUPABASE_JWKS_URL,
+            configuration.oauth_jwks_url,
             "--token-audience",
             SUPABASE_TOKEN_AUDIENCE,
             "--expected-subject",
             account_user_id,
         ]
-        return 8766, "/mcp", NamedTunnelProvider(configuration, self.provisioning_store), auth_args
+        return 8766, "/mcp", NamedTunnelProvider(
+            configuration, self.provisioning_store, self._log_handle
+        ), auth_args
 
     def _terminate_children(self) -> None:
         for process in (self._tunnel_process, self._server_process):
@@ -205,13 +228,71 @@ class RemoteMcpManager:
             time.sleep(0.15)
         raise TimeoutError("The local MCP service did not become ready in time.")
 
-    @staticmethod
-    def _popen_server(command: list[str]) -> subprocess.Popen[str]:
+    def _popen_server(self, command: list[str]) -> subprocess.Popen[str]:
         creationflags = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
         return subprocess.Popen(
             command,
             stdin=subprocess.DEVNULL,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
+            stdout=self._log_handle or subprocess.DEVNULL,
+            stderr=subprocess.STDOUT if self._log_handle else subprocess.DEVNULL,
             creationflags=creationflags,
         )
+
+    @staticmethod
+    def _wait_for_public_endpoint(
+        public_url: str,
+        server_process: subprocess.Popen[str],
+        tunnel_process: subprocess.Popen[str],
+        stop_event: threading.Event,
+    ) -> None:
+        """Wait until Cloudflare actually routes to MCP instead of only starting its process."""
+        deadline = time.monotonic() + 45
+        ssl_context = truststore.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+        with httpx.Client(
+            timeout=5,
+            verify=ssl_context,
+            follow_redirects=False,
+        ) as client:
+            while time.monotonic() < deadline and not stop_event.is_set():
+                if server_process.poll() is not None:
+                    raise RuntimeError("The local MCP service stopped during public readiness.")
+                if tunnel_process.poll() is not None:
+                    raise RuntimeError("The secure tunnel stopped during public readiness.")
+                try:
+                    response = client.get(public_url)
+                    # OAuth-protected MCP normally answers 401. MCP method/accept
+                    # validation may answer 400, 405 or 406; all prove end-to-end routing.
+                    if response.status_code in {400, 401, 405, 406}:
+                        return
+                except httpx.HTTPError:
+                    pass
+                stop_event.wait(0.5)
+        if stop_event.is_set():
+            raise RuntimeError("Stable connection startup was cancelled.")
+        raise TimeoutError("The stable public MCP address did not become reachable in time.")
+
+    def _open_log(self) -> None:
+        log_path = getattr(self, "log_path", None)
+        if log_path is None:
+            return
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        if log_path.exists() and log_path.stat().st_size > 5_000_000:
+            previous = log_path.with_suffix(".previous.log")
+            previous.unlink(missing_ok=True)
+            log_path.replace(previous)
+        self._log_handle = log_path.open("a", encoding="utf-8", buffering=1)
+
+    def _append_log(self, message: str) -> None:
+        handle = getattr(self, "_log_handle", None)
+        if handle is None:
+            return
+        timestamp = datetime.now(timezone.utc).isoformat(timespec="seconds")
+        handle.write(f"{timestamp} {message}\n")
+        handle.flush()
+
+    def _close_log(self) -> None:
+        handle = getattr(self, "_log_handle", None)
+        if handle is None:
+            return
+        handle.close()
+        self._log_handle = None

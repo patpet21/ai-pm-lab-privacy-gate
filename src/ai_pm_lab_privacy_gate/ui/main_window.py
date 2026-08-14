@@ -1,16 +1,19 @@
 from __future__ import annotations
 
 from PySide6.QtCore import QSize, QTimer, Qt
-from PySide6.QtGui import QCloseEvent, QIcon, QPixmap
+from PySide6.QtGui import QAction, QCloseEvent, QIcon, QPixmap
 from PySide6.QtWidgets import (
+    QApplication,
     QButtonGroup,
     QFrame,
     QHBoxLayout,
     QLabel,
     QMainWindow,
+    QMenu,
     QPushButton,
     QSizePolicy,
     QStackedWidget,
+    QSystemTrayIcon,
     QVBoxLayout,
     QWidget,
 )
@@ -19,6 +22,7 @@ from ai_pm_lab_privacy_gate.application.privacy_service import PrivacyGateServic
 from ai_pm_lab_privacy_gate import __version__
 from ai_pm_lab_privacy_gate.infrastructure.storage.library_repository import LibraryRepository
 from ai_pm_lab_privacy_gate.infrastructure.mcp.identity import ConnectionIdentityStore
+from ai_pm_lab_privacy_gate.infrastructure.mcp.autostart import set_mcp_autostart
 from ai_pm_lab_privacy_gate.infrastructure.mcp.remote import RemoteMcpManager
 from ai_pm_lab_privacy_gate.ui.connections_page import ConnectionsPage
 from ai_pm_lab_privacy_gate.ui.contact_page import ContactPage
@@ -39,6 +43,8 @@ class MainWindow(QMainWindow):
         self.library = library or LibraryRepository()
         self.connection_identity = ConnectionIdentityStore(self.library.data_dir)
         self.remote_mcp = RemoteMcpManager(self.connection_identity)
+        self._quit_requested = False
+        self._tray_notice_shown = False
         self.setWindowTitle(f"AI PM LAB Privacy Gate — {__version__}")
         self.resize(1460, 920)
         self.setMinimumSize(1120, 720)
@@ -50,9 +56,44 @@ class MainWindow(QMainWindow):
         elif logo_path.exists():
             self.setWindowIcon(QIcon(str(logo_path)))
         self._build_ui(display_logo_path if display_logo_path.exists() else logo_path)
+        self._setup_system_tray()
         self.statusBar().showMessage(
             f"Version {__version__}  •  Local library: {self.library.data_dir}"
         )
+
+    def _setup_system_tray(self) -> None:
+        self.tray_icon: QSystemTrayIcon | None = None
+        if not QSystemTrayIcon.isSystemTrayAvailable():
+            return
+        tray = QSystemTrayIcon(self.windowIcon(), self)
+        tray.setToolTip("AI PM LAB Privacy Gate")
+        menu = QMenu(self)
+        show_action = QAction("Open Privacy Gate", menu)
+        quit_action = QAction("Quit Privacy Gate and take MCP offline", menu)
+        show_action.triggered.connect(self.show_from_background)
+        quit_action.triggered.connect(self._quit_from_tray)
+        menu.addAction(show_action)
+        menu.addSeparator()
+        menu.addAction(quit_action)
+        tray.setContextMenu(menu)
+        tray.activated.connect(
+            lambda reason: self.show_from_background()
+            if reason == QSystemTrayIcon.ActivationReason.Trigger
+            else None
+        )
+        tray.show()
+        self.tray_icon = tray
+
+    def show_from_background(self) -> None:
+        self.showNormal()
+        self.raise_()
+        self.activateWindow()
+
+    def _quit_from_tray(self) -> None:
+        self._quit_requested = True
+        self.protection_page.cleanup_pdf_preview()
+        self.remote_mcp.stop()
+        QApplication.quit()
 
     def _build_ui(self, logo_path) -> None:
         central = QWidget()
@@ -159,6 +200,7 @@ class MainWindow(QMainWindow):
         self.nav_buttons[0].setChecked(True)
         self._show_page(0)
         if self.connection_identity.is_remote_enabled():
+            set_mcp_autostart(True)
             self.remote_mcp.start()
         QTimer.singleShot(3500, lambda: self.contact_page.check_updates(silent=True))
 
@@ -216,6 +258,22 @@ class MainWindow(QMainWindow):
         self._show_page(2)
 
     def closeEvent(self, event: QCloseEvent) -> None:
+        if (
+            not self._quit_requested
+            and self.connection_identity.is_remote_enabled()
+            and self.tray_icon is not None
+        ):
+            self.hide()
+            event.ignore()
+            if not self._tray_notice_shown:
+                self.tray_icon.showMessage(
+                    "Privacy Gate is still protecting the MCP connection",
+                    "The app continues in the notification area. Use Quit to take MCP offline.",
+                    QSystemTrayIcon.MessageIcon.Information,
+                    5000,
+                )
+                self._tray_notice_shown = True
+            return
         self.protection_page.cleanup_pdf_preview()
         self.remote_mcp.stop()
         super().closeEvent(event)

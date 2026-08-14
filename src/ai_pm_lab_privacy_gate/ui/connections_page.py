@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os
+
 from PySide6.QtCore import QTimer, QUrl
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (
@@ -21,6 +23,7 @@ from PySide6.QtWidgets import (
 )
 
 from ai_pm_lab_privacy_gate.infrastructure.mcp.config import client_config_json, mcp_launch_spec
+from ai_pm_lab_privacy_gate.infrastructure.mcp.autostart import set_mcp_autostart
 from ai_pm_lab_privacy_gate.infrastructure.auth.supabase_account import (
     SupabaseAccountClient,
 )
@@ -65,8 +68,8 @@ class ConnectionsPage(QWidget):
             cards = [
                 (
                     "ChatGPT & Claude",
-                    "Remote MCP beta",
-                    "Create a private HTTPS link to protected documents in this local Library. The app must remain open.",
+                    "Stable remote MCP",
+                    "Use one permanent HTTPS address to share only protected Library documents. Privacy Gate must be running while AI reads them.",
                     "Open AI connection",
                     self._remote_mcp_setup,
                 ),
@@ -182,11 +185,11 @@ class ConnectionsPage(QWidget):
         layout = QVBoxLayout(dialog)
         layout.addWidget(QLabel("Connect Privacy Gate to AI", objectName="PageTitle"))
 
+        dev_mode_enabled = os.environ.get("PRIVACY_GATE_ENABLE_DEV_MCP") == "1"
         explanation = QLabel(
-            "Remote access is optional. Temporary DEV mode creates a session URL for testing. Stable PROD "
-            "mode uses this installation's Named Tunnel and automatic browser authorization. In both modes, the MCP "
-            "process reads only the physically separate Protected Library; originals and restore mappings "
-            "are not present there.",
+            "Remote access is optional. This installation uses one stable address and browser-based OAuth "
+            "authorization. The MCP process reads only the physically separate Protected Library; originals "
+            "and restore mappings are not present there.",
             objectName="Muted",
         )
         explanation.setWordWrap(True)
@@ -211,20 +214,24 @@ class ConnectionsPage(QWidget):
             self._info_button(
                 dialog,
                 "Connection mode",
-                "PROD provides one stable address for this installation. DEV creates a temporary "
-                "testing address that changes when it restarts.",
+                "Stable mode provides one permanent address for this installation. It remains unchanged "
+                "after app updates, network interruptions and computer restarts.",
             )
         )
         mode_selector = QComboBox()
-        mode_selector.addItem("DEV — temporary Quick Tunnel", ConnectionMode.DEV_QUICK.value)
+        if dev_mode_enabled:
+            mode_selector.addItem("DEV — temporary Quick Tunnel", ConnectionMode.DEV_QUICK.value)
         production_configuration = self.remote_mcp.provisioning_store.load()
         production_label = (
             "PROD — stable Named Tunnel"
             if production_configuration
             else "PROD — stable Named Tunnel (not provisioned)"
         )
+        production_index = mode_selector.count()
         mode_selector.addItem(production_label, ConnectionMode.PROD_NAMED.value)
         selected_mode = self.remote_mcp.identity_store.connection_mode()
+        if not dev_mode_enabled:
+            selected_mode = ConnectionMode.PROD_NAMED
         selected_index = mode_selector.findData(selected_mode.value)
         mode_selector.setCurrentIndex(max(0, selected_index))
         mode_row.addWidget(mode_selector, 1)
@@ -271,7 +278,7 @@ class ConnectionsPage(QWidget):
         layout.addLayout(status_row)
         self._remote_url = QLineEdit()
         self._remote_url.setReadOnly(True)
-        self._remote_url.setPlaceholderText("Activate PROD or start DEV to create an MCP URL")
+        self._remote_url.setPlaceholderText("Activate the stable connection to create this device's MCP URL")
         self._remote_url.setToolTip("Select the address or use Copy. The PROD address remains the same after restarts and updates.")
         url_copy_button = QPushButton("Copy", objectName="Secondary")
         url_copy_button.setToolTip("Copy the complete MCP address to the clipboard")
@@ -282,12 +289,14 @@ class ConnectionsPage(QWidget):
         url_row.addWidget(copy_feedback)
         layout.addLayout(url_row)
 
-        steps = QLabel(
-            "DEV: start a temporary link and paste it into a test client.\n"
-            "PROD: copy the stable URL into ChatGPT or Claude and select OAuth. Your browser opens the "
+        steps_text = (
+            "Copy the stable URL into ChatGPT or Claude and select OAuth. Your browser opens the "
             "Privacy Gate authorization page automatically—no code needs to be entered. The stable hostname "
             "and device identity survive app updates."
         )
+        if dev_mode_enabled:
+            steps_text = "DEV is an internal temporary testing option.\n" + steps_text
+        steps = QLabel(steps_text)
         steps.setWordWrap(True)
         layout.addWidget(steps)
 
@@ -355,9 +364,9 @@ class ConnectionsPage(QWidget):
         layout.addLayout(destinations)
 
         note = QLabel(
-            "DEV addresses are temporary. PROD uses a stable first-level propertydex.xyz hostname and never "
-            "falls back to DEV automatically. Only TLS-protected, already-de-identified Library content may "
-            "cross the tunnel.",
+            "The stable first-level propertydex.xyz hostname never changes automatically. Only TLS-protected, "
+            "already-de-identified Library content may cross the tunnel. If this PC or Privacy Gate is offline, "
+            "AI access is temporarily unavailable and resumes at the same address when brought online.",
             objectName="Muted",
         )
         note.setWordWrap(True)
@@ -370,10 +379,12 @@ class ConnectionsPage(QWidget):
                     dialog,
                     "Stable connection not provisioned",
                     "This installation is ready for production provisioning, but it does not yet have a "
-                    "Named Tunnel credential. DEV Quick Tunnel remains available for testing.",
+                    "Named Tunnel credential. Select Activate stable connection to complete the one-time setup.",
                 )
                 return
             self.remote_mcp.identity_store.set_connection(enabled=True, mode=mode)
+            if mode is ConnectionMode.PROD_NAMED:
+                set_mcp_autostart(True)
             self.remote_mcp.start(mode)
 
         def begin_provisioning() -> None:
@@ -400,8 +411,8 @@ class ConnectionsPage(QWidget):
                 QMessageBox.information(dialog, "Activation status", f"Current state: {state}")
                 return
             production_configuration = self.remote_mcp.provisioning_store.load()
-            mode_selector.setItemText(1, "PROD — stable Named Tunnel")
-            mode_selector.setCurrentIndex(1)
+            mode_selector.setItemText(production_index, "PROD — stable Named Tunnel")
+            mode_selector.setCurrentIndex(production_index)
             provision_button.hide()
             check_activation_button.hide()
             provision_info.hide()
@@ -418,6 +429,7 @@ class ConnectionsPage(QWidget):
 
         def stop_connection() -> None:
             self.remote_mcp.identity_store.set_remote_enabled(False)
+            set_mcp_autostart(False)
             self.remote_mcp.stop()
 
         def rotate_connection() -> None:
@@ -490,9 +502,14 @@ class ConnectionsPage(QWidget):
                 QMessageBox.critical(dialog, "Removal failed", str(error))
                 return
             production_configuration = None
-            mode_selector.setItemText(1, "PROD — stable Named Tunnel (not provisioned)")
-            mode_selector.setCurrentIndex(0)
-            self.remote_mcp.identity_store.set_connection(enabled=False, mode=ConnectionMode.DEV_QUICK)
+            mode_selector.setItemText(
+                production_index, "PROD — stable Named Tunnel (not provisioned)"
+            )
+            mode_selector.setCurrentIndex(production_index)
+            self.remote_mcp.identity_store.set_connection(
+                enabled=False, mode=ConnectionMode.PROD_NAMED
+            )
+            set_mcp_autostart(False)
             provision_button.show()
             check_activation_button.show()
             provision_info.show()
@@ -557,6 +574,8 @@ class ConnectionsPage(QWidget):
         close_button.clicked.connect(dialog.accept)
         def sign_out_account() -> None:
             self.remote_mcp.stop()
+            self.remote_mcp.identity_store.set_remote_enabled(False)
+            set_mcp_autostart(False)
             account_client.sign_out()
             QMessageBox.information(
                 dialog,

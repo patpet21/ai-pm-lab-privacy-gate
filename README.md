@@ -30,7 +30,7 @@ Version 0.4.0 includes two read-only MCP transports. Local desktop clients may l
 
 ## Downloads and release status
 
-The customer-facing Windows installer is published in the [official downloads repository](https://github.com/patpet21/ai-pm-lab-privacy-gate-downloads/releases). Version 0.4.0 is the current release. The 0.4.0 installer is not yet Authenticode-signed; the SignPath Foundation application is pending.
+The customer-facing Windows installer is published in the [official downloads repository](https://github.com/patpet21/ai-pm-lab-privacy-gate-downloads/releases). Version 0.4.0 is the current release. The 0.4.0 installer is not yet Authenticode-signed; SignPath Foundation deferred the application until the project has broader public adoption.
 
 ## Code signing policy
 

@@ -10,10 +10,10 @@ from ai_pm_lab_privacy_gate.infrastructure.mcp.auth import (
 
 
 class FakeValidator:
-    def validate(self, token: str, required_scope: str) -> dict[str, object]:
-        if token != "valid" or required_scope != "email":
+    def validate(self, token: str, required_scopes: tuple[str, ...]) -> dict[str, object]:
+        if token != "valid" or required_scopes != ("openid", "email", "offline_access"):
             raise ValueError("invalid")
-        return {"sub": "connector-test", "scope": required_scope}
+        return {"sub": "connector-test", "scope": " ".join(required_scopes)}
 
 
 def _app() -> Starlette:
@@ -52,6 +52,6 @@ def test_resource_metadata_is_public_but_mcp_requires_valid_scope() -> None:
     assert metadata.status_code == 200
     assert metadata.json()["resource"] == "https://mcp-pg-test.propertydex.xyz/mcp"
     assert metadata.json()["authorization_servers"] == ["https://project.supabase.co/auth/v1"]
-    assert metadata.json()["scopes_supported"] == ["email"]
+    assert metadata.json()["scopes_supported"] == ["openid", "email", "offline_access"]
     assert denied.status_code == 401
     assert allowed.json() == {"ok": True}

@@ -9,7 +9,7 @@ import sys
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Protocol
+from typing import Protocol, TextIO
 from urllib.parse import urlparse
 
 from ai_pm_lab_privacy_gate.infrastructure.mcp.provisioning import (
@@ -63,13 +63,16 @@ class CloudflaredRuntime:
         *,
         environment: dict[str, str] | None = None,
         capture_output: bool = True,
+        output: TextIO | None = None,
     ) -> subprocess.Popen[str]:
         creationflags = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
+        stdout = subprocess.PIPE if capture_output else (output or subprocess.DEVNULL)
+        stderr = subprocess.STDOUT if capture_output or output else subprocess.DEVNULL
         return subprocess.Popen(
             command,
             stdin=subprocess.DEVNULL,
-            stdout=subprocess.PIPE if capture_output else subprocess.DEVNULL,
-            stderr=subprocess.STDOUT if capture_output else subprocess.DEVNULL,
+            stdout=stdout,
+            stderr=stderr,
             text=True,
             encoding="utf-8",
             errors="replace",
@@ -146,9 +149,11 @@ class NamedTunnelProvider:
         self,
         configuration: NamedTunnelConfiguration,
         provisioning_store: ProvisioningStore,
+        log_output: TextIO | None = None,
     ) -> None:
         self.configuration = configuration
         self.provisioning_store = provisioning_store
+        self.log_output = log_output
 
     def start(self, local_port: int) -> TunnelSession:
         if local_port != 8766:
@@ -169,6 +174,7 @@ class NamedTunnelProvider:
             # A long-running named tunnel must not write into an unread pipe:
             # once the OS buffer fills cloudflared would otherwise stall.
             capture_output=False,
+            output=self.log_output,
         )
         started = time.monotonic()
         deadline = started + 12
