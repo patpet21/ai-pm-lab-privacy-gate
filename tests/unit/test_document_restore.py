@@ -94,3 +94,22 @@ def test_repeated_restore_uses_a_new_output_when_preview_path_already_exists(tmp
     assert second.output_path.suffix == ".pdf"
     assert second.output_path.is_file()
     assert second.restored_occurrences == 1
+
+
+def test_pdf_restore_falls_back_to_copy_when_windows_denies_rename(tmp_path: Path, monkeypatch) -> None:
+    source = tmp_path / "analysis.pdf"
+    pdf = canvas.Canvas(str(source))
+    pdf.drawString(72, 720, "Report for [[PG_PERSON_001]]")
+    pdf.save()
+
+    import ai_pm_lab_privacy_gate.infrastructure.documents.restore_service as restore_module
+
+    def deny_replace(_source, _destination):
+        raise PermissionError(5, "Access is denied")
+
+    monkeypatch.setattr(restore_module.os, "replace", deny_replace)
+    report = DocumentRestoreService().restore(source, MAPPINGS, tmp_path / "restored.pdf")
+
+    assert report.output_path.is_file()
+    assert report.output_path.stat().st_size > 0
+    assert report.restored_occurrences == 1
