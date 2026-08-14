@@ -8,11 +8,11 @@
     },
     "macos_apple_silicon": {
       "url": "https://github.com/patpet21/ai-pm-lab-privacy-gate-downloads/releases/download/v0.4.0/AI_PM_LAB_Privacy_Gate_0.4.0_Apple-Silicon.dmg",
-      "sha256": "99a7b4168c18334672f9366a5f00b955c4bab40c70b337b34cd4e9a006b947bb"
+      "sha256": "b9eab12cc1c43dc306b6815861bbaf4d5db6921af4daf090cfeb78591d397779"
     },
     "macos_intel": {
       "url": "https://github.com/patpet21/ai-pm-lab-privacy-gate-downloads/releases/download/v0.4.0/AI_PM_LAB_Privacy_Gate_0.4.0_Intel.dmg",
-      "sha256": "867d4af4a45f253d2870996851a01d63e2afa09e5031781020162af18f5b6747"
+      "sha256": "7a06f747f2b66a80d992385f4cfab5a721c41d85eb8cf18f3fec505cea86125d"
     }
   }
 }
