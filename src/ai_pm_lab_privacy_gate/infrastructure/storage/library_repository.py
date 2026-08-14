@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import io
 import os
+import re
 import shutil
 import sqlite3
 import tempfile
@@ -209,8 +210,26 @@ class LibraryRepository:
         if document.deleted_at is not None or not document.mcp_shared:
             self.protected_library.withdraw(document.document_id)
             return
+        safe_title = document.title
+        # A user-friendly Library title may accidentally contain the same PII
+        # that was removed from the document. Tokenize those values before the
+        # title crosses into the physically isolated MCP-only store.
+        if document.has_mapping:
+            for mapping in sorted(
+                self.get_mappings(document.document_id),
+                key=lambda item: len(item.original_text),
+                reverse=True,
+            ):
+                if mapping.original_text:
+                    safe_title = re.sub(
+                        re.escape(mapping.original_text),
+                        mapping.token,
+                        safe_title,
+                        flags=re.IGNORECASE,
+                    )
         self.protected_library.publish(
             document_id=document.document_id,
+            safe_title=safe_title,
             profile_key=document.profile_key,
             protected_text=document.protected_text,
             findings_count=document.findings_count,

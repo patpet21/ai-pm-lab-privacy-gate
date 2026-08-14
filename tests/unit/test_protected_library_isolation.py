@@ -25,7 +25,7 @@ def test_mcp_store_contains_only_protected_copy_and_safe_metadata(tmp_path) -> N
     exposed = protected_store.get_mcp_document(saved.document_id)
     database_bytes = protected_store.db_path.read_bytes()
 
-    assert exposed.title.startswith("Protected document ")
+    assert exposed.title == "[[PG_PERSON_001]] private lease"
     assert exposed.labels == ()
     assert "Jane Smith" not in exposed.protected_text
     assert "jane@example.com" not in exposed.protected_text

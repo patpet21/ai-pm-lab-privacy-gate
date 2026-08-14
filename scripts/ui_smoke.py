@@ -37,6 +37,7 @@ def main() -> int:
     focus_output = output_dir / "privacy_gate_focus_preview.png"
     word_output = output_dir / "privacy_gate_word_comparison.png"
     excel_output = output_dir / "privacy_gate_excel_comparison.png"
+    restore_output = output_dir / "privacy_gate_restore_comparison.png"
     output.parent.mkdir(parents=True, exist_ok=True)
     app = QApplication([])
     install_app_font(app)
@@ -158,6 +159,33 @@ def main() -> int:
     if not window.grab().save(str(excel_output)):
         raise RuntimeError("Unable to save Excel comparison screenshot")
 
+    if page.current_result is None:
+        raise RuntimeError("Excel protection result is unavailable for Restore smoke test")
+    protected_xlsx = output_dir / "privacy_gate_ai_analysis_protected.xlsx"
+    service.save_protected_office(page.current_result, protected_xlsx, source_document=excel_document)
+    excel_saved = window.library.save(
+        title="Tenant analysis protected",
+        source_kind="xlsx",
+        source_name=source_xlsx.name,
+        profile_key="property_management",
+        result=page.current_result,
+        labels=("Restore test",),
+    )
+    restore_page = window.restore_page
+    restore_page.refresh(excel_saved.document_id)
+    restore_page._load_file(protected_xlsx)
+    restore_page._restore()
+    QTest.qWait(500)
+    app.processEvents()
+    if not restore_page._restored_path or not restore_page._restored_path.exists():
+        raise RuntimeError("Structured Excel restore did not create a restored file")
+    if restore_page.output_office_view.tabs.count() != 2:
+        raise RuntimeError("Restore Excel comparison did not load both worksheet tabs")
+    window._show_page(2)
+    app.processEvents()
+    if not window.grab().save(str(restore_output)):
+        raise RuntimeError("Unable to save Restore comparison screenshot")
+
     window._toggle_sidebar()
     app.processEvents()
     if window.sidebar.width() != 76:
@@ -191,7 +219,7 @@ def main() -> int:
         raise RuntimeError("Unable to save Contact screenshot")
     print(
         f"UI_OK {setup_output.resolve()} {output.resolve()} {mask_output.resolve()} {pdf_output.resolve()} "
-        f"{focus_output.resolve()} {word_output.resolve()} {excel_output.resolve()} "
+        f"{focus_output.resolve()} {word_output.resolve()} {excel_output.resolve()} {restore_output.resolve()} "
         f"{collapsed_output.resolve()} {library_output.resolve()} {contact_output.resolve()} "
         f"{len(findings)} findings sidebar={window.sidebar.width()}"
     )

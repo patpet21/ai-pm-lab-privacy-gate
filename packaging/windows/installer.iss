@@ -63,3 +63,18 @@ Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; WorkingDi
 
 [Run]
 Filename: "{app}\{#MyAppExeName}"; Description: "Launch {#MyAppName}"; Flags: nowait postinstall skipifsilent
+
+[Code]
+function PrepareToInstall(var NeedsRestart: Boolean): String;
+var
+  ResultCode: Integer;
+begin
+  { A tray/background update can outlive the visible window. Terminate the }
+  { installed app process tree, then explicitly remove an orphaned MCP child }
+  { so the new build can bind its stable loopback port immediately. }
+  Exec(ExpandConstant('{sys}\taskkill.exe'),
+    '/F /T /IM "{#MyAppExeName}"', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+  Exec(ExpandConstant('{sys}\taskkill.exe'),
+    '/F /IM "AI PM LAB Privacy Gate MCP.exe"', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+  Result := '';
+end;

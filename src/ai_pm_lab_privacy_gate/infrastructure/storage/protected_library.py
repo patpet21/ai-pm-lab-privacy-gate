@@ -74,6 +74,7 @@ class ProtectedLibraryRepository:
         self,
         *,
         document_id: str,
+        safe_title: str,
         profile_key: str,
         protected_text: str,
         findings_count: int,
@@ -81,7 +82,9 @@ class ProtectedLibraryRepository:
         updated_at: datetime,
         favorite: bool,
     ) -> None:
-        safe_title = f"Protected document {document_id[:8].upper()}"
+        # The title is the post-protection Library title deliberately chosen by
+        # the user. Source file names and local paths are never copied here.
+        safe_title = safe_title.strip()[:160] or f"Protected document {document_id[:8].upper()}"
         with self._connect() as connection:
             connection.execute(
                 """
@@ -158,4 +161,3 @@ class ProtectedLibraryRepository:
             updated_at=datetime.fromisoformat(row["updated_at"]),
             favorite=bool(row["favorite"]),
         )
-

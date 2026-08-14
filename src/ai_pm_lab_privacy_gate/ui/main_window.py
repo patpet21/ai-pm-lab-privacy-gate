@@ -92,6 +92,7 @@ class MainWindow(QMainWindow):
     def _quit_from_tray(self) -> None:
         self._quit_requested = True
         self.protection_page.cleanup_pdf_preview()
+        self.restore_page.cleanup_previews()
         self.remote_mcp.stop()
         QApplication.quit()
 
@@ -275,5 +276,6 @@ class MainWindow(QMainWindow):
                 self._tray_notice_shown = True
             return
         self.protection_page.cleanup_pdf_preview()
+        self.restore_page.cleanup_previews()
         self.remote_mcp.stop()
         super().closeEvent(event)
