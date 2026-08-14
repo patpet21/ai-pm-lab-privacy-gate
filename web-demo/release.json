@@ -1,18 +1,18 @@
 {
-  "version": "0.4.0",
-  "notes_url": "https://github.com/patpet21/ai-pm-lab-privacy-gate-downloads/releases/tag/v0.4.0",
+  "version": "0.4.1",
+  "notes_url": "https://github.com/patpet21/ai-pm-lab-privacy-gate-downloads/releases/tag/v0.4.1",
   "downloads": {
     "windows": {
-      "url": "https://github.com/patpet21/ai-pm-lab-privacy-gate-downloads/releases/download/v0.4.0/AI_PM_LAB_Privacy_Gate_Setup_0.4.0.exe",
-      "sha256": "c90cd75e916663678757c7cc6a2180288cf565c234a46f4463715dbf8a82660b"
+      "url": "https://github.com/patpet21/ai-pm-lab-privacy-gate-downloads/releases/download/v0.4.1/AI_PM_LAB_Privacy_Gate_Setup_0.4.1.exe",
+      "sha256": "8f34a4349cb72a47c7fe5fe14f655fc065616385762280cf5ae3346fdbaaff32"
     },
     "macos_apple_silicon": {
-      "url": "https://github.com/patpet21/ai-pm-lab-privacy-gate-downloads/releases/download/v0.4.0/AI_PM_LAB_Privacy_Gate_0.4.0_Apple-Silicon.dmg",
-      "sha256": "b9eab12cc1c43dc306b6815861bbaf4d5db6921af4daf090cfeb78591d397779"
+      "url": "https://github.com/patpet21/ai-pm-lab-privacy-gate-downloads/releases/download/v0.4.1/AI_PM_LAB_Privacy_Gate_0.4.1_Apple-Silicon.dmg",
+      "sha256": "44e69ae1b27689d52bdc1036b50d49a567de771cba1f3b9cae25f4c52646e82e"
     },
     "macos_intel": {
-      "url": "https://github.com/patpet21/ai-pm-lab-privacy-gate-downloads/releases/download/v0.4.0/AI_PM_LAB_Privacy_Gate_0.4.0_Intel.dmg",
-      "sha256": "7a06f747f2b66a80d992385f4cfab5a721c41d85eb8cf18f3fec505cea86125d"
+      "url": "https://github.com/patpet21/ai-pm-lab-privacy-gate-downloads/releases/download/v0.4.1/AI_PM_LAB_Privacy_Gate_0.4.1_Intel.dmg",
+      "sha256": "2aa0569a0b2fb41e366a26606b4ee0e05eff5efef494b5d8278419bcab7be9c3"
     }
   }
 }
