@@ -54,7 +54,7 @@ CONTEXT_RULES = (
     ),
     ContextRule(
         "INVOICE_NUMBER",
-        rf"invoice\s+(?:number|no\.?|id)\b{_SEP}(?P<value>[A-Z0-9][A-Z0-9-]{{3,30}})\b",
+        rf"invoice\s*(?:number|no\.?|id|#)?{_SEP}(?P<value>(?:INV-)?[A-Z0-9][A-Z0-9-]{{3,30}})\b",
         score=0.98,
     ),
     ContextRule(

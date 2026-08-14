@@ -1,0 +1,211 @@
+[
+  {
+    "text": "Building front-entry access code 4827#",
+    "expect": [
+      "PROPERTY_ACCESS_CODE"
+    ]
+  },
+  {
+    "text": "Superintendent service entrance code 1904*",
+    "expect": [
+      "PROPERTY_ACCESS_CODE"
+    ]
+  },
+  {
+    "text": "Unit 6B turnover lockbox Box 3 - combination 7319",
+    "expect": [
+      "LOCKBOX_CODE"
+    ]
+  },
+  {
+    "text": "Operating Account Example Community Bank - Account 2125550133 - Routing 021000021",
+    "expect": [
+      "US_BANK_NUMBER",
+      "US_ROUTING_NUMBER"
+    ]
+  },
+  {
+    "text": "Corporate Card Mastercard ending 4444 - CVV 318",
+    "expect": [
+      "CARD_SECURITY_CODE"
+    ]
+  },
+  {
+    "text": "Camera/NVR administrator rvc-admin; temporary password Rvc-Aug26!Change",
+    "expect": [
+      "PORTAL_USERNAME",
+      "PASSWORD_CREDENTIAL"
+    ]
+  },
+  {
+    "text": "Building Wi-Fi (management) RVC-OPS-5G / password M3ridianOps!2026",
+    "expect": [
+      "WIFI_CREDENTIAL"
+    ]
+  },
+  {
+    "text": "ACH authorization ID ACH-MT-88421",
+    "expect": [
+      "ACH_AUTHORIZATION_ID"
+    ]
+  },
+  {
+    "text": "payment token TOK-LB-773184",
+    "expect": [
+      "PAYMENT_TOKEN"
+    ]
+  },
+  {
+    "text": "Verification session ID IDV-9931-7712; device fingerprint DEV-AC81-220F",
+    "expect": [
+      "AUTH_SESSION_ID",
+      "DEVICE_FINGERPRINT"
+    ]
+  },
+  {
+    "text": "Credit score: 742",
+    "expect": [
+      "CREDIT_SCORE"
+    ]
+  },
+  {
+    "text": "Annual applicant income: $118,000",
+    "expect": [
+      "TENANT_INCOME_AMOUNT"
+    ]
+  },
+  {
+    "text": "Outstanding Principal $2,846,210",
+    "expect": [
+      "LOAN_BALANCE"
+    ]
+  },
+  {
+    "text": "Monthly Debt Service $18,420",
+    "expect": [
+      "DEBT_SERVICE_AMOUNT"
+    ]
+  },
+  {
+    "text": "Interest rate: 6.875%",
+    "expect": [
+      "INTEREST_RATE"
+    ]
+  },
+  {
+    "text": "Buyer maximum budget: $1,250,000",
+    "expect": [
+      "BUYER_BUDGET_AMOUNT"
+    ]
+  },
+  {
+    "text": "Seller floor: $1,175,000",
+    "expect": [
+      "NEGOTIATION_LIMIT_AMOUNT"
+    ]
+  },
+  {
+    "text": "Internal valuation: USD 1.2M",
+    "expect": [
+      "INTERNAL_VALUATION_AMOUNT"
+    ]
+  },
+  {
+    "text": "Project Budget: $425,000",
+    "expect": [
+      "PROJECT_BUDGET_AMOUNT"
+    ]
+  },
+  {
+    "text": "Permit No. B00988712",
+    "expect": [
+      "PERMIT_ID"
+    ]
+  },
+  {
+    "text": "Maya Thompson / 1A 02/14/1991 NY DL D1234567",
+    "expect": [
+      "PERSON"
+    ]
+  },
+  {
+    "text": "1A Maya Thompson TEN-RVC-001 $3,450",
+    "expect": [
+      "PERSON"
+    ]
+  },
+  {
+    "text": "Elena Morris elena.morris@qservice.test",
+    "expect": [
+      "PERSON"
+    ]
+  },
+  {
+    "text": "Maya Thompson called management about the renewal.",
+    "expect": [
+      "PERSON"
+    ]
+  },
+  {
+    "text": "Security deposits held: $41,900",
+    "expect": [
+      "SECURITY_DEPOSIT_AMOUNT"
+    ]
+  },
+  {
+    "text": "Minimum operating reserve target: $50,000",
+    "expect": [
+      "RESERVE_BALANCE"
+    ]
+  },
+  {
+    "text": "Accounts payable due: $14,760",
+    "expect": [
+      "ACCOUNTS_PAYABLE_AMOUNT"
+    ]
+  },
+  {
+    "text": "Approved maintenance commitments: $5,570",
+    "expect": [
+      "COMMITTED_COST_AMOUNT"
+    ]
+  },
+  {
+    "text": "Public Listing Price: $1,399,000",
+    "forbid": [
+      "INTERNAL_VALUATION_AMOUNT",
+      "PURCHASE_PRICE",
+      "OFFER_PRICE"
+    ]
+  },
+  {
+    "text": "CAPEX",
+    "forbid": [
+      "CAPEX_BUDGET_AMOUNT"
+    ]
+  },
+  {
+    "text": "The reserve study will be reviewed next week.",
+    "forbid": [
+      "RESERVE_BALANCE"
+    ]
+  },
+  {
+    "text": "Please place the tools in Box 3.",
+    "forbid": [
+      "LOCKBOX_CODE"
+    ]
+  },
+  {
+    "text": "The permit process is pending.",
+    "forbid": [
+      "PERMIT_ID"
+    ]
+  },
+  {
+    "text": "Commission discussion is scheduled tomorrow.",
+    "forbid": [
+      "BROKER_COMMISSION"
+    ]
+  }
+]

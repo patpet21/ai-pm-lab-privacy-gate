@@ -57,7 +57,7 @@ class ProvisioningHttpClient:
                 json={
                     "installation_id": identity.installation_id,
                     "device_public_jwk": self.device_key.public_jwk(),
-                    "app_version": "0.4.0",
+                    "app_version": "0.4.1",
                     "platform": "desktop",
                 },
             )

@@ -72,6 +72,93 @@ OPERATIONAL_IDENTIFIER_ENTITIES = (
     "TRANSACTION_ID",
 )
 
+REAL_ESTATE_SENSITIVE_ENTITIES = (
+    "SECURITY_CODE",
+    "UTILITY_METER_ID",
+    "HOUSING_ASSISTANCE_ID",
+    "LEASE_OCCUPANCY_DATE",
+    "RENT_AMOUNT",
+    "TENANT_BALANCE",
+    "SECURITY_DEPOSIT_AMOUNT",
+    "OWNER_DISTRIBUTION",
+    "OPERATING_BALANCE",
+    "RESERVE_BALANCE",
+    "NOI_AMOUNT",
+    "CAPEX_BUDGET_AMOUNT",
+    "REMAINING_CAPITAL_BUDGET",
+    "CONTINGENCY_AMOUNT",
+    "CONTRACTOR_BID_AMOUNT",
+    "CHANGE_ORDER_AMOUNT",
+    "INVOICE_AMOUNT",
+    "PURCHASE_ORDER_VALUE",
+    "OFFER_PRICE",
+    "PURCHASE_PRICE",
+    "EARNEST_MONEY_AMOUNT",
+    "BROKER_COMMISSION",
+    "CLOSING_CREDIT",
+    "ESCROW_AMOUNT",
+    "MANAGEMENT_FEE",
+    "MAINTENANCE_TICKET_ID",
+    "PROJECT_JOB_CODE",
+    "KEY_ACCESS_INSTRUCTION",
+    "HOUSING_LEGAL_CASE_ID",
+    "NYC_DOB_JOB_ID",
+    "NYC_HPD_RECORD_ID",
+    "INSPECTION_ACCESS_WINDOW",
+    "VACANCY_OCCUPANCY_DATE",
+    "APPROVAL_AUTH_CODE",
+    # Privacy Gate Real Estate expansion v2
+    "CARD_SECURITY_CODE",
+    "PAYMENT_TOKEN",
+    "ACH_AUTHORIZATION_ID",
+    "WIRE_CONFIRMATION_ID",
+    "WIFI_CREDENTIAL",
+    "PASSWORD_CREDENTIAL",
+    "PORTAL_USERNAME",
+    "AUTH_SESSION_ID",
+    "DEVICE_FINGERPRINT",
+    "MFA_RECOVERY_CODE",
+    "SAFE_COMBINATION",
+    "APPLICATION_ID",
+    "SCREENING_REFERENCE",
+    "CREDIT_SCORE",
+    "TENANT_INCOME_AMOUNT",
+    "HOUSING_ASSISTANCE_AMOUNT",
+    "VEHICLE_LICENSE_PLATE",
+    "RENT_CONCESSION_AMOUNT",
+    "PAYMENT_PLAN_AMOUNT",
+    "LATE_FEE_AMOUNT",
+    "PROPERTY_TAX_AMOUNT",
+    "INSURANCE_PREMIUM_AMOUNT",
+    "LOAN_AMOUNT",
+    "LOAN_BALANCE",
+    "DEBT_SERVICE_AMOUNT",
+    "INTEREST_RATE",
+    "LTV_RATIO",
+    "PREAPPROVAL_AMOUNT",
+    "CASH_TO_CLOSE",
+    "CLOSING_COST_AMOUNT",
+    "BUYER_BUDGET_AMOUNT",
+    "SELLER_NET_PROCEEDS",
+    "NEGOTIATION_LIMIT_AMOUNT",
+    "INTERNAL_VALUATION_AMOUNT",
+    "PROJECT_BUDGET_AMOUNT",
+    "RETAINAGE_AMOUNT",
+    "PAY_APPLICATION_AMOUNT",
+    "SUBCONTRACT_AMOUNT",
+    "LABOR_RATE",
+    "MATERIAL_ALLOWANCE_AMOUNT",
+    "PERMIT_ID",
+    "LIEN_WAIVER_ID",
+    "COI_REFERENCE",
+    "INSURANCE_CLAIM_AMOUNT",
+    "INSURANCE_DEDUCTIBLE_AMOUNT",
+    "TITLE_FILE_ID",
+    "LISTING_AGREEMENT_ID",
+    "ACCOUNTS_PAYABLE_AMOUNT",
+    "COMMITTED_COST_AMOUNT",
+)
+
 
 @dataclass(frozen=True, slots=True)
 class PrivacyProfile:
@@ -125,19 +212,19 @@ _PROFILES = (
         key="property_management",
         name="Property Management",
         description="Tenant, owner, vendor and property records. Includes dates and account identifiers.",
-        entities=COMMON_US_ENTITIES + FINANCIAL_SENSITIVE_ENTITIES + OPERATIONAL_IDENTIFIER_ENTITIES + BUSINESS_CONFIDENTIAL_ENTITIES + ("DATE_TIME",),
+        entities=COMMON_US_ENTITIES + FINANCIAL_SENSITIVE_ENTITIES + OPERATIONAL_IDENTIFIER_ENTITIES + BUSINESS_CONFIDENTIAL_ENTITIES + REAL_ESTATE_SENSITIVE_ENTITIES + ("DATE_TIME",),
     ),
     PrivacyProfile(
         key="realtor_brokerage",
         name="Realtor / Brokerage",
         description="Client, transaction and brokerage documents. Includes dates and web addresses.",
-        entities=COMMON_US_ENTITIES + FINANCIAL_SENSITIVE_ENTITIES + OPERATIONAL_IDENTIFIER_ENTITIES + BUSINESS_CONFIDENTIAL_ENTITIES + ("DATE_TIME",),
+        entities=COMMON_US_ENTITIES + FINANCIAL_SENSITIVE_ENTITIES + OPERATIONAL_IDENTIFIER_ENTITIES + BUSINESS_CONFIDENTIAL_ENTITIES + REAL_ESTATE_SENSITIVE_ENTITIES + ("DATE_TIME",),
     ),
     PrivacyProfile(
         key="projects_renovations",
         name="Projects & Renovations",
         description="Owner, contractor, subcontractor and project records. Includes dates and URLs.",
-        entities=COMMON_US_ENTITIES + FINANCIAL_SENSITIVE_ENTITIES + OPERATIONAL_IDENTIFIER_ENTITIES + BUSINESS_CONFIDENTIAL_ENTITIES + ("DATE_TIME",),
+        entities=COMMON_US_ENTITIES + FINANCIAL_SENSITIVE_ENTITIES + OPERATIONAL_IDENTIFIER_ENTITIES + BUSINESS_CONFIDENTIAL_ENTITIES + REAL_ESTATE_SENSITIVE_ENTITIES + ("DATE_TIME",),
     ),
 )
 
@@ -167,11 +254,11 @@ def get_scope(key: str) -> ProtectionScope:
 def entities_for_scope(profile: PrivacyProfile, scope_key: str) -> tuple[str, ...]:
     """Return a stable entity set for a universal protection level."""
     if scope_key == "essential":
-        allowed = set(COMMON_US_ENTITIES)
+        allowed = set(COMMON_US_ENTITIES + REAL_ESTATE_SENSITIVE_ENTITIES)
     elif scope_key == "financial":
-        allowed = set(COMMON_US_ENTITIES + FINANCIAL_SENSITIVE_ENTITIES)
+        allowed = set(COMMON_US_ENTITIES + FINANCIAL_SENSITIVE_ENTITIES + REAL_ESTATE_SENSITIVE_ENTITIES)
     elif scope_key == "business":
-        allowed = set(COMMON_US_ENTITIES + OPERATIONAL_IDENTIFIER_ENTITIES + BUSINESS_CONFIDENTIAL_ENTITIES)
+        allowed = set(COMMON_US_ENTITIES + OPERATIONAL_IDENTIFIER_ENTITIES + BUSINESS_CONFIDENTIAL_ENTITIES + REAL_ESTATE_SENSITIVE_ENTITIES)
     elif scope_key in {"maximum", "custom"}:
         allowed = set(profile.entities)
     else:

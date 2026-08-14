@@ -109,7 +109,8 @@ class ProtectionPage(QWidget):
                 stale_preview.unlink()
             except OSError:
                 pass
-        self._preview_path = self._preview_directory / f"protected-preview-{os.getpid()}.pdf"
+        self._preview_generation = 0
+        self._preview_path: Path | None = None
         self._office_original_directory = self._preview_directory / f"office-original-{os.getpid()}"
         self._office_protected_directory = self._preview_directory / f"office-protected-{os.getpid()}"
         self._office_preview_renderer = OfficePreviewRenderer()
@@ -990,7 +991,11 @@ class ProtectionPage(QWidget):
                 self.protected_view_stack.setCurrentIndex(0)
                 self._set_pdf_controls_enabled(True)
                 original_path = self.current_document.source_path
-                protected_path = self._preview_path
+                previous_preview = self._preview_path
+                self._preview_generation += 1
+                protected_path = self._preview_directory / (
+                    f"protected-preview-{os.getpid()}-{self._preview_generation}.pdf"
+                )
                 self.service.save_protected_pdf(
                     self.current_result,
                     protected_path,
@@ -1001,7 +1006,16 @@ class ProtectionPage(QWidget):
                 )
                 self.original_pdf_document.load(str(original_path))
                 self.protected_pdf_document.load(str(protected_path))
+                self._preview_path = protected_path
                 self._set_pdf_page(0)
+                QApplication.processEvents()
+                if previous_preview is not None and previous_preview != protected_path:
+                    try:
+                        previous_preview.unlink(missing_ok=True)
+                    except OSError:
+                        # The old renderer handle can be released one event-loop
+                        # cycle later. Startup cleanup removes any stale preview.
+                        pass
             elif self.current_document.source_kind in {"docx", "xlsx"}:
                 suffix = self.current_document.source_path.suffix
                 protected_office_path = self._preview_directory / f"protected-office-{os.getpid()}{suffix}"
@@ -1318,7 +1332,8 @@ class ProtectionPage(QWidget):
         self.protected_pdf_document.close()
         QApplication.processEvents()
         try:
-            self._preview_path.unlink(missing_ok=True)
+            if self._preview_path is not None:
+                self._preview_path.unlink(missing_ok=True)
             for directory in (self._office_original_directory, self._office_protected_directory):
                 for preview in (directory.glob("*") if directory.exists() else ()):
                     preview.unlink(missing_ok=True)

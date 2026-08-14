@@ -53,6 +53,17 @@ class ContextValueRecognizer(EntityRecognizer):
 _LABEL_SEPARATOR = r"\s*(?::|#|number\b|no\.?\b)?\s*"
 
 
+# Privacy Gate Real Estate expansion helpers.
+# Keep these patterns contextual: the goal is higher recall without turning
+# ordinary numbers, words or public real-estate facts into sensitive findings.
+_PERSON_TOKEN = r"(?!(?:LLC|L\.L\.C\.?|Inc\.?|Corp\.?|Corporation|Company|Co\.?|Holdings|Management|Solutions|Services|Group|Bank|Realty|Properties)\b)[A-Z][A-Za-z'’.-]{1,30}"
+_PERSON_NAME = rf"(?-i:{_PERSON_TOKEN}(?:\s+(?:{_PERSON_TOKEN}|[A-Z]\.)){{1,3}})"
+_ACCOUNT_VALUE = r"\d(?:[\s-]?\d){5,16}"
+_CODE_VALUE = r"(?=[A-Z0-9#*.-]*\d)[A-Z0-9#*.-]{3,24}"
+_CODE_END = r"(?=$|[\s,;.)\]\}])"
+_STREET_VALUE = r"\d{1,6}\s+(?:[A-Z0-9.'’#-]+\s+){1,8}(?:Street|St\.?|Avenue|Ave\.?|Road|Rd\.?|Boulevard|Blvd\.?|Lane|Ln\.?|Drive|Dr\.?|Court|Ct\.?|Parkway|Pkwy\.?|Place|Pl\.?|Terrace|Ter\.?|Way)\b[^\r\n,;]{0,40}"
+
+
 CONTEXT_RULES = (
     ContextRule(
         "US_SSN",
@@ -77,6 +88,10 @@ CONTEXT_RULES = (
     ContextRule(
         "TENANT_ID",
         rf"tenant\s+(?:id|identifier)\b{_LABEL_SEPARATOR}(?P<value>[A-Z0-9][A-Z0-9-]{{3,30}})\b",
+    ),
+    ContextRule(
+        "TENANT_ID",
+        rf"(?:resident\s+(?:account|id)|occupancy\s+id|tenant\s+ref\.?)\b{_LABEL_SEPARATOR}(?P<value>[A-Z0-9][A-Z0-9-]{{3,30}})\b",
     ),
     ContextRule(
         "LEASE_ID",
@@ -120,7 +135,7 @@ CONTEXT_RULES = (
     ),
     ContextRule(
         "PROPERTY_IDENTIFIER",
-        rf"(?:property|parcel|apn)\s+(?:id|identifier|number|no\.?)\b{_LABEL_SEPARATOR}(?P<value>[A-Z0-9][A-Z0-9-]{{3,30}})\b",
+        rf"(?:property|parcel|apn|asset|portfolio)\s+(?:id|identifier|number|no\.?|ref\.?)\b{_LABEL_SEPARATOR}(?P<value>[A-Z0-9][A-Z0-9-]{{3,30}})\b",
     ),
     ContextRule(
         "UNIT_NUMBER",
@@ -129,11 +144,11 @@ CONTEXT_RULES = (
     ),
     ContextRule(
         "PROPERTY_ACCESS_CODE",
-        rf"(?:building|property|door|gate|entry)\s+(?:access\s+)?code\b{_LABEL_SEPARATOR}(?P<value>[A-Z0-9#*][A-Z0-9#*-]{{2,15}})\b",
+        rf"(?:building|property|door|gate|entry)\s+(?:access\s+)?code\b{_LABEL_SEPARATOR}(?P<value>{_CODE_VALUE}){_CODE_END}",
     ),
     ContextRule(
         "LOCKBOX_CODE",
-        rf"lock\s*box(?:\s+code)?\b{_LABEL_SEPARATOR}(?P<value>[A-Z0-9#*][A-Z0-9#*-]{{2,15}})\b",
+        rf"lock\s*box(?:\s+(?:code|combination|combo|pin))?\b{_LABEL_SEPARATOR}(?P<value>{_CODE_VALUE}){_CODE_END}",
     ),
     ContextRule(
         "CONTRACTOR_LICENSE",
@@ -155,6 +170,82 @@ CONTEXT_RULES = (
         "TRANSACTION_ID",
         rf"(?:transaction|closing|deal)\s+(?:id|reference|number|no\.?)\b{_LABEL_SEPARATOR}(?P<value>[A-Z0-9][A-Z0-9-]{{3,30}})\b",
     ),
+
+    # ---- Privacy Gate Real Estate expansion v2: existing entity types ----
+    # Bank/account forms often appear in tables and can resemble phone numbers.
+    # These high-confidence rules ensure the contextual bank entity wins overlap resolution.
+    ContextRule(
+        "US_BANK_NUMBER",
+        rf"(?:acct\.?|a/c|account|bank\s+account|checking\s+account|savings\s+account)\s*(?:number|no\.?|#)?\s*[:#-]?\s*(?P<value>{_ACCOUNT_VALUE})(?=\s*(?:[-–—|,;]?\s*(?:aba\b|routing\b|rtn\b)|$|\r?$))",
+        score=0.998,
+    ),
+    ContextRule(
+        "US_BANK_NUMBER",
+        rf"(?:operating|security\s+deposit|reserve|escrow|trust|owner|vendor)\s+account[^\r\n]{{0,80}}?\b(?:acct\.?|account)\s*[:#-]?\s*(?P<value>{_ACCOUNT_VALUE})(?=\s*(?:[-–—|,;]?\s*(?:aba\b|routing\b|rtn\b)|$|\r?$))",
+        score=0.998,
+    ),
+    ContextRule(
+        "US_ROUTING_NUMBER",
+        rf"(?:aba(?:\s+routing)?|routing(?:\s+(?:number|no\.?))?|routing\s*/\s*aba|aba\s*/\s*routing|rtn)\b\s*[:#-]?\s*(?P<value>\d{{9}})\b",
+        score=0.998,
+    ),
+    # Access codes ending in # or * do not have a regex word boundary, so use a look-ahead.
+    ContextRule(
+        "PROPERTY_ACCESS_CODE",
+        rf"(?:building|property|door|gate|entry|front[- ]?entry|service\s+entrance|superintendent\s+(?:service\s+)?entrance|garage|intercom|keypad|vestibule|lobby|roof)\s+(?:access\s+|entry\s+)?(?:code|pin)\b\s*[:#=-]?\s*(?P<value>{_CODE_VALUE}){_CODE_END}",
+        score=0.998,
+    ),
+    ContextRule(
+        "PROPERTY_ACCESS_CODE",
+        rf"(?:access|entry|door|gate|intercom|keypad)\s+(?:code|pin)\b\s*[:#=-]?\s*(?P<value>{_CODE_VALUE}){_CODE_END}",
+        score=0.995,
+    ),
+    ContextRule(
+        "LOCKBOX_CODE",
+        rf"(?:lock\s*box|key\s*box)(?:[^\r\n]{{0,35}}?)(?:code|combination|combo|pin)\b\s*[:#=-]?\s*(?P<value>{_CODE_VALUE}){_CODE_END}",
+        score=0.998,
+    ),
+    ContextRule(
+        "LOCKBOX_CODE",
+        rf"(?:box\s*\d+\s*[-–—:]?\s*)?(?:lock\s*box\s*)?(?:combination|combo)\b\s*[:#=-]?\s*(?P<value>{_CODE_VALUE}){_CODE_END}",
+        score=0.996,
+    ),
+    # Property-specific address labels catch addresses that generic NLP may miss in tables.
+    ContextRule(
+        "STREET_ADDRESS",
+        rf"(?:property|premises|subject\s+property|mailing|billing|prior|previous|forwarding|service|site)\s+address\b\s*[:#-]?\s*(?P<value>{_STREET_VALUE})",
+        score=0.97,
+    ),
+    # Real-estate role labels: deliberately limited to person-oriented labels.
+    ContextRule(
+        "PERSON",
+        rf"(?:tenant|resident|applicant|borrower|buyer|seller|managing\s+member|emergency\s+contact|broker\s+contact|contact\s+person|requested\s+by|approved\s+by|assigned\s+to|submitted\s+by|prepared\s+by)\b\s*[:#-]?\s*(?P<value>{_PERSON_NAME})(?=\s*(?:[,;|/]|\r?$|\b(?:email|phone|tenant\s+id|resident\s+id|dob)\b))",
+        score=0.96,
+    ),
+    # Rent-roll rows: Unit + Person + structured tenant/resident ID.
+    ContextRule(
+        "PERSON",
+        rf"(?im)^\s*(?:\d{{1,3}}[A-Z]?|[A-Z]\d{{1,3}}|[A-Z]{{1,2}}\d{{1,3}})\s+(?P<value>{_PERSON_NAME})\s+(?=(?:TEN|RES)-[A-Z0-9-]{{3,30}}\b)",
+        score=0.985,
+    ),
+    # Identity-table rows: Person / Unit followed by DOB.
+    ContextRule(
+        "PERSON",
+        rf"(?im)^\s*(?P<value>{_PERSON_NAME})\s*/\s*[A-Z0-9-]{{1,8}}\s+(?=\d{{1,2}}[/-]\d{{1,2}}[/-]\d{{2,4}}\b)",
+        score=0.985,
+    ),
+    # Contact-table rows where a person's name sits directly before an email address.
+    ContextRule(
+        "PERSON",
+        rf"(?im)(?P<value>{_PERSON_NAME})\s+(?=[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{{2,}}\b)",
+        score=0.91,
+    ),
+    ContextRule(
+        "PERSON",
+        rf"(?im)(?P<value>{_PERSON_NAME})\s+(?=(?:called|emailed|reported|requested|stated|advised|confirmed|asked|provided|submitted|signed|authorized|approved|declined|indicated)\b)",
+        score=0.93,
+    ),
+
 )
 
 

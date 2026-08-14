@@ -51,3 +51,19 @@ def test_layout_preserving_pdf_removes_original_selectable_text(tmp_path: Path):
     assert len(reader.pages) == 1
     assert "Jane Smith" not in (reader.pages[0].extract_text() or "")
     assert reader.pages[0].images
+
+
+def test_pdf_locator_splits_values_joined_from_adjacent_table_cells():
+    class FakePage:
+        def search(self, value, regex=True, case=False):  # noqa: ARG002
+            matches = {
+                "Liam\\ Brooks\\ /\\ 3B": [],
+                "Liam\\ Brooks": [{"x0": 1, "top": 2, "x1": 3, "bottom": 4}],
+                "3B": [{"x0": 5, "top": 2, "x1": 6, "bottom": 4}],
+            }
+            return matches.get(value, [])
+
+    matches = PdfDocumentService._locate_finding(
+        FakePage(), "Liam Brooks / 3B", {}, exact_occurrence=0
+    )
+    assert len(matches) == 2

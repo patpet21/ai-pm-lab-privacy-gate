@@ -234,8 +234,9 @@ class PdfDocumentService:
         exact_occurrence: int | None = None,
     ) -> list[dict]:
         """Map an analyzed value to one or more visual boxes on a PDF page."""
-        key = value.casefold()
-        exact_matches = page.search(re.escape(value), regex=True, case=False)
+        search_value = value.strip()
+        key = search_value.casefold()
+        exact_matches = page.search(re.escape(search_value), regex=True, case=False)
         occurrence = (
             exact_occurrence if exact_occurrence is not None else occurrence_by_value[key]
         )
@@ -243,18 +244,31 @@ class PdfDocumentService:
             occurrence_by_value[key] += 1
         if occurrence < len(exact_matches):
             return [exact_matches[occurrence]]
+        if exact_matches:
+            # Text extraction may contain duplicated logical rows which do not
+            # exist as separate visual occurrences. Cover every visible match
+            # rather than rejecting an otherwise safe image-based export.
+            return exact_matches
 
         # Some PDF extractors join adjacent columns with a newline. Locate and
         # protect every meaningful fragment rather than silently leaving one visible.
-        fragments = [part.strip() for part in value.splitlines() if part.strip()]
+        fragments = [part.strip() for part in search_value.splitlines() if part.strip()]
+        if len(fragments) <= 1:
+            # Table extraction commonly joins adjacent PDF cells as
+            # "Tenant name / Unit" even though they are visually separate.
+            fragments = [
+                part.strip()
+                for part in re.split(r"\s+/\s+", search_value)
+                if part.strip()
+            ]
         if len(fragments) <= 1:
             return []
         located: list[dict] = []
         for fragment in fragments:
             fragment_key = fragment.casefold()
             fragment_matches = page.search(re.escape(fragment), regex=True, case=False)
-            fragment_occurrence = occurrence_by_value[fragment_key]
-            occurrence_by_value[fragment_key] += 1
+            fragment_occurrence = occurrence_by_value.get(fragment_key, 0)
+            occurrence_by_value[fragment_key] = fragment_occurrence + 1
             if fragment_occurrence >= len(fragment_matches):
                 return []
             located.append(fragment_matches[fragment_occurrence])

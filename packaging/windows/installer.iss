@@ -1,6 +1,6 @@
 #define MyAppName "AI PM LAB Privacy Gate"
-#define MyAppVersion "0.4.0"
-#define MyAppVersionInfo "0.4.0.1"
+#define MyAppVersion "0.4.1"
+#define MyAppVersionInfo "0.4.1.0"
 #define MyAppPublisher "AI PM LAB by Trigosat Consulting"
 #define MyAppExeName "AI PM LAB Privacy Gate.exe"
 #define MyAppId "{{2F5D4173-04C2-46F2-BE8D-3FC0FBC2EE17}"
