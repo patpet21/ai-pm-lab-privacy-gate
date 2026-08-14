@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import re
+import shutil
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
@@ -234,5 +235,16 @@ class DocumentRestoreService:
                 "Unable to safely locate these placeholders in the PDF: "
                 + ", ".join(sorted(set(unresolved))[:8])
             )
-        os.replace(temporary, output)
+        try:
+            os.replace(temporary, output)
+        except PermissionError:
+            # Windows can briefly deny a rename while antivirus/indexing or a
+            # PDF viewer still has a handle to the newly rendered temporary PDF.
+            # Copying does not require renaming the source and is safe because
+            # each restore output is already non-conflicting.
+            shutil.copy2(temporary, output)
+            try:
+                temporary.unlink()
+            except OSError:
+                pass
         return count, present.intersection(replacements), present.difference(replacements)
