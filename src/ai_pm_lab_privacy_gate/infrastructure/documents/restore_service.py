@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import re
+import uuid
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -54,6 +55,7 @@ class DocumentRestoreService:
         if output.suffix.lower() != suffix:
             output = output.with_suffix(suffix)
         output.parent.mkdir(parents=True, exist_ok=True)
+        output = self._nonconflicting_output(output)
         replacements = {item.token: item.original_text for item in mappings}
         if suffix == ".txt":
             text = source_path.read_text(encoding="utf-8-sig")
@@ -71,6 +73,23 @@ class DocumentRestoreService:
             restored_tokens=tuple(sorted(present)),
             unknown_tokens=tuple(sorted(unknown)),
         )
+
+    @staticmethod
+    def _nonconflicting_output(output: Path) -> Path:
+        """Avoid overwriting a preview file that may still be open by Qt/Windows.
+
+        QPdfDocument can keep the currently displayed PDF locked on Windows. A
+        repeated restore therefore must not reuse the exact same temporary path.
+        The caller receives the actual path through RestoreReport.output_path.
+        """
+        if not output.exists():
+            return output
+        while True:
+            candidate = output.with_name(
+                f"{output.stem}-{uuid.uuid4().hex[:8]}{output.suffix}"
+            )
+            if not candidate.exists():
+                return candidate
 
     @staticmethod
     def extract_text(source: str | Path) -> str:
