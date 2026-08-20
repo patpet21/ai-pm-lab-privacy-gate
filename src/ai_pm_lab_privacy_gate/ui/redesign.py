@@ -8,6 +8,7 @@ from PySide6.QtPdf import QPdfDocument
 from PySide6.QtWidgets import (
     QApplication,
     QFrame,
+    QFileDialog,
     QHBoxLayout,
     QLabel,
     QMessageBox,
@@ -164,7 +165,6 @@ def _open_restore_page(page: ProtectionPage) -> None:
 
 
 def _apply_redesign(page: ProtectionPage) -> None:
-    # Preserve references to all functional legacy widgets before rebuilding the layout.
     root = page.layout()
     _hide_old_root(root)
 
@@ -175,7 +175,6 @@ def _apply_redesign(page: ProtectionPage) -> None:
     page.pages_metric.hide()
     page.source_metric.hide()
 
-    # Reparent the widgets that remain the single source of truth for the existing engine.
     holder = QWidget(page)
     for widget in (
         page.text_input,
@@ -207,7 +206,6 @@ def _apply_redesign(page: ProtectionPage) -> None:
     page.save_download_button.hide()
     page.ai_button.hide()
 
-    # Entire page becomes scrollable so the top input card is never crushed by results.
     scroll = QScrollArea()
     scroll.setObjectName("RedesignScroll")
     scroll.setWidgetResizable(True)
@@ -221,7 +219,6 @@ def _apply_redesign(page: ProtectionPage) -> None:
     scroll.setWidget(content)
     root.addWidget(scroll)
 
-    # Header
     header = QHBoxLayout()
     headings = QVBoxLayout()
     title = QLabel("Protect your document")
@@ -236,7 +233,6 @@ def _apply_redesign(page: ProtectionPage) -> None:
         header.addWidget(_pill(text))
     content_layout.addLayout(header)
 
-    # Top composition: main flow + restore help.
     top_row = QHBoxLayout()
     top_row.setSpacing(14)
 
@@ -246,7 +242,6 @@ def _apply_redesign(page: ProtectionPage) -> None:
     start_layout.setContentsMargins(18, 0, 18, 16)
     start_layout.setSpacing(10)
 
-    # Protect / Restore tabs
     tab_row = QHBoxLayout()
     protect_tab = QPushButton("Protect")
     restore_tab = QPushButton("Restore")
@@ -268,7 +263,6 @@ def _apply_redesign(page: ProtectionPage) -> None:
     tab_row.addStretch(1)
     start_layout.addLayout(tab_row)
 
-    # Input columns
     input_row = QHBoxLayout()
     input_row.setSpacing(18)
 
@@ -328,7 +322,6 @@ def _apply_redesign(page: ProtectionPage) -> None:
     input_row.addLayout(upload_box, 1)
     start_layout.addLayout(input_row, 1)
 
-    # Guidance steps
     steps = QLabel(
         "① Upload or paste     •     ② Scan sensitive data     •     "
         "③ Review & protect     •     ④ Use with AI / Restore locally"
@@ -340,7 +333,6 @@ def _apply_redesign(page: ProtectionPage) -> None:
     )
     start_layout.addWidget(steps)
 
-    # Main actions
     action_row = QHBoxLayout()
     action_row.addStretch(1)
     page.clear_button.setText("Clear")
@@ -369,7 +361,6 @@ def _apply_redesign(page: ProtectionPage) -> None:
     action_row.addStretch(1)
     start_layout.addLayout(action_row)
 
-    # Operation status / animated waiting indicator.
     busy_panel = QFrame(objectName="RedesignBusyPanel")
     busy_layout = QHBoxLayout(busy_panel)
     busy_layout.setContentsMargins(12, 8, 12, 8)
@@ -386,7 +377,6 @@ def _apply_redesign(page: ProtectionPage) -> None:
     busy_panel.hide()
     start_layout.addWidget(busy_panel)
 
-    # Advanced settings: same real widgets, just visually secondary.
     advanced_toggle = QToolButton()
     advanced_toggle.setText("›  Advanced protection settings")
     advanced_toggle.setCheckable(True)
@@ -430,7 +420,6 @@ def _apply_redesign(page: ProtectionPage) -> None:
     top_row.addWidget(help_card)
     content_layout.addLayout(top_row)
 
-    # Results are hidden until Scan finishes, but keep the target mockup layout.
     results_card = QFrame(objectName="RedesignResults")
     results_layout = QVBoxLayout(results_card)
     results_layout.setContentsMargins(0, 0, 0, 0)
@@ -452,7 +441,6 @@ def _apply_redesign(page: ProtectionPage) -> None:
     page.workspace.setSizes([430, 930])
     results_layout.addWidget(page.workspace)
 
-    # Simplified final action bar.
     final_actions = QFrame(objectName="RedesignFinalActions")
     final_layout = QHBoxLayout(final_actions)
     final_layout.setContentsMargins(12, 10, 12, 10)
@@ -473,7 +461,6 @@ def _apply_redesign(page: ProtectionPage) -> None:
     content_layout.addWidget(results_card)
     content_layout.addStretch(1)
 
-    # Polished local-only styling.
     content.setStyleSheet(
         "QFrame#RedesignStartCard,QFrame#RedesignHelpCard,QFrame#RedesignResults,"
         "QFrame#RedesignFinalActions{background:white;border:1px solid #d7e2ea;"
@@ -486,7 +473,6 @@ def _apply_redesign(page: ProtectionPage) -> None:
         "border-radius:8px;}"
     )
 
-    # Persist redesigned widgets/state.
     page._redesign_scroll = scroll
     page._redesign_start_card = start_card
     page._redesign_help_card = help_card
@@ -643,11 +629,102 @@ def _apply_redesign(page: ProtectionPage) -> None:
     copy_action.clicked.connect(
         lambda: with_final_check("Running final privacy check before copy…", page._copy_result)
     )
-    download_action.clicked.connect(
-        lambda: with_final_check(
-            "Running final privacy check before download…", page._save_and_download
-        )
-    )
+
+    def download_only() -> None:
+        if page.current_result is None or page.current_document is None:
+            return
+        begin_operation("verify", "Running final privacy check before download…")
+        try:
+            if not page._confirm_residual_risk("downloading"):
+                return
+            document = page.current_document
+            result = page.current_result
+            title = page._derive_title()
+
+            if document.source_kind == "pdf":
+                suggested = f"{title}_protected.pdf"
+                path, _ = QFileDialog.getSaveFileName(
+                    page,
+                    "Save protected PDF",
+                    suggested,
+                    "PDF files (*.pdf)",
+                )
+                if not path:
+                    return
+                destination = path if path.lower().endswith(".pdf") else path + ".pdf"
+                begin_operation("export", "Generating protected PDF locally…")
+                try:
+                    page.service.save_protected_pdf(
+                        result,
+                        destination,
+                        source_document=document,
+                    )
+                except ValueError as exc:
+                    answer = QMessageBox.warning(
+                        page,
+                        "Exact layout export unavailable",
+                        "Privacy Gate could not safely map every selected value back "
+                        "onto this PDF's original coordinates.\n\n"
+                        "You can export a safe reflow PDF instead. The protected "
+                        "content remains de-identified, but the original page layout "
+                        "will not be preserved.\n\n"
+                        f"Technical detail: {exc}",
+                        QMessageBox.StandardButton.Yes
+                        | QMessageBox.StandardButton.Cancel,
+                        QMessageBox.StandardButton.Yes,
+                    )
+                    if answer == QMessageBox.StandardButton.Yes:
+                        page.service.save_protected_pdf(
+                            result,
+                            destination,
+                            source_document=None,
+                        )
+                finally:
+                    end_operation("export")
+                return
+
+            if document.source_kind in {"docx", "xlsx"}:
+                suffix = f".{document.source_kind}"
+                label = "Word" if suffix == ".docx" else "Excel"
+                suggested = f"{title}_protected{suffix}"
+                path, _ = QFileDialog.getSaveFileName(
+                    page,
+                    f"Save protected {label} document",
+                    suggested,
+                    f"{label} files (*{suffix})",
+                )
+                if path:
+                    destination = (
+                        path if path.lower().endswith(suffix) else path + suffix
+                    )
+                    begin_operation(
+                        "export", f"Generating protected {label} file locally…"
+                    )
+                    try:
+                        page.service.save_protected_office(
+                            result,
+                            destination,
+                            source_document=document,
+                        )
+                    finally:
+                        end_operation("export")
+                return
+
+            suggested = f"{title}_protected.txt"
+            path, _ = QFileDialog.getSaveFileName(
+                page,
+                "Save protected text",
+                suggested,
+                "Text files (*.txt)",
+            )
+            if path:
+                destination = path if path.lower().endswith(".txt") else path + ".txt"
+                page.service.save_protected_text(result, destination)
+        finally:
+            end_operation("verify")
+
+    download_action.clicked.connect(download_only)
+
     ai_action.clicked.connect(
         lambda: with_final_check(
             "Running final privacy check before opening AI…",
@@ -675,7 +752,6 @@ def _apply_redesign(page: ProtectionPage) -> None:
 
     save_action.clicked.connect(save_only)
 
-    # Keep "full document view" functional without ever resurrecting Document setup.
     def focus_changed(focused: bool) -> None:
         page.findings_card.setVisible(not focused)
         page.focus_preview_button.setText(
@@ -771,11 +847,7 @@ def install_redesign() -> None:
             return
         self.text_input.setEnabled(not busy)
         if busy:
-            source = (
-                "document"
-                if self.input_tabs.currentIndex() == 1
-                else "text"
-            )
+            source = "document" if self.input_tabs.currentIndex() == 1 else "text"
             self._redesign_begin_operation(
                 "scan", f"Loading and scanning {source} locally…"
             )
@@ -800,8 +872,6 @@ def install_redesign() -> None:
         ):
             return
 
-        # Office rendering keeps the mature legacy path; PDF generation is moved
-        # to a worker because rasterization can otherwise freeze the UI.
         if self.current_document.source_kind != "pdf":
             self._redesign_begin_operation(
                 "preview", "Generating document preview locally…"
@@ -835,8 +905,6 @@ def install_redesign() -> None:
                     source_document=document,
                 )
             except ValueError as exc:
-                # Preview must remain available, but never at the price of exposing
-                # original text. Reflow the already-protected pages into a safe PDF.
                 fallback = True
                 fallback_reason = str(exc)
                 self.service.save_protected_pdf(
@@ -973,7 +1041,6 @@ def install_redesign() -> None:
         self._redesign_set_final_actions(False)
         self._redesign_scroll.verticalScrollBar().setValue(0)
 
-    # Capture this before replacing the class method below.
     global _ORIGINAL_UPDATE_DOCUMENT_COMPARISON
     _ORIGINAL_UPDATE_DOCUMENT_COMPARISON = ProtectionPage._update_document_comparison
 
