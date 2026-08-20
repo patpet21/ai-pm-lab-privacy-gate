@@ -16,6 +16,18 @@ def test_redesigned_protection_page_constructs(tmp_path):
         assert hasattr(page, "_redesign_scan_button")
         assert hasattr(page, "_redesign_protect_button")
         assert not page._redesign_scan_button.isEnabled()
+        assert not page.workspace.isVisible()
+        assert page._redesign_help_card.isVisible() is False or not page.isVisible()
+
+        page.show()
+        app.processEvents()
+        assert page._redesign_help_card.isVisible()
+        assert not page.workspace.isVisible()
+
+        page._redesign_simple_text.setPlainText("Daniel Mercer lives at 26 Meridian Street")
+        app.processEvents()
+        assert page._redesign_scan_button.isEnabled()
+        assert not page._redesign_protect_button.isEnabled()
     finally:
         page.close()
         app.processEvents()
