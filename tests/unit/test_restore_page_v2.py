@@ -15,9 +15,27 @@ def test_restore_page_v2_guides_user_and_requires_match(tmp_path):
     try:
         page.show()
         app.processEvents()
-        assert page.restore_button.text() == "Restore original values locally"
+        assert page.restore_button.text() == "Restore your file"
+        assert page.download_text_button.text() == "Download restored text"
         assert not page.restore_button.isEnabled()
         assert page.document_combo.itemText(0) == "Choose from Privacy Gate Library..."
+        assert page.full_preview_button.text() == "Full screen preview"
+        assert page.input_text.isHidden()
+        page.paste_toggle.setChecked(True)
+        app.processEvents()
+        assert page.input_text.isVisible()
+        page.paste_toggle.setChecked(False)
+
+        page.result_section.show()
+        page.full_preview_button.setChecked(True)
+        app.processEvents()
+        assert page.input_card.isHidden()
+        assert page.match_card.isHidden()
+        assert page.result_section.isVisible()
+        assert page.full_preview_button.text() == "Exit full screen"
+        page.full_preview_button.setChecked(False)
+        app.processEvents()
+        assert page.input_card.isVisible()
 
         page.input_text.setPlainText("Hello [[PG_PERSON_001]]")
         app.processEvents()

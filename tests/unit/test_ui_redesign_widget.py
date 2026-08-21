@@ -16,10 +16,12 @@ def test_redesigned_protection_page_constructs(tmp_path):
         assert hasattr(page, "_redesign_protect_button")
         assert hasattr(page, "_redesign_scroll")
         assert hasattr(page, "_protect_quick_actions")
+        assert page._protect_save_only.text() == "Save to Library"
         assert page._protect_save_copy.text() == "Save + Copy"
         assert page._protect_save_download.text() == "Save + Download"
         assert page._protect_open_ai.text() == "Copy & Open ChatGPT"
         assert page._protect_quick_actions.isHidden()
+        assert page._protect_quick_actions.parent() is page._redesign_results_card
         assert page.setup_toggle.isHidden()
         assert page._redesign_results_card.isHidden()
         assert not page.scan_button.isEnabled()

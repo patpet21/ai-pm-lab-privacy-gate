@@ -59,6 +59,10 @@ The complete policy, team roles, release controls, and privacy declaration are d
 
 The portable build is generated under `dist\AI PM LAB Privacy Gate`. Keep the complete folder together because the executable loads its private runtime from the adjacent `_internal` directory. The installer is generated under `release`.
 
+For the Microsoft Store/MSIX workflow, including the Partner Center identity
+values and Terminal installation through `winget`, see
+[`docs/MICROSOFT_STORE_RELEASE.md`](docs/MICROSOFT_STORE_RELEASE.md).
+
 GitHub Actions also performs a clean Windows build on GitHub-hosted infrastructure and retains the installer, checksums, and build manifest as workflow artifacts. After SignPath approval, the release workflow will submit those GitHub-built artifacts for signing; credentials will be stored only as encrypted GitHub Actions secrets.
 
 Release builds install the exact dependency versions in `requirements-lock.txt`, including a SHA-256-pinned spaCy language model. Dependency updates are proposed and tested separately before the lock file is changed.

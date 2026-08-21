@@ -5,13 +5,22 @@ import shutil
 import tempfile
 from pathlib import Path
 
-from PySide6.QtCore import QTimer, Qt, QThreadPool, Signal
-from PySide6.QtGui import QColor, QDragEnterEvent, QDropEvent, QFont, QTextCharFormat, QTextCursor
+from PySide6.QtCore import QTimer, QUrl, Qt, QThreadPool, Signal
+from PySide6.QtGui import (
+    QColor,
+    QDesktopServices,
+    QDragEnterEvent,
+    QDropEvent,
+    QFont,
+    QTextCharFormat,
+    QTextCursor,
+)
 from PySide6.QtPdf import QPdfDocument
 from PySide6.QtPdfWidgets import QPdfView
 from PySide6.QtWidgets import (
     QApplication,
     QComboBox,
+    QBoxLayout,
     QFileDialog,
     QFrame,
     QHBoxLayout,
@@ -20,6 +29,7 @@ from PySide6.QtWidgets import (
     QPlainTextEdit,
     QPushButton,
     QScrollArea,
+    QSizePolicy,
     QSplitter,
     QStackedWidget,
     QTabWidget,
@@ -89,7 +99,7 @@ class RestoreDropZone(QFrame):
         super().__init__(objectName="RestoreDropZone")
         self.setAcceptDrops(True)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.setMinimumHeight(158)
+        self.setMinimumHeight(78)
         self.setStyleSheet(
             "QFrame#RestoreDropZone{background:#f8fcfc;border:1px dashed #58b9b5;"
             "border-radius:10px;}"
@@ -97,15 +107,11 @@ class RestoreDropZone(QFrame):
         )
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(20, 20, 20, 20)
-        layout.setSpacing(8)
-
-        icon = QLabel("↑")
-        icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        icon.setStyleSheet("font-size:30px;color:#078c89;font-weight:500;")
+        layout.setContentsMargins(10, 7, 10, 7)
+        layout.setSpacing(3)
 
         self.button = QPushButton("Upload your file", objectName="Primary")
-        self.button.setMinimumHeight(42)
+        self.button.setMinimumHeight(40)
         self.button.clicked.connect(self.clicked.emit)
 
         self.filename = QLabel("or drag and drop it here")
@@ -113,14 +119,13 @@ class RestoreDropZone(QFrame):
         self.filename.setWordWrap(True)
         self.filename.setStyleSheet("color:#62788a;")
 
-        formats = QLabel("TXT, PDF, Word, Excel — processed locally")
-        formats.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        formats.setStyleSheet("color:#7a8d9d;font-size:11px;")
+        self.formats = QLabel("TXT, PDF, Word, Excel — processed locally")
+        self.formats.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.formats.setStyleSheet("color:#7a8d9d;font-size:11px;")
 
-        layout.addWidget(icon)
         layout.addWidget(self.button)
         layout.addWidget(self.filename)
-        layout.addWidget(formats)
+        layout.addWidget(self.formats)
 
     def set_filename(self, name: str | None) -> None:
         self.filename.setText(name or "or drag and drop it here")
@@ -175,23 +180,27 @@ class RestorePage(QWidget):
 
     def _build_ui(self) -> None:
         outer = QVBoxLayout(self)
+        self._outer_layout = outer
         outer.setContentsMargins(24, 18, 24, 14)
         outer.setSpacing(12)
 
         heading = QHBoxLayout()
+        self.heading_layout = heading
         titles = QVBoxLayout()
-        titles.addWidget(QLabel("Restore your AI result", objectName="PageTitle"))
-        titles.addWidget(
-            QLabel(
+        self.page_title = QLabel("Restore your AI result", objectName="PageTitle")
+        titles.addWidget(self.page_title)
+        self.page_subtitle = QLabel(
                 "Bring back the original values after AI processing — everything happens locally.",
                 objectName="Muted",
-            )
         )
+        titles.addWidget(self.page_subtitle)
         heading.addLayout(titles)
         heading.addStretch(1)
 
-        badge = QLabel("100% LOCAL   |   ORIGINAL VALUES STAY ON THIS PC", objectName="SafeBadge")
-        heading.addWidget(badge)
+        self.local_badge = QLabel(
+            "100% LOCAL   |   ORIGINAL VALUES STAY ON THIS PC", objectName="SafeBadge"
+        )
+        heading.addWidget(self.local_badge)
         outer.addLayout(heading)
 
         scroll = QScrollArea()
@@ -200,14 +209,21 @@ class RestorePage(QWidget):
         scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
 
         content = QWidget()
+        # Let the scroll-area viewport dictate the page width.  Controls with
+        # long filenames must elide their contents instead of widening the
+        # whole page and pushing actions outside the visible window.
+        content.setMinimumWidth(0)
+        content.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
         root = QVBoxLayout(content)
+        self._content_layout = root
         root.setContentsMargins(0, 0, 4, 4)
         root.setSpacing(14)
 
-        steps_card = QFrame(objectName="Card")
-        steps = QHBoxLayout(steps_card)
-        steps.setContentsMargins(18, 10, 18, 10)
-        steps.setSpacing(10)
+        self.steps_card = QFrame(objectName="Card")
+        self.steps_card.setFixedHeight(54)
+        steps = QHBoxLayout(self.steps_card)
+        steps.setContentsMargins(14, 6, 14, 6)
+        steps.setSpacing(7)
         for number, label in (
             ("1", "Add AI result"),
             ("2", "Select original document"),
@@ -222,136 +238,123 @@ class RestorePage(QWidget):
                 "border-radius:13px;font-weight:800;"
             )
             text = QLabel(label)
-            text.setStyleSheet("color:#3d586d;font-weight:600;")
+            text.setStyleSheet("background:transparent;color:#3d586d;font-weight:600;padding:0;")
             steps.addWidget(bubble)
             steps.addWidget(text)
-            if number != "4":
-                arrow = QLabel("→")
-                arrow.setStyleSheet("color:#93a4b2;font-size:16px;")
-                steps.addWidget(arrow)
         steps.addStretch(1)
-        root.addWidget(steps_card)
+        root.addWidget(self.steps_card)
 
-        input_card = QFrame(objectName="Card")
-        input_layout = QVBoxLayout(input_card)
-        input_layout.setContentsMargins(18, 16, 18, 16)
-        input_layout.setSpacing(10)
+        self.input_card = QFrame(objectName="Card")
+        self.input_card.setMaximumHeight(250)
+        input_layout = QVBoxLayout(self.input_card)
+        input_layout.setContentsMargins(14, 10, 14, 10)
+        input_layout.setSpacing(6)
 
-        step1_title = QLabel("1. Add the result you got back from AI", objectName="SectionTitle")
+        step1_title = QLabel("1. Add the AI result and match its original", objectName="SectionTitle")
         input_layout.addWidget(step1_title)
         step1_help = QLabel(
-            "Use the AI-generated result after it has been edited, summarized or processed. "
-            "Privacy Gate placeholders must still be present."
+            "Upload the protected result returned by AI, then choose its original Library document. "
+            "Everything is matched and restored locally."
         )
         step1_help.setWordWrap(True)
         step1_help.setStyleSheet("color:#667b8d;")
         input_layout.addWidget(step1_help)
 
         source_row = QHBoxLayout()
-        source_row.setSpacing(16)
+        self.source_row = source_row
+        source_row.setSpacing(12)
 
-        paste_col = QVBoxLayout()
-        paste_title = QLabel("Paste your text")
-        paste_title.setStyleSheet("font-size:14px;font-weight:700;color:#0a2940;")
-        paste_col.addWidget(paste_title)
+        upload_panel = QFrame(objectName="PdfPanel")
+        upload_col = QVBoxLayout(upload_panel)
+        upload_col.setContentsMargins(10, 8, 10, 8)
+        upload_col.setSpacing(5)
+        upload_title_row = QHBoxLayout()
+        upload_title_row.addWidget(QLabel("Add AI result", objectName="SectionTitle"))
+        upload_title_row.addStretch(1)
+        self.paste_toggle = QPushButton("Paste text", objectName="Secondary")
+        self.paste_toggle.setCheckable(True)
+        self.paste_toggle.setToolTip("Paste protected text instead of selecting a file")
+        upload_title_row.addWidget(self.paste_toggle)
+        upload_col.addLayout(upload_title_row)
+
+        self.drop_zone = RestoreDropZone()
+        upload_col.addWidget(self.drop_zone)
+        self.match_card = QFrame(objectName="PdfPanel")
+        match_layout = QVBoxLayout(self.match_card)
+        match_layout.setContentsMargins(10, 8, 10, 8)
+        match_layout.setSpacing(5)
+
+        match_title_row = QHBoxLayout()
+        match_title_row.addWidget(QLabel("Select original from Library", objectName="SectionTitle"))
+        match_title_row.addStretch(1)
+        match_title_row.addWidget(QLabel("Local Library", objectName="PdfBadge"))
+        match_layout.addLayout(match_title_row)
+
+        self.document_combo = QComboBox()
+        self.document_combo.setMinimumHeight(40)
+        self.document_combo.setMinimumWidth(0)
+        self.document_combo.setSizeAdjustPolicy(
+            QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon
+        )
+        self.document_combo.setMinimumContentsLength(18)
+        self.document_combo.setSizePolicy(
+            QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed
+        )
+        document_action_row = QHBoxLayout()
+        document_action_row.setSpacing(6)
+        document_action_row.addWidget(self.document_combo, 1)
+
+        self.clear_button = QPushButton("Clear", objectName="Secondary")
+        self.clear_button.setMaximumWidth(72)
+        self.restore_button = QPushButton("Restore locally", objectName="Primary")
+        self.restore_button.setMaximumWidth(128)
+        document_action_row.addWidget(self.clear_button)
+        document_action_row.addWidget(self.restore_button)
+        match_layout.addLayout(document_action_row)
+
+        self.library_status = QLabel("Choose the matching protected document.")
+        self.library_status.setWordWrap(True)
+        self.library_status.setMinimumWidth(0)
+        self.library_status.setMaximumHeight(36)
+        self.library_status.setStyleSheet(
+            "background:#f3faf9;border:1px solid #d8eeeb;border-radius:8px;"
+            "padding:7px;color:#42675f;font-size:11px;"
+        )
+        match_layout.addWidget(self.library_status)
+
+        self.busy = BusyIndicator()
+        match_layout.addWidget(self.busy)
+
+        source_row.addWidget(upload_panel, 1)
+        source_row.addWidget(self.match_card, 1)
+        input_layout.addLayout(source_row)
 
         self.input_text = QPlainTextEdit()
         self.input_text.setPlaceholderText(
             "Paste the AI result here. Example: The revised agreement for [[PG_PERSON_001]] "
             "should be sent to [[PG_EMAIL_ADDRESS_001]]..."
         )
-        self.input_text.setMinimumHeight(170)
+        self.input_text.setMinimumHeight(96)
+        self.input_text.setMaximumHeight(118)
         self.input_text.setStyleSheet(
             "QPlainTextEdit{background:white;border:1px solid #cfdbe5;border-radius:9px;"
             "padding:12px;font-size:13px;}"
         )
-        paste_col.addWidget(self.input_text)
+        self.input_text.hide()
+        input_layout.addWidget(self.input_text)
 
         self.token_hint = QLabel("No Privacy Gate placeholders detected yet.")
         self.token_hint.setStyleSheet("color:#7a8d9d;font-size:11px;")
-        paste_col.addWidget(self.token_hint)
-
-        upload_col = QVBoxLayout()
-        upload_title = QLabel("Upload your file")
-        upload_title.setStyleSheet("font-size:14px;font-weight:700;color:#0a2940;")
-        upload_col.addWidget(upload_title)
-
-        self.drop_zone = RestoreDropZone()
-        upload_col.addWidget(self.drop_zone)
-        upload_help = QLabel("The uploaded result can contain new AI-generated content; only the placeholders need to match.")
-        upload_help.setWordWrap(True)
-        upload_help.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        upload_help.setStyleSheet("color:#7a8d9d;font-size:11px;")
-        upload_col.addWidget(upload_help)
-
-        source_row.addLayout(paste_col, 1)
-        source_row.addLayout(upload_col, 1)
-        input_layout.addLayout(source_row)
-        root.addWidget(input_card)
-
-        match_card = QFrame(objectName="Card")
-        match_layout = QVBoxLayout(match_card)
-        match_layout.setContentsMargins(18, 16, 18, 16)
-        match_layout.setSpacing(9)
-
-        match_title_row = QHBoxLayout()
-        match_title_row.addWidget(QLabel("2. Select the original protected document", objectName="SectionTitle"))
-        match_title_row.addStretch(1)
-        local_chip = QLabel("Local Library", objectName="PdfBadge")
-        match_title_row.addWidget(local_chip)
-        match_layout.addLayout(match_title_row)
-
-        match_help = QLabel(
-            "Choose the document you protected earlier and saved in Privacy Gate Library. "
-            "Privacy Gate uses its local restore key to replace the matching placeholders — "
-            "the original values never leave this computer."
-        )
-        match_help.setWordWrap(True)
-        match_help.setStyleSheet("color:#667b8d;")
-        match_layout.addWidget(match_help)
-
-        selector_row = QHBoxLayout()
-        self.document_combo = QComboBox()
-        self.document_combo.setMinimumHeight(40)
-        selector_row.addWidget(self.document_combo, 1)
-        match_layout.addLayout(selector_row)
-
-        self.library_status = QLabel("Choose the matching document from your local Library.")
-        self.library_status.setWordWrap(True)
-        self.library_status.setStyleSheet(
-            "background:#f3faf9;border:1px solid #d8eeeb;border-radius:8px;"
-            "padding:9px;color:#42675f;"
-        )
-        match_layout.addWidget(self.library_status)
-        root.addWidget(match_card)
-
-        action_card = QFrame(objectName="Card")
-        action_layout = QVBoxLayout(action_card)
-        action_layout.setContentsMargins(18, 12, 18, 12)
-        action_layout.setSpacing(8)
-
-        self.busy = BusyIndicator()
-        action_layout.addWidget(self.busy)
-
-        action_row = QHBoxLayout()
-        self.clear_button = QPushButton("Clear", objectName="Secondary")
-        self.restore_button = QPushButton("Restore original values locally", objectName="Primary")
-        self.restore_button.setMinimumHeight(46)
-        self.restore_button.setMinimumWidth(280)
-        action_row.addStretch(1)
-        action_row.addWidget(self.clear_button)
-        action_row.addWidget(self.restore_button)
-        action_row.addStretch(1)
-        action_layout.addLayout(action_row)
+        input_layout.addWidget(self.token_hint)
+        root.addWidget(self.input_card)
 
         self.restore_status = QLabel(
             "Add an AI result and select the matching Library document to continue."
         )
-        self.restore_status.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.restore_status.setWordWrap(True)
+        self.restore_status.setMinimumWidth(0)
         self.restore_status.setStyleSheet("color:#6b8091;")
-        action_layout.addWidget(self.restore_status)
-        root.addWidget(action_card)
+        match_layout.addWidget(self.restore_status)
 
         self.result_section = QFrame(objectName="Card")
         result_layout = QVBoxLayout(self.result_section)
@@ -370,35 +373,47 @@ class RestorePage(QWidget):
         self._build_document_tab()
         result_layout.addWidget(self.preview_tabs, 1)
 
+        # The preview is the primary workspace.  Source and matching controls
+        # are embedded directly below the two document panes rather than
+        # repeated in a separate form above them.
+        self.input_card.hide()
+        self.result_section.show()
+        self.preview_tabs.setTabVisible(1, True)
+        self.preview_tabs.setCurrentIndex(1)
+
         actions = QHBoxLayout()
         self.copy_button = QPushButton("Copy restored text", objectName="Secondary")
+        self.download_text_button = QPushButton("Download restored text", objectName="Secondary")
         self.download_button = QPushButton("Download restored file", objectName="Gold")
         self.copy_button.setMinimumHeight(42)
+        self.download_text_button.setMinimumHeight(42)
         self.download_button.setMinimumHeight(42)
         actions.addWidget(self.copy_button, 1)
+        actions.addWidget(self.download_text_button, 1)
         actions.addWidget(self.download_button, 1)
         result_layout.addLayout(actions)
 
-        self.result_section.hide()
-        root.addWidget(self.result_section)
+        root.addWidget(self.result_section, 1)
 
-        safety = QLabel(
+        self.safety_note = QLabel(
             "Privacy Gate only uses the encrypted restore key stored on this device. "
             "Your original values are restored locally and are never sent back to the AI."
         )
-        safety.setWordWrap(True)
-        safety.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        safety.setStyleSheet(
+        self.safety_note.setWordWrap(True)
+        self.safety_note.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.safety_note.setStyleSheet(
             "background:#eefaf8;border:1px solid #d5eeea;border-radius:9px;"
             "padding:10px;color:#28645f;"
         )
-        root.addWidget(safety)
+        self.safety_note.setMaximumHeight(54)
+        root.addWidget(self.safety_note)
 
         scroll.setWidget(content)
         outer.addWidget(scroll, 1)
 
         self.drop_zone.clicked.connect(self._browse_result)
         self.drop_zone.file_dropped.connect(lambda path: self._begin_load_file(Path(path)))
+        self.paste_toggle.toggled.connect(self._toggle_paste_input)
         self.input_text.textChanged.connect(self._on_input_text_changed)
         self.document_combo.currentIndexChanged.connect(self._update_library_status)
         self.restore_button.clicked.connect(self._restore)
@@ -406,8 +421,10 @@ class RestorePage(QWidget):
         self.copy_button.clicked.connect(
             lambda: QApplication.clipboard().setText(self.output_text.toPlainText())
         )
+        self.download_text_button.clicked.connect(self._download_text)
         self.download_button.clicked.connect(self._download)
         self.high_fidelity_button.toggled.connect(self._refresh_document_preview)
+        self.full_preview_button.toggled.connect(self._toggle_full_preview)
         self.pdf_previous_button.clicked.connect(lambda: self._move_pdf_page(-1))
         self.pdf_next_button.clicked.connect(lambda: self._move_pdf_page(1))
         self.pdf_fit_button.clicked.connect(self._fit_pdf)
@@ -454,11 +471,27 @@ class RestorePage(QWidget):
         self.high_fidelity_button = QPushButton("High-fidelity preview", objectName="Secondary")
         self.high_fidelity_button.setCheckable(True)
         self.high_fidelity_button.setVisible(self._libreoffice_available)
+        self.full_preview_button = QPushButton("Full screen preview", objectName="Secondary")
+        self.full_preview_button.setCheckable(True)
         self.libreoffice_note = QLabel(objectName="Muted")
         self.libreoffice_note.setTextFormat(Qt.TextFormat.RichText)
         self.libreoffice_note.setOpenExternalLinks(True)
+        self.install_libreoffice_button = QPushButton(
+            "Get LibreOffice (free)", objectName="Secondary"
+        )
+        self.install_libreoffice_button.setToolTip(
+            "Open the official LibreOffice download page. The built-in preview remains available."
+        )
+        self.install_libreoffice_button.setVisible(False)
+        self.install_libreoffice_button.clicked.connect(
+            lambda: QDesktopServices.openUrl(
+                QUrl("https://www.libreoffice.org/download/download-libreoffice/")
+            )
+        )
         options.addWidget(self.preview_note, 1)
         options.addWidget(self.high_fidelity_button)
+        options.addWidget(self.install_libreoffice_button)
+        options.addWidget(self.full_preview_button)
         options.addWidget(self.libreoffice_note)
         layout.addLayout(options)
 
@@ -472,6 +505,10 @@ class RestorePage(QWidget):
         for widget in (self.pdf_previous_button, self.pdf_next_button, self.pdf_page_label):
             controls.addWidget(widget)
         controls.addStretch(1)
+        self.restore_button.setText("Restore your file")
+        self.restore_button.setMaximumWidth(150)
+        controls.addWidget(self.restore_button)
+        controls.addSpacing(12)
         for widget in (self.pdf_zoom_out_button, self.pdf_fit_button, self.pdf_zoom_in_button):
             controls.addWidget(widget)
         layout.addLayout(controls)
@@ -479,16 +516,59 @@ class RestorePage(QWidget):
         splitter = QSplitter(Qt.Orientation.Horizontal)
         (
             input_panel,
+            input_panel_layout,
             self.input_pdf_view,
             self.input_office_view,
             self.input_view_stack,
         ) = self._document_panel("AI result", "Placeholders retained")
         (
             output_panel,
+            output_panel_layout,
             self.output_pdf_view,
             self.output_office_view,
             self.output_view_stack,
         ) = self._document_panel("Restored result", "Local only")
+
+        # One compact source/mapping strip sits above both large previews.
+        # Controls must never consume space inside either document card.
+        source_toolbar = QFrame(objectName="EmbeddedSourceToolbar")
+        source_toolbar_layout = QVBoxLayout(source_toolbar)
+        source_toolbar_layout.setContentsMargins(7, 6, 7, 6)
+        source_toolbar_layout.setSpacing(4)
+        source_row = QHBoxLayout()
+        source_row.setSpacing(8)
+
+        upload_group = QHBoxLayout()
+        upload_group.setSpacing(6)
+        upload_group.addWidget(QLabel("AI result", objectName="FieldLabel"))
+        upload_group.addWidget(self.paste_toggle)
+        self.drop_zone.setMinimumHeight(54)
+        self.drop_zone.setMaximumHeight(54)
+        self.drop_zone.layout().setContentsMargins(6, 2, 6, 2)
+        self.drop_zone.layout().setSpacing(1)
+        self.drop_zone.button.setMinimumHeight(30)
+        self.drop_zone.button.setMaximumHeight(30)
+        self.drop_zone.formats.hide()
+        upload_group.addWidget(self.drop_zone, 1)
+        source_row.addLayout(upload_group, 1)
+
+        mapping_group = QHBoxLayout()
+        mapping_group.setSpacing(6)
+        mapping_group.addWidget(QLabel("Original", objectName="FieldLabel"))
+        mapping_group.addWidget(self.document_combo, 1)
+        mapping_group.addWidget(QLabel("Local Library", objectName="PdfBadge"))
+        source_row.addLayout(mapping_group, 1)
+        source_toolbar_layout.addLayout(source_row)
+        source_toolbar_layout.addWidget(self.input_text)
+
+        status_row = QHBoxLayout()
+        self.token_hint.setMinimumWidth(0)
+        self.library_status.setMinimumWidth(0)
+        self.library_status.setMaximumHeight(28)
+        status_row.addWidget(self.token_hint, 1)
+        status_row.addWidget(self.library_status, 1)
+        source_toolbar_layout.addLayout(status_row)
+        layout.addWidget(source_toolbar)
 
         self.input_pdf_document = QPdfDocument(self)
         self.output_pdf_document = QPdfDocument(self)
@@ -502,11 +582,11 @@ class RestorePage(QWidget):
         splitter.addWidget(output_panel)
         splitter.setChildrenCollapsible(False)
         splitter.setSizes([700, 700])
-        splitter.setMinimumHeight(410)
+        splitter.setMinimumHeight(560)
         layout.addWidget(splitter, 1)
 
         self.preview_tabs.addTab(tab, "Document preview")
-        self.preview_tabs.setTabVisible(1, False)
+        self.preview_tabs.setTabVisible(1, True)
 
     def _document_panel(self, title: str, subtitle: str):
         panel = QFrame(objectName="PdfPanel")
@@ -526,7 +606,7 @@ class RestorePage(QWidget):
         stack.addWidget(pdf_view)
         stack.addWidget(office_view)
         layout.addWidget(stack, 1)
-        return panel, pdf_view, office_view, stack
+        return panel, layout, pdf_view, office_view, stack
 
     def refresh(self, select_id: str | None = None) -> None:
         previous = select_id or self.document_combo.currentData()
@@ -590,16 +670,65 @@ class RestorePage(QWidget):
         self._syncing_text = True
         self.input_text.setPlainText(text)
         self._syncing_text = False
+        self.paste_toggle.setChecked(False)
 
         self.drop_zone.set_filename(self._source_path.name)
         self.output_text.clear()
         self.protected_result_view.clear()
-        self.result_section.hide()
+        self.result_section.show()
+        suffix = self._source_path.suffix.lower()
+        if suffix in {".pdf", ".docx", ".xlsx"}:
+            self.preview_tabs.setTabVisible(1, True)
+            self.preview_tabs.setCurrentIndex(1)
+            self._refresh_document_preview()
+        else:
+            self.preview_tabs.setCurrentIndex(0)
         self._highlight_input_tokens()
         self.restore_status.setText(
             "AI result loaded. Now select the original protected document from your Library."
         )
         self._update_restore_state()
+        QTimer.singleShot(0, self._apply_responsive_layout)
+
+    def resizeEvent(self, event) -> None:  # noqa: N802 - Qt API
+        super().resizeEvent(event)
+        self._apply_responsive_layout()
+
+    def _apply_responsive_layout(self) -> None:
+        """Stack wide controls when the content pane becomes narrow."""
+        # The main window keeps a 1120 px usability floor.  With the navigation
+        # collapsed that still leaves roughly 1040 px for this page, so switch
+        # before the source controls start clipping rather than waiting for a
+        # width the window can never reach.
+        compact = self.width() < 1100
+        self.source_row.setDirection(
+            QBoxLayout.Direction.TopToBottom
+            if compact
+            else QBoxLayout.Direction.LeftToRight
+        )
+        self.heading_layout.setDirection(
+            QBoxLayout.Direction.TopToBottom
+            if compact
+            else QBoxLayout.Direction.LeftToRight
+        )
+        self.local_badge.setText(
+            "100% LOCAL  •  ORIGINAL VALUES STAY ON THIS PC"
+            if compact
+            else "100% LOCAL   |   ORIGINAL VALUES STAY ON THIS PC"
+        )
+        if not self.input_text.isVisible():
+            self.input_card.setMaximumHeight(430 if compact else 250)
+
+    def _toggle_paste_input(self, visible: bool) -> None:
+        """Keep paste support available without permanently consuming preview space."""
+        self.input_text.setVisible(visible)
+        compact = self.width() < 1100
+        self.input_card.setMaximumHeight(
+            560 if visible and compact else 390 if visible else 430 if compact else 250
+        )
+        self.paste_toggle.setText(
+            "Use uploaded file" if visible else "Paste text"
+        )
 
     def _load_failed(self, message: str) -> None:
         QMessageBox.critical(self, "Unable to load this result", message)
@@ -610,7 +739,7 @@ class RestorePage(QWidget):
             self._restored_path = None
             self._report = None
             self.drop_zone.set_filename(None)
-            self.result_section.hide()
+            self.result_section.show()
         self._update_token_hint()
         self._update_restore_state()
 
@@ -772,6 +901,12 @@ class RestorePage(QWidget):
         self.result_section.show()
         self._set_result_actions(True)
 
+        suffix = self._restored_path.suffix.lower() if self._restored_path is not None else ""
+        format_labels = {".pdf": "PDF", ".docx": "Word", ".xlsx": "Excel"}
+        self.download_button.setVisible(suffix in format_labels)
+        if suffix in format_labels:
+            self.download_button.setText(f"Download restored {format_labels[suffix]} file")
+
         if self._source_path is not None and self._source_path.suffix.lower() in {
             ".pdf", ".docx", ".xlsx"
         }:
@@ -843,6 +978,7 @@ class RestorePage(QWidget):
             if suffix == ".pdf":
                 self._set_pdf_controls(True)
                 self.high_fidelity_button.setVisible(False)
+                self.install_libreoffice_button.setVisible(False)
                 self.libreoffice_note.clear()
                 self.input_view_stack.setCurrentIndex(0)
                 self.output_view_stack.setCurrentIndex(0)
@@ -856,16 +992,22 @@ class RestorePage(QWidget):
                 return
 
             if suffix not in {".docx", ".xlsx"}:
+                self.high_fidelity_button.setVisible(False)
+                self.install_libreoffice_button.setVisible(False)
+                self.libreoffice_note.clear()
                 return
 
             self.high_fidelity_button.setVisible(self._libreoffice_available)
+            self.install_libreoffice_button.setVisible(not self._libreoffice_available)
             if self._libreoffice_available:
                 self.libreoffice_note.setText(
-                    "Optional page-accurate rendering is available locally."
+                    "LibreOffice detected. Built-in preview remains available."
                 )
             else:
                 self.high_fidelity_button.setChecked(False)
-                self.libreoffice_note.setText("Built-in local preview active.")
+                self.libreoffice_note.setText(
+                    "Built-in preview active. Optional formatting upgrade:"
+                )
 
             if self._libreoffice_available and self.high_fidelity_button.isChecked():
                 self._set_pdf_controls(True)
@@ -912,6 +1054,32 @@ class RestorePage(QWidget):
         ):
             widget.setVisible(visible)
 
+    def _toggle_full_preview(self, focused: bool) -> None:
+        """Expand the restored document comparison without opening a new window."""
+        for widget in (
+            self.page_title,
+            self.page_subtitle,
+            self.local_badge,
+            self.steps_card,
+            self.input_card,
+            self.match_card,
+            self.safety_note,
+        ):
+            widget.setVisible(not focused)
+        self.full_preview_button.setText(
+            "Exit full screen" if focused else "Full screen preview"
+        )
+        self._outer_layout.setContentsMargins(
+            8 if focused else 24,
+            8 if focused else 18,
+            8 if focused else 24,
+            8 if focused else 14,
+        )
+        self._content_layout.setSpacing(6 if focused else 14)
+        if focused:
+            self.preview_tabs.setCurrentIndex(1)
+            QTimer.singleShot(0, self._fit_pdf)
+
     def _set_pdf_page(self, page: int) -> None:
         count = max(self.input_pdf_document.pageCount(), self.output_pdf_document.pageCount())
         if count <= 0:
@@ -939,24 +1107,30 @@ class RestorePage(QWidget):
 
     def _set_result_actions(self, enabled: bool) -> None:
         self.copy_button.setEnabled(enabled)
+        self.download_text_button.setEnabled(enabled)
         self.download_button.setEnabled(enabled)
+
+    def _download_text(self) -> None:
+        text = self.output_text.toPlainText()
+        if not text:
+            return
+        stem = self._source_path.stem if self._source_path is not None else "restored_result"
+        path, _ = QFileDialog.getSaveFileName(
+            self,
+            "Download restored text",
+            f"{stem}_restored.txt",
+            "Text files (*.txt)",
+        )
+        if not path:
+            return
+        destination = Path(path)
+        if destination.suffix.lower() != ".txt":
+            destination = destination.with_suffix(".txt")
+        destination.write_text(text, encoding="utf-8")
 
     def _download(self) -> None:
         if self._source_path is None:
-            text = self.output_text.toPlainText()
-            if not text:
-                return
-            path, _ = QFileDialog.getSaveFileName(
-                self,
-                "Download restored text",
-                "restored_result.txt",
-                "Text files (*.txt)",
-            )
-            if path:
-                destination = Path(path)
-                if destination.suffix.lower() != ".txt":
-                    destination = destination.with_suffix(".txt")
-                destination.write_text(text, encoding="utf-8")
+            self._download_text()
             return
 
         if self._restored_path is None:
@@ -979,18 +1153,21 @@ class RestorePage(QWidget):
             shutil.copy2(self._restored_path, destination)
 
     def clear(self) -> None:
+        if self.full_preview_button.isChecked():
+            self.full_preview_button.setChecked(False)
         self._source_path = None
         self._restored_path = None
         self._report = None
         self._syncing_text = True
         self.input_text.clear()
         self._syncing_text = False
+        self.paste_toggle.setChecked(False)
         self.protected_result_view.clear()
         self.output_text.clear()
         self.drop_zone.set_filename(None)
-        self.result_section.hide()
-        self.preview_tabs.setTabVisible(1, False)
-        self.preview_tabs.setCurrentIndex(0)
+        self.result_section.show()
+        self.preview_tabs.setTabVisible(1, True)
+        self.preview_tabs.setCurrentIndex(1)
         self.input_pdf_document.close()
         self.output_pdf_document.close()
         self._set_result_actions(False)

@@ -16,13 +16,13 @@ from PySide6.QtWidgets import (
     QPushButton,
     QScrollArea,
     QSizePolicy,
+    QStackedWidget,
     QToolButton,
     QVBoxLayout,
     QWidget,
 )
 
 from ai_pm_lab_privacy_gate.ui.protection_page import ProtectionPage
-from ai_pm_lab_privacy_gate.ui.workers import FunctionWorker
 
 
 _INSTALLED = False
@@ -34,7 +34,7 @@ class _UploadDropZone(QFrame):
     def __init__(self) -> None:
         super().__init__(objectName="RedesignUploadZone")
         self.setAcceptDrops(True)
-        self.setMinimumHeight(220)
+        self.setMinimumHeight(150)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
 
     @staticmethod
@@ -77,11 +77,11 @@ def _section_title(text: str) -> QLabel:
 
 def _make_help_card() -> QFrame:
     card = QFrame(objectName="RedesignHelpCard")
-    card.setMinimumWidth(270)
-    card.setMaximumWidth(300)
+    card.setMinimumWidth(210)
+    card.setMaximumWidth(230)
     layout = QVBoxLayout(card)
-    layout.setContentsMargins(18, 18, 18, 18)
-    layout.setSpacing(12)
+    layout.setContentsMargins(12, 14, 12, 14)
+    layout.setSpacing(9)
 
     title = QLabel("How restore works")
     title.setStyleSheet("font-size:16px;font-weight:800;color:#0a2940;")
@@ -214,7 +214,7 @@ def _apply_redesign(page: ProtectionPage) -> None:
 
     content = QWidget()
     content_layout = QVBoxLayout(content)
-    content_layout.setContentsMargins(24, 20, 24, 22)
+    content_layout.setContentsMargins(14, 16, 14, 18)
     content_layout.setSpacing(14)
     scroll.setWidget(content)
     root.addWidget(scroll)
@@ -229,15 +229,32 @@ def _apply_redesign(page: ProtectionPage) -> None:
     headings.addWidget(subtitle)
     header.addLayout(headings)
     header.addStretch(1)
-    for text in ("100% local", "No cloud upload", "Restore available"):
-        header.addWidget(_pill(text))
+    help_button = QPushButton("How restore works", objectName="Secondary")
+    help_button.setMinimumHeight(38)
+    help_button.clicked.connect(
+        lambda: QMessageBox.information(
+            page,
+            "How local restore works",
+            "1. Protect with reversible placeholders.\n\n"
+            "2. Send only the protected version to AI.\n\n"
+            "3. Bring the AI result back to Restore.\n\n"
+            "4. Restore the original values locally on this device.",
+        )
+    )
+    header.addWidget(help_button)
+    header_pills = [_pill("LOCAL   •   PRIVATE   •   RESTORABLE")]
+    header_pills[0].setMaximumWidth(245)
+    header_pills[0].setToolTip(
+        "Protection runs locally; protected files can be restored with the local mapping."
+    )
+    header.addWidget(header_pills[0])
     content_layout.addLayout(header)
 
     top_row = QHBoxLayout()
-    top_row.setSpacing(14)
+    top_row.setSpacing(10)
 
     start_card = QFrame(objectName="RedesignStartCard")
-    start_card.setMinimumHeight(430)
+    start_card.setMinimumHeight(350)
     start_layout = QVBoxLayout(start_card)
     start_layout.setContentsMargins(18, 0, 18, 16)
     start_layout.setSpacing(10)
@@ -263,14 +280,32 @@ def _apply_redesign(page: ProtectionPage) -> None:
     tab_row.addStretch(1)
     start_layout.addLayout(tab_row)
 
-    input_row = QHBoxLayout()
-    input_row.setSpacing(18)
+    source_heading = QHBoxLayout()
+    source_heading.addWidget(_section_title("Your document"))
+    source_heading.addStretch(1)
+    document_mode = QPushButton("Document")
+    paste_mode = QPushButton("Paste text")
+    for button in (document_mode, paste_mode):
+        button.setCheckable(True)
+        button.setMinimumHeight(34)
+        button.setStyleSheet(
+            "QPushButton{background:#f5f8fa;color:#4d6274;border:1px solid #d6e1e8;"
+            "border-radius:7px;padding:6px 15px;font-weight:700;}"
+            "QPushButton:checked{background:#078c89;color:white;border-color:#078c89;}"
+        )
+    document_mode.setChecked(True)
+    source_heading.addWidget(document_mode)
+    source_heading.addWidget(paste_mode)
+    start_layout.addLayout(source_heading)
 
-    paste_box = QVBoxLayout()
+    source_stack = QStackedWidget()
+
+    paste_page = QWidget()
+    paste_box = QVBoxLayout(paste_page)
+    paste_box.setContentsMargins(0, 0, 0, 0)
     paste_box.setSpacing(7)
-    paste_box.addWidget(_section_title("Paste text"))
-    page.text_input.setMinimumHeight(210)
-    page.text_input.setMaximumHeight(310)
+    page.text_input.setMinimumHeight(145)
+    page.text_input.setMaximumHeight(280)
     page.text_input.setPlaceholderText(
         "Paste an email, lease excerpt, offer, contractor proposal "
         "or other business text..."
@@ -284,13 +319,14 @@ def _apply_redesign(page: ProtectionPage) -> None:
     paste_note.setStyleSheet("color:#748596;font-size:11px;")
     paste_box.addWidget(paste_note)
 
-    upload_box = QVBoxLayout()
+    document_page = QWidget()
+    upload_box = QVBoxLayout(document_page)
+    upload_box.setContentsMargins(0, 0, 0, 0)
     upload_box.setSpacing(7)
-    upload_box.addWidget(_section_title("Upload document"))
 
     upload_zone = _UploadDropZone()
     upload_zone_layout = QVBoxLayout(upload_zone)
-    upload_zone_layout.setContentsMargins(24, 22, 24, 22)
+    upload_zone_layout.setContentsMargins(18, 12, 18, 12)
     upload_zone_layout.setSpacing(8)
     upload_zone_layout.addStretch(1)
     upload_icon = QLabel("⇧")
@@ -318,20 +354,45 @@ def _apply_redesign(page: ProtectionPage) -> None:
     format_note.setStyleSheet("color:#748596;font-size:11px;")
     upload_box.addWidget(format_note)
 
-    input_row.addLayout(paste_box, 1)
-    input_row.addLayout(upload_box, 1)
-    start_layout.addLayout(input_row, 1)
+    source_stack.addWidget(document_page)
+    source_stack.addWidget(paste_page)
+    source_stack.setCurrentIndex(0)
+    start_layout.addWidget(source_stack, 1)
 
-    steps = QLabel(
-        "① Upload or paste     •     ② Scan sensitive data     •     "
-        "③ Review & protect     •     ④ Use with AI / Restore locally"
-    )
-    steps.setAlignment(Qt.AlignmentFlag.AlignCenter)
-    steps.setStyleSheet(
-        "background:#f6f9fb;color:#5f7385;border-radius:6px;"
-        "padding:7px;font-size:11px;"
-    )
-    start_layout.addWidget(steps)
+    def choose_source(index: int) -> None:
+        source_stack.setCurrentIndex(index)
+        source_stack.setMaximumHeight(170 if index == 1 else 74)
+        document_mode.setChecked(index == 0)
+        paste_mode.setChecked(index == 1)
+        page.input_tabs.setCurrentIndex(1 if index == 0 else 0)
+
+    document_mode.clicked.connect(lambda: choose_source(0))
+    paste_mode.clicked.connect(lambda: choose_source(1))
+
+    steps_card = QFrame(objectName="RedesignSteps")
+    steps_row = QHBoxLayout(steps_card)
+    steps_row.setContentsMargins(10, 6, 10, 6)
+    steps_row.setSpacing(8)
+    for number, label in (
+        ("1", "Add document"),
+        ("2", "Scan locally"),
+        ("3", "Review choices"),
+        ("4", "Save or use with AI"),
+    ):
+        bubble = QLabel(number)
+        bubble.setFixedSize(22, 22)
+        bubble.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        bubble.setStyleSheet(
+            "background:#078c89;color:white;border-radius:11px;font-weight:800;"
+        )
+        step_label = QLabel(label)
+        step_label.setStyleSheet(
+            "background:transparent;color:#3e596c;font-size:11px;font-weight:700;padding:0;"
+        )
+        steps_row.addWidget(bubble)
+        steps_row.addWidget(step_label)
+    steps_row.addStretch(1)
+    start_layout.addWidget(steps_card)
 
     action_row = QHBoxLayout()
     action_row.addStretch(1)
@@ -416,9 +477,69 @@ def _apply_redesign(page: ProtectionPage) -> None:
     )
 
     help_card = _make_help_card()
-    top_row.addWidget(start_card, 1)
-    top_row.addWidget(help_card)
-    content_layout.addLayout(top_row)
+    help_card.setParent(page)
+
+    # The document comparison is the primary workspace. Keep source controls
+    # in one compact strip above both previews so neither document card loses
+    # vertical space.
+    page.preview_tabs.setTabVisible(1, True)
+    page.preview_tabs.setCurrentIndex(1)
+    restore_page_button = QPushButton("Restore", objectName="Secondary")
+    restore_page_button.setToolTip("Open Restore to bring original values back locally")
+    restore_page_button.setMaximumWidth(90)
+    restore_page_button.clicked.connect(lambda: _open_restore_page(page))
+    page.preview_tabs.setCornerWidget(
+        restore_page_button, Qt.Corner.TopRightCorner
+    )
+    page._redesign_restore_page_button = restore_page_button
+    source_toolbar = QFrame(objectName="EmbeddedSourceToolbar")
+    source_toolbar_layout = QVBoxLayout(source_toolbar)
+    source_toolbar_layout.setContentsMargins(8, 6, 8, 6)
+    source_toolbar_layout.setSpacing(5)
+    source_row = QHBoxLayout()
+    source_row.setSpacing(7)
+    source_row.addWidget(QLabel("Source", objectName="FieldLabel"))
+    source_row.addWidget(document_mode)
+    source_row.addWidget(paste_mode)
+    source_stack.setMinimumHeight(0)
+    source_stack.setMaximumHeight(74)
+    upload_zone.setMinimumHeight(58)
+    upload_zone.setMaximumHeight(58)
+    upload_zone_layout.setContentsMargins(8, 2, 8, 2)
+    upload_zone_layout.setSpacing(2)
+    upload_icon.hide()
+    format_note.hide()
+    page.browse_button.setMinimumHeight(34)
+    page.browse_button.setMaximumHeight(34)
+    source_row.addWidget(source_stack, 1)
+    source_row.addWidget(page.clear_button)
+    source_row.addWidget(page.scan_button)
+    source_row.addWidget(protect_button)
+    # Keep the progress hint above the source controls. This leaves the
+    # Document/Paste controls immediately adjacent to Protected text/Compare,
+    # instead of separating the two control rows with instructional chrome.
+    source_toolbar_layout.addWidget(steps_card)
+    source_toolbar_layout.addLayout(source_row)
+
+    preview_layout = page.preview_card.layout()
+    preview_index = preview_layout.indexOf(page.preview_tabs)
+    preview_layout.insertWidget(max(0, preview_index), source_toolbar)
+
+    # Advanced settings remain available without taking space from the two
+    # document cards.
+    settings_strip = QFrame(objectName="RedesignSettingsStrip")
+    settings_strip_layout = QVBoxLayout(settings_strip)
+    settings_strip_layout.setContentsMargins(8, 5, 8, 5)
+    settings_strip_layout.addWidget(advanced_toggle)
+    settings_strip_layout.addWidget(advanced_panel)
+
+    start_card.hide()
+    _reparent(page.preview_card, content)
+    page.preview_card.setMinimumHeight(910)
+    page.document_preview_splitter.setMinimumHeight(760)
+    help_card.hide()
+    content_layout.addWidget(page.preview_card)
+    content_layout.addWidget(settings_strip)
 
     results_card = QFrame(objectName="RedesignResults")
     results_layout = QVBoxLayout(results_card)
@@ -436,10 +557,10 @@ def _apply_redesign(page: ProtectionPage) -> None:
     metrics_row.addStretch(1)
     results_layout.addLayout(metrics_row)
 
-    page.workspace.setChildrenCollapsible(False)
-    page.workspace.setMinimumHeight(390)
-    page.workspace.setSizes([430, 930])
-    results_layout.addWidget(page.workspace)
+    page.workspace.hide()
+    _reparent(page.findings_card, results_card)
+    page.findings_card.setMinimumHeight(315)
+    results_layout.addWidget(page.findings_card, 1)
 
     final_actions = QFrame(objectName="RedesignFinalActions")
     final_layout = QHBoxLayout(final_actions)
@@ -463,21 +584,31 @@ def _apply_redesign(page: ProtectionPage) -> None:
 
     content.setStyleSheet(
         "QFrame#RedesignStartCard,QFrame#RedesignHelpCard,QFrame#RedesignResults,"
-        "QFrame#RedesignFinalActions{background:white;border:1px solid #d7e2ea;"
+        "QFrame#RedesignFinalActions,QFrame#RedesignSettingsStrip{background:white;border:1px solid #d7e2ea;"
         "border-radius:12px;}"
+        "QFrame#EmbeddedSourceFooter,QFrame#EmbeddedSourceToolbar{background:#f8fbfc;border:1px solid #d8e3ea;"
+        "border-radius:9px;}"
         "QFrame#RedesignUploadZone{background:#fbfefe;border:1px dashed #55b9b5;"
         "border-radius:10px;}"
         "QFrame#RedesignAdvanced{background:#f8fafc;border:1px solid #e3eaf0;"
         "border-radius:8px;}"
         "QFrame#RedesignBusyPanel{background:#f4fbfa;border:1px solid #d9eeeb;"
         "border-radius:8px;}"
+        "QFrame#RedesignSteps{background:#f6f9fb;border:none;border-radius:7px;}"
     )
 
     page._redesign_scroll = scroll
+    page._redesign_title = title
+    page._redesign_subtitle = subtitle
+    page._redesign_header_pills = header_pills
     page._redesign_start_card = start_card
     page._redesign_help_card = help_card
+    page._redesign_help_button = help_button
     page._redesign_upload_zone = upload_zone
     page._redesign_upload_filename = upload_filename
+    page._redesign_source_stack = source_stack
+    page._redesign_document_mode = document_mode
+    page._redesign_paste_mode = paste_mode
     page._redesign_protect_button = protect_button
     page._redesign_results_card = results_card
     page._redesign_final_actions = final_actions
@@ -511,6 +642,9 @@ def _apply_redesign(page: ProtectionPage) -> None:
         save_action,
     )
     page._redesign_allow_refresh = False
+    page._redesign_selection_timer = QTimer(page)
+    page._redesign_selection_timer.setSingleShot(True)
+    page._redesign_selection_timer.setInterval(180)
     page._redesign_preview_worker = None
     page._redesign_pdf_generation = 0
 
@@ -565,12 +699,33 @@ def _apply_redesign(page: ProtectionPage) -> None:
     def text_changed() -> None:
         if page.text_input.toPlainText().strip():
             page.input_tabs.setCurrentIndex(0)
+            choose_source(1)
         invalidate_after_input()
 
     def file_changed(path: str) -> None:
         if path:
             page.input_tabs.setCurrentIndex(1)
+            choose_source(0)
             upload_filename.setText(Path(path).name)
+            source_path = Path(path)
+            suffix = source_path.suffix.lower()
+            page.preview_tabs.setTabVisible(1, True)
+            page.preview_tabs.setCurrentIndex(1)
+            page.original_pdf_document.close()
+            page.protected_pdf_document.close()
+            page.original_office_view.clear()
+            page.protected_office_view.clear()
+            try:
+                if suffix == ".pdf":
+                    page.original_view_stack.setCurrentIndex(0)
+                    page.protected_view_stack.setCurrentIndex(0)
+                    page.original_pdf_document.load(str(source_path))
+                elif suffix in {".docx", ".xlsx"}:
+                    page.original_view_stack.setCurrentIndex(1)
+                    page.protected_view_stack.setCurrentIndex(1)
+                    page.original_office_view.load(source_path, protected=False)
+            except Exception as exc:
+                page.comparison_note.setText(f"Original preview unavailable: {exc}")
         else:
             upload_filename.setText("or drag and drop a local file here")
         invalidate_after_input()
@@ -591,7 +746,8 @@ def _apply_redesign(page: ProtectionPage) -> None:
         final_actions.hide()
         set_final_actions(False)
         protected_metric.setText(f"{selected} selected")
-        review_metric.setText("Review selection, then protect")
+        review_metric.setText("Updating protected copy…")
+        page._redesign_selection_timer.start()
 
     page.findings_table.itemChanged.connect(selection_changed)
 
@@ -616,6 +772,7 @@ def _apply_redesign(page: ProtectionPage) -> None:
         set_final_actions(True)
 
     protect_button.clicked.connect(protect_now)
+    page._redesign_selection_timer.timeout.connect(protect_now)
 
     def with_final_check(message: str, callback) -> None:
         if page.current_result is None:
@@ -754,13 +911,27 @@ def _apply_redesign(page: ProtectionPage) -> None:
 
     def focus_changed(focused: bool) -> None:
         page.findings_card.setVisible(not focused)
+        page._redesign_start_card.setVisible(not focused)
+        page._redesign_help_button.setVisible(not focused)
+        page._redesign_title.setVisible(not focused)
+        page._redesign_subtitle.setVisible(not focused)
+        for pill in page._redesign_header_pills:
+            pill.setVisible(not focused)
         page.focus_preview_button.setText(
             "Show review panel" if focused else "Full document view"
         )
         if focused:
-            page.workspace.setSizes([0, max(1000, page.width())])
+            page.preview_card.setMinimumHeight(980)
+            page.preview_tabs.setMinimumHeight(900)
+            page.document_preview_splitter.setMinimumHeight(820)
+            QTimer.singleShot(
+                0, lambda: page._redesign_scroll.verticalScrollBar().setValue(0)
+            )
+            QTimer.singleShot(0, page._fit_pdf_width)
         else:
-            page.workspace.setSizes([430, 930])
+            page.preview_card.setMinimumHeight(910)
+            page.preview_tabs.setMinimumHeight(840)
+            page.document_preview_splitter.setMinimumHeight(760)
         page.setup_toggle.hide()
         page.setup_card.hide()
 
@@ -821,7 +992,7 @@ def install_redesign() -> None:
         self.verification_metric.setText("Second scan before export")
         self._set_result_actions(False)
         self._redesign_results_card.show()
-        self.workspace.show()
+        self.workspace.hide()
         self._redesign_final_actions.hide()
         self._redesign_set_final_actions(False)
         self._redesign_protect_button.setEnabled(bool(self.current_findings))
@@ -913,9 +1084,6 @@ def install_redesign() -> None:
                     source_document=None,
                 )
             return generation, protected_path, fallback, fallback_reason
-
-        worker = FunctionWorker(task)
-        self._redesign_preview_worker = worker
 
         def preview_error(message: str) -> None:
             if generation != self._redesign_pdf_generation:
@@ -1011,12 +1179,20 @@ def install_redesign() -> None:
 
             wait_for_pdf()
 
-        worker.signals.result.connect(preview_ready)
-        worker.signals.error.connect(preview_error)
-        worker.signals.finished.connect(
-            lambda: setattr(self, "_redesign_preview_worker", None)
-        )
-        self.thread_pool.start(worker)
+        # PDF rasterization uses native renderer state which can deadlock when
+        # invoked from Qt's global worker pool on Windows. Keep this operation
+        # on the UI thread (as the stable screen did), after first painting the
+        # busy state. This favors a short, deterministic pause over a preview
+        # that can remain stuck forever.
+        QApplication.processEvents()
+        try:
+            payload = task()
+        except Exception as exc:
+            preview_error(f"{type(exc).__name__}: {exc}")
+        else:
+            preview_ready(payload)
+        finally:
+            self._redesign_preview_worker = None
 
     def redesigned_clear(self: ProtectionPage) -> None:
         original_clear(self)

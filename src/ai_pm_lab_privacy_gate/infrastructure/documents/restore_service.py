@@ -189,14 +189,21 @@ class DocumentRestoreService:
                             continue
                         for match in matches:
                             box = (
-                                max(0, int(match["x0"] * scale_x) - 3),
-                                max(0, int(match["top"] * scale_y) - 3),
-                                min(rendered.width, int(match["x1"] * scale_x) + 3),
-                                min(rendered.height, int(match["bottom"] * scale_y) + 3),
+                                max(0, int(match["x0"] * scale_x) - 5),
+                                max(0, int(match["top"] * scale_y) - 5),
+                                min(rendered.width, int(match["x1"] * scale_x) + 5),
+                                min(rendered.height, int(match["bottom"] * scale_y) + 5),
                             )
-                            draw.rectangle(box, fill="#FFFFFF", outline="#66788A", width=1)
+                            # Cover the protected token chip completely, then
+                            # draw the original value without a visible border.
+                            # On ordinary white document backgrounds this reads
+                            # like normal document text instead of a form field.
+                            draw.rectangle(box, fill="#FFFFFF")
                             PdfDocumentService._draw_fitted_text(
-                                draw, box, original.replace("\n", " ")
+                                draw,
+                                box,
+                                original.replace("\n", " "),
+                                align="left",
                             )
                             count += 1
                     writer.setPageSize((float(page.width), float(page.height)))

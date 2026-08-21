@@ -11,7 +11,7 @@ os.environ.setdefault(
     str((Path(tempfile.gettempdir()) / "privacy-gate-ui-smoke" / uuid.uuid4().hex).resolve()),
 )
 
-from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import QApplication, QBoxLayout
 from PySide6.QtTest import QTest
 from docx import Document
 from openpyxl import Workbook
@@ -23,6 +23,19 @@ from ai_pm_lab_privacy_gate.infrastructure.documents.pdf_service import PdfDocum
 from ai_pm_lab_privacy_gate.ui.main_window import MainWindow
 from ai_pm_lab_privacy_gate.ui.fonts import install_app_font
 from ai_pm_lab_privacy_gate.ui.styles import APP_STYLE
+
+
+def wait_until(predicate, timeout_ms: int = 10_000) -> bool:
+    """Process Qt events until an asynchronous UI result is ready."""
+    elapsed = 0
+    while elapsed < timeout_ms:
+        QApplication.processEvents()
+        if predicate():
+            return True
+        QTest.qWait(100)
+        elapsed += 100
+    QApplication.processEvents()
+    return bool(predicate())
 
 
 def main() -> int:
@@ -38,6 +51,7 @@ def main() -> int:
     word_output = output_dir / "privacy_gate_word_comparison.png"
     excel_output = output_dir / "privacy_gate_excel_comparison.png"
     restore_output = output_dir / "privacy_gate_restore_comparison.png"
+    compact_restore_output = output_dir / "privacy_gate_restore_compact_window.png"
     output.parent.mkdir(parents=True, exist_ok=True)
     app = QApplication([])
     install_app_font(app)
@@ -63,6 +77,11 @@ def main() -> int:
         raise RuntimeError("Unable to save UI screenshot")
     page.mode_combo.setCurrentIndex(page.mode_combo.findData("mask"))
     app.processEvents()
+    # The redesigned flow deliberately separates detection from protection.
+    # Changing the mode invalidates any previous result until the user confirms
+    # the selection with the explicit Protect action.
+    page._redesign_protect_button.click()
+    app.processEvents()
     if not page.current_result or len(page.current_result.combined_spans) != len(findings):
         raise RuntimeError("Mask-mode color metadata is incomplete")
     if not window.grab().save(str(mask_output)):
@@ -81,17 +100,30 @@ def main() -> int:
     page.pdf_path.setText(str(source_pdf.resolve()))
     page.input_tabs.setCurrentIndex(1)
     page._analysis_ready((pdf_document, pdf_findings))
+    page._redesign_protect_button.click()
     page.preview_tabs.setCurrentIndex(1)
-    QTest.qWait(900)
-    app.processEvents()
-    if page.original_pdf_document.pageCount() != 2 or page.protected_pdf_document.pageCount() != 2:
-        raise RuntimeError("PDF comparison did not load both two-page documents")
+    if not wait_until(
+        lambda: page.original_pdf_document.pageCount() == 2
+        and page.protected_pdf_document.pageCount() == 2,
+        timeout_ms=30_000,
+    ):
+        raise RuntimeError(
+            "PDF comparison did not load both two-page documents: "
+            f"original={page.original_pdf_document.pageCount()} "
+            f"protected={page.protected_pdf_document.pageCount()} "
+            f"timer_active={page._pdf_preview_timer.isActive()} "
+            f"operations={page._redesign_active_operations} "
+            f"worker={page._redesign_preview_worker!r} "
+            f"note={page.comparison_note.text()}"
+        )
     page._finding_selected(0, 0)
     page.keep_this_button.click()
+    page._redesign_protect_button.click()
     app.processEvents()
     if not page.current_result or len(page.current_result.applied_findings) != len(pdf_findings) - 1:
         raise RuntimeError("Keep original did not remove the selected item from protection")
     page.protect_this_button.click()
+    page._redesign_protect_button.click()
     app.processEvents()
     if not page.current_result or len(page.current_result.applied_findings) != len(pdf_findings):
         raise RuntimeError("Protect this did not restore the selected item to protection")
@@ -122,9 +154,11 @@ def main() -> int:
     page.pdf_path.setText(str(source_docx.resolve()))
     page.input_tabs.setCurrentIndex(1)
     page._analysis_ready((word_document, word_findings))
-    QTest.qWait(700)
-    app.processEvents()
-    if page.original_view_stack.currentIndex() != 1 or page.original_office_view.tabs.count() != 1:
+    page._redesign_protect_button.click()
+    if not wait_until(
+        lambda: page.original_view_stack.currentIndex() == 1
+        and page.original_office_view.tabs.count() == 1
+    ):
         raise RuntimeError(
             "Built-in Word comparison did not load: "
             f"stack={page.original_view_stack.currentIndex()} tabs={page.original_office_view.tabs.count()} "
@@ -152,9 +186,11 @@ def main() -> int:
     excel_findings = service.analyze(excel_document, page._current_profile())
     page.pdf_path.setText(str(source_xlsx.resolve()))
     page._analysis_ready((excel_document, excel_findings))
-    QTest.qWait(700)
-    app.processEvents()
-    if page.original_view_stack.currentIndex() != 1 or page.original_office_view.tabs.count() != 2:
+    page._redesign_protect_button.click()
+    if not wait_until(
+        lambda: page.original_view_stack.currentIndex() == 1
+        and page.original_office_view.tabs.count() == 2
+    ):
         raise RuntimeError("Built-in Excel comparison did not load worksheet tabs")
     if not window.grab().save(str(excel_output)):
         raise RuntimeError("Unable to save Excel comparison screenshot")
@@ -173,11 +209,16 @@ def main() -> int:
     )
     restore_page = window.restore_page
     restore_page.refresh(excel_saved.document_id)
-    restore_page._load_file(protected_xlsx)
+    restore_page._begin_load_file(protected_xlsx)
+    if not wait_until(
+        lambda: restore_page._active_worker is None
+        and restore_page._source_path == protected_xlsx
+    ):
+        raise RuntimeError("Restore page did not finish loading the protected Excel file")
     restore_page._restore()
-    QTest.qWait(500)
-    app.processEvents()
-    if not restore_page._restored_path or not restore_page._restored_path.exists():
+    if not wait_until(
+        lambda: bool(restore_page._restored_path and restore_page._restored_path.exists())
+    ):
         raise RuntimeError("Structured Excel restore did not create a restored file")
     if restore_page.output_office_view.tabs.count() != 2:
         raise RuntimeError("Restore Excel comparison did not load both worksheet tabs")
@@ -185,6 +226,20 @@ def main() -> int:
     app.processEvents()
     if not window.grab().save(str(restore_output)):
         raise RuntimeError("Unable to save Restore comparison screenshot")
+
+    window.resize(1120, 920)
+    app.processEvents()
+    if window.sidebar.width() != 76:
+        raise RuntimeError("Narrow windows must automatically collapse the sidebar")
+    if restore_page.source_row.direction() != QBoxLayout.Direction.TopToBottom:
+        raise RuntimeError("Restore inputs did not stack in the compact window")
+    restore_button_right = restore_page.restore_button.mapTo(window, restore_page.restore_button.rect().topLeft()).x() + restore_page.restore_button.width()
+    if restore_button_right > window.width():
+        raise RuntimeError("Restore action moved outside the compact window")
+    if not window.grab().save(str(compact_restore_output)):
+        raise RuntimeError("Unable to save compact Restore screenshot")
+    window.resize(1458, 920)
+    app.processEvents()
 
     window._toggle_sidebar()
     app.processEvents()
@@ -220,6 +275,7 @@ def main() -> int:
     print(
         f"UI_OK {setup_output.resolve()} {output.resolve()} {mask_output.resolve()} {pdf_output.resolve()} "
         f"{focus_output.resolve()} {word_output.resolve()} {excel_output.resolve()} {restore_output.resolve()} "
+        f"{compact_restore_output.resolve()} "
         f"{collapsed_output.resolve()} {library_output.resolve()} {contact_output.resolve()} "
         f"{len(findings)} findings sidebar={window.sidebar.width()}"
     )

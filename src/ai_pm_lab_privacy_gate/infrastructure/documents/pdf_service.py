@@ -307,7 +307,13 @@ class PdfDocumentService:
         return replacement
 
     @staticmethod
-    def _draw_fitted_text(draw: ImageDraw.ImageDraw, box: tuple[int, int, int, int], text: str) -> None:
+    def _draw_fitted_text(
+        draw: ImageDraw.ImageDraw,
+        box: tuple[int, int, int, int],
+        text: str,
+        *,
+        align: str = "center",
+    ) -> None:
         left, top, right, bottom = box
         available_width = max(5, right - left - 4)
         available_height = max(5, bottom - top - 2)
@@ -327,8 +333,9 @@ class PdfDocumentService:
         bounds = draw.textbbox((0, 0), text, font=font)
         text_width = bounds[2] - bounds[0]
         text_height = bounds[3] - bounds[1]
+        x = left + 2 if align == "left" else left + max(2, (right - left - text_width) / 2)
         draw.text(
-            (left + max(2, (right - left - text_width) / 2), top + max(0, (bottom - top - text_height) / 2 - bounds[1])),
+            (x, top + max(0, (bottom - top - text_height) / 2 - bounds[1])),
             text,
             fill="#102A43",
             font=font,

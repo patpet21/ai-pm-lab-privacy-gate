@@ -54,8 +54,8 @@ app = BUNDLE(
     bundle_identifier="xyz.propertydex.privacygate",
     info_plist={
         "CFBundleDisplayName": "AI PM LAB Privacy Gate",
-        "CFBundleShortVersionString": "0.4.1",
-        "CFBundleVersion": "0.4.1",
+        "CFBundleShortVersionString": "0.4.2",
+        "CFBundleVersion": "0.4.2",
         "LSMinimumSystemVersion": "12.0",
         "NSHighResolutionCapable": True,
     },

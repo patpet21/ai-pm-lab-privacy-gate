@@ -103,6 +103,7 @@ class MainWindow(QMainWindow):
         shell.setSpacing(0)
 
         self.sidebar_expanded = True
+        self._sidebar_auto_collapsed = False
         self.sidebar = QFrame(objectName="Sidebar")
         self.sidebar.setFixedWidth(258)
         self.side_layout = QVBoxLayout(self.sidebar)
@@ -206,7 +207,11 @@ class MainWindow(QMainWindow):
         QTimer.singleShot(3500, lambda: self.contact_page.check_updates(silent=True))
 
     def _toggle_sidebar(self) -> None:
-        self.sidebar_expanded = not self.sidebar_expanded
+        self._sidebar_auto_collapsed = False
+        self._set_sidebar_expanded(not self.sidebar_expanded)
+
+    def _set_sidebar_expanded(self, expanded: bool) -> None:
+        self.sidebar_expanded = expanded
         if self.sidebar_expanded:
             self.sidebar.setFixedWidth(258)
             self.side_layout.setContentsMargins(18, 16, 18, 18)
@@ -240,6 +245,21 @@ class MainWindow(QMainWindow):
             )
         for button, full_label in zip(self.nav_buttons, self.nav_labels):
             button.setText(full_label if self.sidebar_expanded else "")
+
+    def resizeEvent(self, event) -> None:  # noqa: N802 - Qt API
+        super().resizeEvent(event)
+        if not hasattr(self, "sidebar") or not hasattr(self, "nav_buttons"):
+            return
+        if self.width() < 1180 and self.sidebar_expanded:
+            self._sidebar_auto_collapsed = True
+            self._set_sidebar_expanded(False)
+        elif (
+            self.width() > 1320
+            and self._sidebar_auto_collapsed
+            and not self.sidebar_expanded
+        ):
+            self._set_sidebar_expanded(True)
+            self._sidebar_auto_collapsed = False
 
     def _show_page(self, index: int) -> None:
         self.pages.setCurrentIndex(index)

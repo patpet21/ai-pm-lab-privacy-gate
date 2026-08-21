@@ -2,7 +2,15 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PySide6.QtWidgets import QApplication, QFileDialog, QFrame, QHBoxLayout, QLabel, QPushButton
+from PySide6.QtWidgets import (
+    QApplication,
+    QFileDialog,
+    QFrame,
+    QHBoxLayout,
+    QLabel,
+    QPushButton,
+    QVBoxLayout,
+)
 
 from ai_pm_lab_privacy_gate.ui.protection_page import ProtectionPage
 
@@ -10,34 +18,9 @@ from ai_pm_lab_privacy_gate.ui.protection_page import ProtectionPage
 _INSTALLED = False
 
 
-def _quiet_save_to_library(page: ProtectionPage):
-    """Save the current protected result using the source name as the Library title.
-
-    The old flow asked for a second title in a modal dialog. For the primary
-    Protect flow that is unnecessary friction: the source filename (or first
-    text line) already gives the user a useful, editable Library title later.
-    """
-    if page.current_document is None or page.current_result is None:
-        return None
-    title = page._derive_title()
-    source_name = (
-        page.current_document.source_path.name
-        if page.current_document.source_path
-        else "Pasted text"
-    )
-    labels = tuple(
-        part.strip() for part in page.labels_input.text().split(",") if part.strip()
-    )
-    document = page.library.save(
-        title=title,
-        source_kind=page.current_document.source_kind,
-        source_name=source_name,
-        profile_key=page.profile_combo.currentData(),
-        result=page.current_result,
-        labels=labels,
-    )
-    page.library_changed.emit(document.document_id)
-    return document
+def _named_save_to_library(page: ProtectionPage):
+    """Save through the standard title prompt and encrypted local Library."""
+    return page._save_to_library()
 
 
 def _status(page: ProtectionPage, message: str) -> None:
@@ -53,7 +36,7 @@ def _save_and_copy(page: ProtectionPage) -> None:
     try:
         if not page._confirm_residual_risk("saving and copying"):
             return
-        saved = _quiet_save_to_library(page)
+        saved = _named_save_to_library(page)
         if saved is None:
             return
         QApplication.clipboard().setText(page.current_result.combined_text)
@@ -69,7 +52,7 @@ def _save_and_download(page: ProtectionPage) -> None:
     try:
         if not page._confirm_residual_risk("saving and downloading"):
             return
-        saved = _quiet_save_to_library(page)
+        saved = _named_save_to_library(page)
         if saved is None:
             return
 
@@ -169,18 +152,33 @@ def _copy_and_open_chatgpt(page: ProtectionPage) -> None:
         page._redesign_end_operation("verify")
 
 
+def _save_only(page: ProtectionPage) -> None:
+    if page.current_result is None:
+        return
+    page._redesign_begin_operation("verify", "Final privacy check before saving locally…")
+    try:
+        if not page._confirm_residual_risk("saving to the local Library"):
+            return
+        saved = _named_save_to_library(page)
+        if saved is not None:
+            _status(page, f"Saved to Library as {saved.title}")
+    finally:
+        page._redesign_end_operation("verify")
+
+
 def _apply_quick_actions(page: ProtectionPage) -> None:
     if not hasattr(page, "_redesign_start_card"):
         return
 
-    start_layout = page._redesign_start_card.layout()
+    results_layout = page._redesign_results_card.layout()
     bar = QFrame(objectName="ProtectQuickActions")
-    bar_layout = QHBoxLayout(bar)
+    bar_layout = QVBoxLayout(bar)
     bar_layout.setContentsMargins(10, 9, 10, 9)
-    bar_layout.setSpacing(10)
+    bar_layout.setSpacing(6)
 
     hint = QLabel("Protected copy ready — choose what to do next")
     hint.setStyleSheet("color:#5e7385;font-size:11px;font-weight:600;")
+    save_library = QPushButton("Save to Library")
     save_copy = QPushButton("Save + Copy")
     save_download = QPushButton("Save + Download")
     open_ai = QPushButton("Copy & Open ChatGPT")
@@ -200,40 +198,48 @@ def _apply_quick_actions(page: ProtectionPage) -> None:
         "border-radius:8px;padding:10px 18px;font-weight:800;}"
         "QPushButton:hover{background:#f5f9fb;}"
     )
-    for button in (save_copy, save_download, open_ai):
+    save_library.setStyleSheet(
+        "QPushButton{background:white;color:#087d72;border:1px solid #8fcfc9;"
+        "border-radius:8px;padding:10px 16px;font-weight:800;}"
+        "QPushButton:hover{background:#eefaf8;}"
+    )
+    for button in (save_library, save_copy, save_download, open_ai):
         button.setMinimumHeight(42)
 
-    bar_layout.addWidget(hint, 1)
-    bar_layout.addWidget(save_copy)
-    bar_layout.addWidget(save_download)
-    bar_layout.addWidget(open_ai)
+    bar_layout.addWidget(hint)
+    button_row = QHBoxLayout()
+    button_row.setSpacing(8)
+    button_row.addWidget(save_library, 1)
+    button_row.addWidget(save_copy, 1)
+    button_row.addWidget(save_download, 1)
+    button_row.addWidget(open_ai, 1)
+    bar_layout.addLayout(button_row)
     bar.setStyleSheet(
         "QFrame#ProtectQuickActions{background:#f8fbfc;border:1px solid #d9e4eb;"
         "border-radius:10px;}"
     )
     bar.hide()
 
-    # Place the actions immediately below the Protect controls and before the
-    # spinner/advanced section, rather than at the bottom of a long results view.
-    busy_panel = getattr(page, "_redesign_busy_panel", None)
-    insert_at = start_layout.count()
-    if busy_panel is not None:
-        for index in range(start_layout.count()):
-            if start_layout.itemAt(index).widget() is busy_panel:
+    old_actions = getattr(page, "_redesign_final_actions", None)
+    insert_at = results_layout.count()
+    if old_actions is not None:
+        for index in range(results_layout.count()):
+            if results_layout.itemAt(index).widget() is old_actions:
                 insert_at = index
                 break
-    start_layout.insertWidget(insert_at, bar)
-
-    old_actions = getattr(page, "_redesign_final_actions", None)
-    if old_actions is not None:
         old_actions.hide()
         old_actions.setMaximumHeight(0)
+    # Actions belong after the document comparison so the user reviews the
+    # protected output before saving, downloading or opening an AI tool.
+    results_layout.insertWidget(insert_at, bar)
 
     page._protect_quick_actions = bar
+    page._protect_save_only = save_library
     page._protect_save_copy = save_copy
     page._protect_save_download = save_download
     page._protect_open_ai = open_ai
 
+    save_library.clicked.connect(lambda: _save_only(page))
     save_copy.clicked.connect(lambda: _save_and_copy(page))
     save_download.clicked.connect(lambda: _save_and_download(page))
     open_ai.clicked.connect(lambda: _copy_and_open_chatgpt(page))
@@ -256,6 +262,9 @@ def _apply_quick_actions(page: ProtectionPage) -> None:
 
     # The redesign's protect handler was connected first, so this runs after it.
     page._redesign_protect_button.clicked.connect(after_protect)
+    selection_timer = getattr(page, "_redesign_selection_timer", None)
+    if selection_timer is not None:
+        selection_timer.timeout.connect(after_protect)
 
 
 def install_protect_quick_actions() -> None:

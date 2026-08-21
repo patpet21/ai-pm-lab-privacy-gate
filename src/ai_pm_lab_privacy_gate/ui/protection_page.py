@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import re
 import tempfile
 from dataclasses import replace
 from pathlib import Path
@@ -50,6 +51,50 @@ from ai_pm_lab_privacy_gate.infrastructure.storage.library_repository import Lib
 from ai_pm_lab_privacy_gate.infrastructure.documents.office_preview import OfficePreviewRenderer
 from ai_pm_lab_privacy_gate.ui.office_internal_preview import OfficeInternalPreview
 from ai_pm_lab_privacy_gate.ui.workers import FunctionWorker
+
+
+def _manual_findings_for_text(
+    document: AnalysisDocument,
+    value: str,
+    entity_type: str,
+) -> tuple[Finding, ...]:
+    """Locate a user-supplied value reliably in extracted document text.
+
+    PDF/Word extraction can change capitalization and collapse or expand spaces.
+    Matching the words case-insensitively while accepting any whitespace keeps the
+    finding offsets anchored to the *actual* extracted text.  Those exact offsets
+    are then used by protection, visual preview, export, restore, and Library save.
+    """
+    requested = " ".join(value.split())
+    if not requested:
+        return ()
+    normalized_entity = entity_type.strip().upper().replace(" ", "_")
+    pattern = re.compile(
+        r"\s+".join(re.escape(part) for part in requested.split(" ")),
+        flags=re.IGNORECASE,
+    )
+    additions: list[Finding] = []
+    for page in document.pages:
+        for match in pattern.finditer(page.text):
+            matched_text = page.text[match.start() : match.end()]
+            additions.append(
+                Finding(
+                    finding_id=(
+                        f"manual-{page.page_number}-{match.start()}-"
+                        f"{match.end()}-{normalized_entity}"
+                    ),
+                    entity_type=normalized_entity,
+                    text=matched_text,
+                    start=match.start(),
+                    end=match.end(),
+                    score=1.0,
+                    page_number=page.page_number,
+                    context=page.text[
+                        max(0, match.start() - 34) : min(len(page.text), match.end() + 34)
+                    ],
+                )
+            )
+    return tuple(additions)
 
 
 class ProtectionPage(QWidget):
@@ -435,8 +480,21 @@ class ProtectionPage(QWidget):
         self.libreoffice_note = QLabel(objectName="Muted")
         self.libreoffice_note.setOpenExternalLinks(True)
         self.libreoffice_note.setTextFormat(Qt.TextFormat.RichText)
+        self.install_libreoffice_button = QPushButton(
+            "Get LibreOffice (free)", objectName="Secondary"
+        )
+        self.install_libreoffice_button.setToolTip(
+            "Open the official LibreOffice download page. The built-in preview remains available."
+        )
+        self.install_libreoffice_button.setVisible(False)
+        self.install_libreoffice_button.clicked.connect(
+            lambda: QDesktopServices.openUrl(
+                QUrl("https://www.libreoffice.org/download/download-libreoffice/")
+            )
+        )
         office_preview_options.addWidget(self.high_fidelity_button)
         office_preview_options.addWidget(self.libreoffice_note, 1)
+        office_preview_options.addWidget(self.install_libreoffice_button)
         self.office_preview_options_widget = QWidget()
         self.office_preview_options_widget.setLayout(office_preview_options)
         self.office_preview_options_widget.setVisible(False)
@@ -485,6 +543,11 @@ class ProtectionPage(QWidget):
             view.setZoomMode(QPdfView.ZoomMode.FitToWidth)
         self.document_preview_splitter.addWidget(original_panel)
         self.document_preview_splitter.addWidget(protected_panel)
+        # Exposed for the optional streamlined UI.  Keeping references to the
+        # two shells lets that UI place source/result actions inside the same
+        # cards as the document previews instead of duplicating the previews.
+        self.original_document_panel = original_panel
+        self.protected_document_panel = protected_panel
         self.document_preview_splitter.setChildrenCollapsible(False)
         self.document_preview_splitter.setSizes([600, 600])
         pdf_comparison_layout.addWidget(self.document_preview_splitter, 1)
@@ -1026,15 +1089,15 @@ class ProtectionPage(QWidget):
                 )
                 self.office_preview_options_widget.setVisible(True)
                 self.high_fidelity_button.setVisible(self._libreoffice_available)
+                self.install_libreoffice_button.setVisible(not self._libreoffice_available)
                 if self._libreoffice_available:
                     self.libreoffice_note.setText(
-                        "Internal preview is always available. LibreOffice was detected for optional page rendering."
+                "LibreOffice detected. Built-in preview remains available."
                     )
                 else:
                     self.high_fidelity_button.setChecked(False)
                     self.libreoffice_note.setText(
-                        "Internal preview active. For optional page-accurate rendering, install "
-                        "<a href='https://www.libreoffice.org/download/download-libreoffice/'>LibreOffice (free)</a>."
+                "Built-in preview active. Optional formatting upgrade:"
                     )
                 if self._libreoffice_available and self.high_fidelity_button.isChecked():
                     original_path = self._office_preview_renderer.render(
@@ -1148,30 +1211,18 @@ class ProtectionPage(QWidget):
         )
         if not ok or not entity_type:
             return
-        additions: list[Finding] = []
-        for page in self.current_document.pages:
-            start = 0
-            while True:
-                index = page.text.find(value, start)
-                if index < 0:
-                    break
-                additions.append(
-                    Finding(
-                        finding_id=f"manual-{page.page_number}-{index}-{len(additions)}",
-                        entity_type=entity_type.strip().upper().replace(" ", "_"),
-                        text=value,
-                        start=index,
-                        end=index + len(value),
-                        score=1.0,
-                        page_number=page.page_number,
-                        context=page.text[max(0, index - 34) : index + len(value) + 34],
-                    )
-                )
-                start = index + len(value)
+        additions = _manual_findings_for_text(self.current_document, value, entity_type)
         if not additions:
-            QMessageBox.information(self, "Text not found", "That exact text was not found in the document.")
+            QMessageBox.information(
+                self,
+                "Text not found",
+                "That text was not found in the document. Check the wording and try again.",
+            )
             return
-        self.current_findings = self.current_findings + tuple(additions)
+        existing_ids = {finding.finding_id for finding in self.current_findings}
+        self.current_findings = self.current_findings + tuple(
+            finding for finding in additions if finding.finding_id not in existing_ids
+        )
         self._populate_findings()
         self._refresh_preview()
 
