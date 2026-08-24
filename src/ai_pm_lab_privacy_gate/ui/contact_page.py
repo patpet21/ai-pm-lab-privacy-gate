@@ -109,10 +109,12 @@ class ContactPage(QWidget):
             return
         payload = {"name": self.name_input.text().strip(), "email": email, "message": message, "source": "Privacy Gate desktop"}
         self._busy(self.send_button, "Sending…")
+
         def submit():
             response = httpx.post(self.FORM_ENDPOINT, data=payload, headers={"Accept": "application/json"}, timeout=10)
             response.raise_for_status()
             return True
+
         self._run(
             submit,
             lambda _result: self._submitted(),
@@ -173,18 +175,38 @@ class ContactPage(QWidget):
 
     @staticmethod
     def _restart_privacy_gate() -> bool:
-        """Start a replacement process before quitting this one.
+        """Schedule a replacement process after this instance has fully exited.
 
-        In packaged builds sys.executable is the PrivacyGate executable. During
-        source/venv testing it is python.exe, so restart the same module instead.
+        PrivacyGate uses a QLocalServer single-instance lock. Starting the next
+        process immediately can make it see the current process and exit. On
+        Windows we therefore launch a tiny detached PowerShell helper that waits
+        two seconds before reopening PrivacyGate.
         """
+        if sys.platform != "win32":
+            if getattr(sys, "frozen", False):
+                return bool(QProcess.startDetached(sys.executable, []))
+            return bool(QProcess.startDetached(sys.executable, ["-m", "ai_pm_lab_privacy_gate.app"]))
+
+        exe = sys.executable.replace("'", "''")
         if getattr(sys, "frozen", False):
-            program = sys.executable
-            arguments: list[str] = []
+            launch = f"& '{exe}'"
         else:
-            program = sys.executable
-            arguments = ["-m", "ai_pm_lab_privacy_gate.app"]
-        return bool(QProcess.startDetached(program, arguments))
+            launch = f"& '{exe}' -m ai_pm_lab_privacy_gate.app"
+
+        command = (
+            "$ErrorActionPreference='SilentlyContinue'; "
+            "Start-Sleep -Seconds 2; "
+            "Remove-Item Env:PRIVACY_GATE_SIMULATE_UPDATE; "
+            "Remove-Item Env:PRIVACY_GATE_SIMULATE_STORE; "
+            "Remove-Item Env:PRIVACY_GATE_SIMULATE_STORE_RESULT; "
+            f"{launch}"
+        )
+        return bool(
+            QProcess.startDetached(
+                "powershell.exe",
+                ["-NoLogo", "-NoProfile", "-WindowStyle", "Hidden", "-Command", command],
+            )
+        )
 
     def show_store_update_event(self, event) -> None:
         status = event["status"]
