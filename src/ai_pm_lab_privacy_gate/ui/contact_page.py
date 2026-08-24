@@ -130,8 +130,6 @@ class ContactPage(QWidget):
                 QMessageBox.information(self, "PrivacyGate updates", f"Version {__version__} is current.")
             return
         self.update_available.emit(result)
-        if silent:
-            return
         self.show_update_dialog(result)
 
     def show_update_dialog(self, result) -> None:
