@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import sys
+
 import httpx
 from PySide6.QtCore import QProcess, QThreadPool, QUrl, Signal
 from PySide6.QtGui import QDesktopServices
@@ -137,8 +139,6 @@ class ContactPage(QWidget):
                 QMessageBox.information(self, "PrivacyGate updates", f"Version {__version__} is current.")
             return
         if is_store_packaged_install():
-            # release.json is the trigger; StoreContext is queried only after a
-            # newer PrivacyGate release is known to exist.
             if silent and result.version in self._store_versions_attempted:
                 return
             self._store_versions_attempted.add(result.version)
@@ -171,6 +171,21 @@ class ContactPage(QWidget):
         else:
             self.show_store_update_event(event)
 
+    @staticmethod
+    def _restart_privacy_gate() -> bool:
+        """Start a replacement process before quitting this one.
+
+        In packaged builds sys.executable is the PrivacyGate executable. During
+        source/venv testing it is python.exe, so restart the same module instead.
+        """
+        if getattr(sys, "frozen", False):
+            program = sys.executable
+            arguments: list[str] = []
+        else:
+            program = sys.executable
+            arguments = ["-m", "ai_pm_lab_privacy_gate.app"]
+        return bool(QProcess.startDetached(program, arguments))
+
     def show_store_update_event(self, event) -> None:
         status = event["status"]
         message = event.get("message", "")
@@ -188,8 +203,14 @@ class ContactPage(QWidget):
             box.addButton("Later", QMessageBox.ButtonRole.RejectRole)
             box.exec()
             if box.clickedButton() is restart:
-                QProcess.startDetached(QApplication.applicationFilePath(), [])
-                QApplication.quit()
+                if self._restart_privacy_gate():
+                    QApplication.quit()
+                else:
+                    QMessageBox.warning(
+                        self,
+                        "Restart failed",
+                        "PrivacyGate could not restart automatically. Please reopen it manually.",
+                    )
             return
 
         if status == "action_required":
