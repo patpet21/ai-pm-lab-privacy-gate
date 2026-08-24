@@ -21,16 +21,13 @@ from ai_pm_lab_privacy_gate.ui.iconography import icon
 NAVY = "#062B4F"
 NAVY_SOFT = "#17384E"
 PETROL = "#0B7180"
-TEAL = "#1595A3"
 MUTED = "#61798A"
-BORDER = "#D7E2EA"
 GOLD = "#D3A13B"
-WHITE = "#FFFFFF"
 
 
 APPS = (
     ("google_drive", "Google Drive", "Search and import files, Docs, Sheets and folders.", "cloud", "Productivity", True),
-    ("gmail", "Gmail", "Bring selected email threads and attachments into Protect.", "contact", "Communication", False),
+    ("gmail", "Gmail", "Read selected email messages and bring them into the local protection flow.", "contact", "Communication", True),
     ("clickup", "ClickUp", "Workspaces, projects, tasks and project documents.", "workflow", "Business & Operations", True),
     ("asana", "Asana", "Projects, tasks and workspaces.", "workflow", "Business & Operations", True),
     ("trello", "Trello", "Boards, lists and cards.", "workflow", "Business & Operations", True),
@@ -59,8 +56,6 @@ def _primary_style() -> str:
 
 
 class AppsHubPage(QWidget):
-    """Visual app directory backed by the existing ConnectedAppsService."""
-
     def __init__(self, main_window, service) -> None:
         super().__init__()
         self.main_window = main_window
@@ -132,15 +127,12 @@ class AppsHubPage(QWidget):
         grid.setRowStretch((len(APPS) + 2) // 3, 1)
         scroll.setWidget(body)
         root.addWidget(scroll, 1)
-
         search.textChanged.connect(self._filter_cards)
 
     def _build_card(self, key: str, title: str, description: str, icon_key: str, category: str, supported: bool) -> QFrame:
         card = QFrame(objectName="AppsHubCard")
         card.setMinimumHeight(178)
-        card.setStyleSheet(
-            "QFrame#AppsHubCard{background:#FFFFFF;border:1px solid #D7E2EA;border-radius:12px;}"
-        )
+        card.setStyleSheet("QFrame#AppsHubCard{background:#FFFFFF;border:1px solid #D7E2EA;border-radius:12px;}")
         layout = QVBoxLayout(card)
         layout.setContentsMargins(15, 14, 15, 14)
         layout.setSpacing(8)
@@ -208,16 +200,12 @@ class AppsHubPage(QWidget):
             supported = bool(status.property("supported"))
             if not supported:
                 status.setText("COMING NEXT")
-                status.setStyleSheet(
-                    "background:#FFF6DF;color:#8B641C;border:1px solid #E8CE8A;"
-                    "border-radius:8px;padding:4px 7px;font-size:9px;font-weight:900;"
-                )
+                status.setStyleSheet("background:#FFF6DF;color:#8B641C;border:1px solid #E8CE8A;border-radius:8px;padding:4px 7px;font-size:9px;font-weight:900;")
                 continue
             connected = self._connected(provider)
             status.setText("CONNECTED" if connected else "NOT CONNECTED")
             status.setStyleSheet(
-                ("background:#E8F6F6;color:#0B7180;border:1px solid #B8E1E4;" if connected else
-                 "background:#F2F5F7;color:#6C7E8C;border:1px solid #D7E2EA;")
+                ("background:#E8F6F6;color:#0B7180;border:1px solid #B8E1E4;" if connected else "background:#F2F5F7;color:#6C7E8C;border:1px solid #D7E2EA;")
                 + "border-radius:8px;padding:4px 7px;font-size:9px;font-weight:900;"
             )
         for button in self.findChildren(QPushButton, "AppConnect"):
@@ -237,23 +225,36 @@ class AppsHubPage(QWidget):
     def _connect(self, provider: str, title: str, supported: bool) -> None:
         if not supported:
             return
-        if provider == "google_drive":
-            try:
-                self.service.connect_google_oauth()
-                result = self.service.test_connection(provider)
-                if result.ok:
-                    QMessageBox.information(self, "Google Drive connected", f"{result.account_label}\n\nGoogle Drive is ready to use in PrivacyGate.")
-                else:
-                    QMessageBox.warning(self, "Google Drive connection", result.detail)
-            except Exception as exc:
-                QMessageBox.warning(self, "Google Drive connection failed", str(exc))
-            self.refresh()
+        connector = {
+            "google_drive": "connect_google_oauth",
+            "gmail": "connect_gmail_oauth",
+            "clickup": "connect_clickup_oauth",
+            "asana": "connect_asana_oauth",
+            "trello": "connect_trello_oauth",
+        }.get(provider)
+        if not connector or not hasattr(self.service, connector):
+            QMessageBox.warning(self, f"{title} connection", "This connector is not available in the current build.")
             return
-        QMessageBox.information(
-            self,
-            f"{title} OAuth",
-            f"{title} is visible in the Apps hub. Its browser-based OAuth connection is the next provider-specific step; manual token entry will not be used in the final customer flow.",
-        )
+        try:
+            getattr(self.service, connector)()
+            result = self.service.test_connection(provider)
+            if result.ok:
+                QMessageBox.information(
+                    self,
+                    f"{title} connected",
+                    f"{result.account_label}\n\n{title} is connected to PrivacyGate in read-only mode where supported.",
+                )
+            else:
+                QMessageBox.warning(self, f"{title} connection", result.detail)
+        except Exception as exc:
+            message = str(exc)
+            if "not configured" in message.lower():
+                message += (
+                    "\n\nPrivacyGate is ready for this provider, but its developer OAuth app still needs to be registered once. "
+                    "No customer will need to paste a personal token."
+                )
+            QMessageBox.warning(self, f"{title} connection failed", message)
+        self.refresh()
 
     def _browse(self, provider: str, title: str, supported: bool) -> None:
         if not supported or not self._connected(provider):
