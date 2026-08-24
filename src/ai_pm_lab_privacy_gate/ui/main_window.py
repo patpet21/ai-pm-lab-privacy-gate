@@ -50,6 +50,7 @@ class MainWindow(QMainWindow):
         self.remote_mcp = RemoteMcpManager(self.connection_identity)
         self._quit_requested = False
         self._tray_notice_shown = False
+        self._pending_update = None
         self.setWindowTitle(f"AI PM LAB Privacy Gate — {__version__}")
         self.resize(1460, 920)
         self.setMinimumSize(1120, 720)
@@ -86,6 +87,7 @@ class MainWindow(QMainWindow):
             if reason == QSystemTrayIcon.ActivationReason.Trigger
             else None
         )
+        tray.messageClicked.connect(self._show_pending_update)
         tray.show()
         self.tray_icon = tray
 
@@ -205,12 +207,32 @@ class MainWindow(QMainWindow):
         self.protection_page.library_changed.connect(self._library_changed)
         self.protection_page.open_connections.connect(lambda: self._show_page(4))
         self.library_page.restore_requested.connect(self._open_restore)
+        self.contact_page.update_available.connect(self._handle_update_available)
         self.nav_buttons[0].setChecked(True)
         self._show_page(0)
         if self.connection_identity.is_remote_enabled():
             set_mcp_autostart(True)
             self.remote_mcp.start()
         QTimer.singleShot(3500, lambda: self.contact_page.check_updates(silent=True))
+
+    def _handle_update_available(self, result) -> None:
+        self._pending_update = result
+        if self.isVisible() and not self.isMinimized():
+            self.contact_page.show_update_dialog(result)
+            return
+        if self.tray_icon is not None:
+            self.tray_icon.showMessage(
+                f"PrivacyGate {result.version} is available",
+                "Click this notification to choose Microsoft Store or the PrivacyGate website. Your local Library remains on this device.",
+                QSystemTrayIcon.MessageIcon.Information,
+                10000,
+            )
+
+    def _show_pending_update(self) -> None:
+        if self._pending_update is None:
+            return
+        self.show_from_background()
+        self.contact_page.show_update_dialog(self._pending_update)
 
     def _toggle_sidebar(self) -> None:
         self._sidebar_auto_collapsed = False
