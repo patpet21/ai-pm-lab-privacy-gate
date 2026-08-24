@@ -16,13 +16,13 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
 )
 
-from ai_pm_lab_privacy_gate.infrastructure.connectors.google_drive_import import (
-    materialize_google_drive_item,
-)
+from ai_pm_lab_privacy_gate.infrastructure.connectors.google_drive_import import materialize_google_drive_item
+from ai_pm_lab_privacy_gate.infrastructure.connectors.gmail_import import materialize_gmail_message
 
 
 _PROVIDER_BY_TITLE = {
     "Google Drive": "google_drive",
+    "Gmail": "gmail",
     "ClickUp": "clickup",
     "Asana": "asana",
     "Trello": "trello",
@@ -51,6 +51,9 @@ def _display_kind(kind: str) -> str:
         "application/pdf": "PDF",
         "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "Word document",
         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": "Excel workbook",
+        "email": "Email",
+        "workspace": "Workspace",
+        "board": "Board",
     }
     return names.get(kind, kind.replace("application/", ""))
 
@@ -74,7 +77,6 @@ def _transient_network_error(exc: Exception) -> bool:
 
 
 def _retry_network(operation, attempts: int = 3):
-    """Retry only transient transport failures; auth/API errors are never retried."""
     last_error: Exception | None = None
     for attempt in range(attempts):
         try:
@@ -93,7 +95,7 @@ def _friendly_connection_error(title: str, exc: Exception) -> str:
     if _transient_network_error(exc):
         return (
             f"{title} is temporarily unreachable from this PC. "
-            "PrivacyGate kept your connection; check the network and try Browse again in a few seconds."
+            "PrivacyGate kept your connection; check the network and try again in a few seconds."
         )
     return str(exc) or f"Unable to reach {title}."
 
@@ -108,14 +110,9 @@ def _open_source_browser(main_window, provider: str, title: str) -> None:
     try:
         items = _retry_network(lambda: service.list_root_items(provider, limit=60))
     except Exception as exc:
-        QMessageBox.warning(
-            main_window,
-            f"Unable to read {title}",
-            _friendly_connection_error(title, exc),
-        )
+        QMessageBox.warning(main_window, f"Unable to read {title}", _friendly_connection_error(title, exc))
         return
 
-    # Do not render empty-name records as mysterious blank rows.
     items = tuple(item for item in items if item.item_id and item.title.strip())
 
     dialog = QDialog(main_window)
@@ -181,9 +178,7 @@ def _open_source_browser(main_window, provider: str, title: str) -> None:
     root.addLayout(footer)
 
     listing.currentItemChanged.connect(
-        lambda current, _previous: use_button.setEnabled(
-            bool(current and current.data(Qt.ItemDataRole.UserRole))
-        )
+        lambda current, _previous: use_button.setEnabled(bool(current and current.data(Qt.ItemDataRole.UserRole)))
     )
     listing.itemDoubleClicked.connect(lambda _item: use_button.click())
     close.clicked.connect(dialog.reject)
@@ -192,46 +187,56 @@ def _open_source_browser(main_window, provider: str, title: str) -> None:
         current = listing.currentItem()
         if current is None:
             return
-        item_id = current.data(Qt.ItemDataRole.UserRole)
-        remote = item_lookup.get(item_id)
+        remote = item_lookup.get(current.data(Qt.ItemDataRole.UserRole))
         if remote is None:
-            return
-        if provider != "google_drive":
-            QMessageBox.information(
-                dialog,
-                f"{title} import",
-                "Browsing is connected. Direct import into Protect will be enabled for this provider in the next connector step.",
-            )
-            return
-        try:
-            local_path = _retry_network(lambda: materialize_google_drive_item(service, remote))
-        except Exception as exc:
-            QMessageBox.warning(
-                dialog,
-                "Unable to import from Google Drive",
-                _friendly_connection_error("Google Drive", exc),
-            )
             return
 
         protect = main_window.protection_page
-        document_button = getattr(protect, "_redesign_document_mode", None)
-        if document_button is not None and not document_button.isChecked():
-            document_button.click()
-        protect.input_tabs.setCurrentIndex(1)
-        protect.pdf_path.setText(str(local_path))
+
+        if provider == "google_drive":
+            try:
+                local_path = _retry_network(lambda: materialize_google_drive_item(service, remote))
+            except Exception as exc:
+                QMessageBox.warning(dialog, "Unable to import from Google Drive", _friendly_connection_error("Google Drive", exc))
+                return
+            document_button = getattr(protect, "_redesign_document_mode", None)
+            if document_button is not None and not document_button.isChecked():
+                document_button.click()
+            protect.input_tabs.setCurrentIndex(1)
+            protect.pdf_path.setText(str(local_path))
+            status = f"Imported from Google Drive: {remote.title} — ready for local scan"
+
+        elif provider == "gmail":
+            try:
+                local_path = _retry_network(lambda: materialize_gmail_message(service, remote))
+                email_text = local_path.read_text(encoding="utf-8")
+            except Exception as exc:
+                QMessageBox.warning(dialog, "Unable to import from Gmail", _friendly_connection_error("Gmail", exc))
+                return
+            paste_button = getattr(protect, "_redesign_paste_mode", None)
+            if paste_button is not None and not paste_button.isChecked():
+                paste_button.click()
+            protect.input_tabs.setCurrentIndex(0)
+            protect.text_input.setPlainText(email_text)
+            status = f"Imported from Gmail: {remote.title} — ready for local scan"
+
+        else:
+            QMessageBox.information(
+                dialog,
+                f"{title} import",
+                "Browsing is connected. Direct import into Protect for this provider is the next connector step.",
+            )
+            return
+
         main_window._show_page(0)
         dialog.accept()
-        main_window.statusBar().showMessage(
-            f"Imported from Google Drive: {remote.title} — ready for local scan",
-            9000,
-        )
+        main_window.statusBar().showMessage(status, 9000)
 
     use_button.clicked.connect(use_selected)
     dialog.exec()
 
 
 def apply_connected_apps_browse_polish(main_window) -> None:
-    """Replace Browse behavior only; OAuth and provider connection logic remain untouched."""
     page = getattr(main_window, "cloud_automation_page", None)
     if page is None:
         return
@@ -246,6 +251,4 @@ def apply_connected_apps_browse_polish(main_window) -> None:
             button.clicked.disconnect()
         except (RuntimeError, TypeError):
             pass
-        button.clicked.connect(
-            lambda _checked=False, p=provider, t=title: _open_source_browser(main_window, p, t)
-        )
+        button.clicked.connect(lambda _checked=False, p=provider, t=title: _open_source_browser(main_window, p, t))
