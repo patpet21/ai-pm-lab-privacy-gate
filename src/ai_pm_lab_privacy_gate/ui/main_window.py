@@ -5,11 +5,13 @@ from PySide6.QtGui import QAction, QCloseEvent, QIcon, QPixmap
 from PySide6.QtWidgets import (
     QApplication,
     QButtonGroup,
+    QCheckBox,
     QFrame,
     QHBoxLayout,
     QLabel,
     QMainWindow,
     QMenu,
+    QMessageBox,
     QPushButton,
     QSizePolicy,
     QStackedWidget,
@@ -24,12 +26,14 @@ from ai_pm_lab_privacy_gate.infrastructure.storage.library_repository import Lib
 from ai_pm_lab_privacy_gate.infrastructure.mcp.identity import ConnectionIdentityStore
 from ai_pm_lab_privacy_gate.infrastructure.mcp.autostart import set_mcp_autostart
 from ai_pm_lab_privacy_gate.infrastructure.mcp.remote import RemoteMcpManager
+from ai_pm_lab_privacy_gate.infrastructure.settings.preferences import PreferencesStore
 from ai_pm_lab_privacy_gate.ui.connections_page import ConnectionsPage
 from ai_pm_lab_privacy_gate.ui.contact_page import ContactPage
 from ai_pm_lab_privacy_gate.ui.library_page import LibraryPage
 from ai_pm_lab_privacy_gate.ui.protection_page import ProtectionPage
 from ai_pm_lab_privacy_gate.ui.resources import resource_path
 from ai_pm_lab_privacy_gate.ui.restore_page import RestorePage
+from ai_pm_lab_privacy_gate.ui.settings_page import SettingsPage
 
 
 class MainWindow(QMainWindow):
@@ -41,6 +45,7 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.service = service or PrivacyGateService()
         self.library = library or LibraryRepository()
+        self.preferences = PreferencesStore(self.library.data_dir)
         self.connection_identity = ConnectionIdentityStore(self.library.data_dir)
         self.remote_mcp = RemoteMcpManager(self.connection_identity)
         self._quit_requested = False
@@ -141,7 +146,8 @@ class MainWindow(QMainWindow):
             ("Restore", "nav-restore.svg", 2),
             ("Local Automation / n8n", "nav-automation.svg", 3),
             ("Cloud / MCP / Email", "nav-cloud.svg", 4),
-            ("Contact / Workflows", "nav-contact.svg", 5),
+            ("Settings", "nav-automation.svg", 5),
+            ("Contact / Workflows", "nav-contact.svg", 6),
         ]
         for label, icon_name, page_index in navigation:
             button = QPushButton(label, objectName="NavButton")
@@ -168,9 +174,8 @@ class MainWindow(QMainWindow):
         self.library_page = LibraryPage(self.library)
         self.restore_page = RestorePage(self.service, self.library)
         self.local_automation_page = ConnectionsPage("local", self.library)
-        self.cloud_automation_page = ConnectionsPage(
-            "cloud", self.library, remote_mcp=self.remote_mcp
-        )
+        self.cloud_automation_page = ConnectionsPage("cloud", self.library, remote_mcp=self.remote_mcp)
+        self.settings_page = SettingsPage(self.library.data_dir)
         self.contact_page = ContactPage()
         for page in (
             self.protection_page,
@@ -178,6 +183,7 @@ class MainWindow(QMainWindow):
             self.restore_page,
             self.local_automation_page,
             self.cloud_automation_page,
+            self.settings_page,
             self.contact_page,
         ):
             self.pages.addWidget(page)
@@ -253,11 +259,7 @@ class MainWindow(QMainWindow):
         if self.width() < 1180 and self.sidebar_expanded:
             self._sidebar_auto_collapsed = True
             self._set_sidebar_expanded(False)
-        elif (
-            self.width() > 1320
-            and self._sidebar_auto_collapsed
-            and not self.sidebar_expanded
-        ):
+        elif self.width() > 1320 and self._sidebar_auto_collapsed and not self.sidebar_expanded:
             self._set_sidebar_expanded(True)
             self._sidebar_auto_collapsed = False
 
@@ -278,24 +280,69 @@ class MainWindow(QMainWindow):
         self.restore_page.select_document(document_id)
         self._show_page(2)
 
+    def _send_to_background(self, event: QCloseEvent) -> None:
+        self.hide()
+        event.ignore()
+        if self.tray_icon is not None and not self._tray_notice_shown:
+            self.tray_icon.showMessage(
+                "PrivacyGate is running in the background",
+                "Your local Library remains saved. Open PrivacyGate from the notification area or choose Quit to stop MCP connections.",
+                QSystemTrayIcon.MessageIcon.Information,
+                6000,
+            )
+            self._tray_notice_shown = True
+
+    def _ask_close_behavior(self) -> tuple[str, bool]:
+        box = QMessageBox(self)
+        box.setWindowTitle("Close PrivacyGate?")
+        box.setIcon(QMessageBox.Icon.Question)
+        box.setText("What should PrivacyGate do when you close this window?")
+        box.setInformativeText(
+            "Your protected documents, mappings and Library are stored locally and will not be deleted whichever option you choose."
+        )
+        background = box.addButton("Keep running in background", QMessageBox.ButtonRole.AcceptRole)
+        quit_button = box.addButton("Quit PrivacyGate", QMessageBox.ButtonRole.DestructiveRole)
+        box.addButton("Cancel", QMessageBox.ButtonRole.RejectRole)
+        remember = QCheckBox("Remember my choice")
+        box.setCheckBox(remember)
+        box.exec()
+        clicked = box.clickedButton()
+        if clicked is background:
+            return "background", remember.isChecked()
+        if clicked is quit_button:
+            return "quit", remember.isChecked()
+        return "cancel", False
+
     def closeEvent(self, event: QCloseEvent) -> None:
-        if (
-            not self._quit_requested
-            and self.connection_identity.is_remote_enabled()
-            and self.tray_icon is not None
-        ):
-            self.hide()
-            event.ignore()
-            if not self._tray_notice_shown:
-                self.tray_icon.showMessage(
-                    "Privacy Gate is still protecting the MCP connection",
-                    "The app continues in the notification area. Use Quit to take MCP offline.",
-                    QSystemTrayIcon.MessageIcon.Information,
-                    5000,
-                )
-                self._tray_notice_shown = True
+        if self._quit_requested:
+            self.protection_page.cleanup_pdf_preview()
+            self.restore_page.cleanup_previews()
+            self.remote_mcp.stop()
+            super().closeEvent(event)
             return
-        self.protection_page.cleanup_pdf_preview()
-        self.restore_page.cleanup_previews()
-        self.remote_mcp.stop()
-        super().closeEvent(event)
+
+        prefs = self.preferences.load()
+        behavior = prefs.close_behavior
+        remember = False
+        if behavior == "ask":
+            behavior, remember = self._ask_close_behavior()
+        if behavior == "cancel":
+            event.ignore()
+            return
+        if remember and behavior in {"background", "quit"}:
+            prefs.close_behavior = behavior
+            self.preferences.save(prefs)
+            self.settings_page.prefs = prefs
+        if behavior == "background":
+            if self.tray_icon is None:
+                behavior = "quit"
+            else:
+                self._send_to_background(event)
+                return
+
+        if behavior == "quit":
+            self._quit_requested = True
+            self.protection_page.cleanup_pdf_preview()
+            self.restore_page.cleanup_previews()
+            self.remote_mcp.stop()
+            super().closeEvent(event)
