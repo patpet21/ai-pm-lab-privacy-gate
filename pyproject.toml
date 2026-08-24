@@ -22,6 +22,8 @@ dependencies = [
   "PyJWT[crypto]>=2.10,<3",
   "httpx>=0.28,<1",
   "truststore>=0.10,<1",
+  "winrt-Windows.Foundation>=3.2.1,<4; sys_platform == 'win32'",
+  "winrt-Windows.Services.Store>=3.2.1,<4; sys_platform == 'win32'",
 ]
 
 [project.optional-dependencies]
