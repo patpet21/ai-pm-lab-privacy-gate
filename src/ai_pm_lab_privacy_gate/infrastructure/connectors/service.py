@@ -231,10 +231,29 @@ class ConnectedAppsService:
     def _safe_error(exc: Exception) -> str:
         if isinstance(exc, httpx.HTTPStatusError):
             code = exc.response.status_code
+            detail = ""
+            try:
+                payload = exc.response.json()
+                error = payload.get("error") if isinstance(payload, dict) else None
+                if isinstance(error, dict):
+                    detail = str(error.get("message") or "").strip()
+                    errors = error.get("errors") or []
+                    if not detail and errors and isinstance(errors[0], dict):
+                        detail = str(errors[0].get("message") or errors[0].get("reason") or "").strip()
+                elif isinstance(error, str):
+                    detail = error.strip()
+                if not detail and isinstance(payload, dict):
+                    detail = str(payload.get("error_description") or payload.get("message") or "").strip()
+            except Exception:
+                detail = ""
             if code in {401, 403}:
+                if detail:
+                    return f"Authorization failed (HTTP {code}): {detail}"
                 return "Authorization failed. Reconnect this account or check its permissions."
             if code == 429:
                 return "The provider rate limit was reached. Try again shortly."
+            if detail:
+                return f"Provider returned HTTP {code}: {detail}"
             return f"Provider returned HTTP {code}."
         if isinstance(exc, httpx.TimeoutException):
             return "The provider did not respond before the connection timed out."
