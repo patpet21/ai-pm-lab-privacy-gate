@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import httpx
-from PySide6.QtCore import QThreadPool, QUrl
+from PySide6.QtCore import QThreadPool, QUrl, Signal
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (
     QFrame, QGridLayout, QHBoxLayout, QLabel, QLineEdit, QMessageBox,
@@ -15,6 +15,7 @@ from ai_pm_lab_privacy_gate.ui.workers import FunctionWorker
 
 class ContactPage(QWidget):
     FORM_ENDPOINT = "https://formspree.io/f/mkodolrn"
+    update_available = Signal(object)
 
     def __init__(self) -> None:
         super().__init__()
@@ -126,11 +127,29 @@ class ContactPage(QWidget):
     def _show_update_result(self, result, silent: bool) -> None:
         if result is None:
             if not silent:
-                QMessageBox.information(self, "Privacy Gate updates", f"Version {__version__} is current.")
+                QMessageBox.information(self, "PrivacyGate updates", f"Version {__version__} is current.")
             return
-        answer = QMessageBox.question(self, "Update available", f"Privacy Gate {result.version} is available. Open the verified download?")
-        if answer == QMessageBox.StandardButton.Yes:
-            QDesktopServices.openUrl(QUrl(result.download_url))
+        self.update_available.emit(result)
+        if silent:
+            return
+        self.show_update_dialog(result)
+
+    def show_update_dialog(self, result) -> None:
+        box = QMessageBox(self)
+        box.setWindowTitle("PrivacyGate update available")
+        box.setIcon(QMessageBox.Icon.Information)
+        box.setText(f"PrivacyGate {result.version} is available.")
+        box.setInformativeText(
+            "Choose Microsoft Store for the managed Windows update path, or open the PrivacyGate website for direct Windows EXE and macOS downloads. Your local Library and mappings remain on this device."
+        )
+        store_button = box.addButton("Microsoft Store", QMessageBox.ButtonRole.AcceptRole)
+        website_button = box.addButton("PrivacyGate website", QMessageBox.ButtonRole.ActionRole)
+        box.addButton("Later", QMessageBox.ButtonRole.RejectRole)
+        box.exec()
+        if box.clickedButton() is store_button:
+            QDesktopServices.openUrl(QUrl(result.store_url))
+        elif box.clickedButton() is website_button:
+            QDesktopServices.openUrl(QUrl(result.website_url))
 
     @staticmethod
     def _busy(button: QPushButton, text: str) -> None:
