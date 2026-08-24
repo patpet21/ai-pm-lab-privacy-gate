@@ -111,6 +111,10 @@ def _provider_row(main_window, service, key: str, title: str, description: str, 
     )
     shell.addWidget(status)
 
+    # Child labels are presentation only. Let every click reach the provider button.
+    for child in (mark, name, sub, status):
+        child.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+
     row._source_provider_key = key
     row._source_provider_title = title
     row._source_provider_availability = availability
