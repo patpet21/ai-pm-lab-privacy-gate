@@ -19,11 +19,11 @@ from ai_pm_lab_privacy_gate.infrastructure.mcp.identity import ConnectionIdentit
 from ai_pm_lab_privacy_gate.infrastructure.mcp.modes import ConnectionMode
 from ai_pm_lab_privacy_gate.infrastructure.mcp.provisioning import ProvisioningStore
 from ai_pm_lab_privacy_gate.infrastructure.mcp.tunnels import (
-    CloudflaredRuntime,
     NamedTunnelProvider,
     QuickTunnelProvider,
     TunnelProvider,
 )
+from ai_pm_lab_privacy_gate.infrastructure.settings.preferences import PreferencesStore
 from ai_pm_lab_privacy_gate.infrastructure.auth.supabase_account import (
     SUPABASE_TOKEN_AUDIENCE,
     USER_ID_SECRET,
@@ -47,6 +47,7 @@ class RemoteMcpManager:
         self.provisioning_store = ProvisioningStore(
             self.identity_store.data_dir, self.identity_store.secrets
         )
+        self.preferences = PreferencesStore(self.identity_store.data_dir)
         self._lock = threading.Lock()
         self._status = RemoteMcpStatus()
         self._server_process: subprocess.Popen[str] | None = None
@@ -111,9 +112,7 @@ class RemoteMcpManager:
                 if stop_event.is_set():
                     return
                 if mode is ConnectionMode.DEV_QUICK:
-                    self._set_status(
-                        RemoteMcpStatus(state="error", mode=mode.value, error=str(error))
-                    )
+                    self._set_status(RemoteMcpStatus(state="error", mode=mode.value, error=str(error)))
                     return
                 self._set_status(
                     RemoteMcpStatus(
@@ -147,21 +146,9 @@ class RemoteMcpManager:
         self._tunnel_process = session.process
         public_url = session.public_url + (path if mode is ConnectionMode.DEV_QUICK else "")
         if mode is ConnectionMode.PROD_NAMED:
-            self._wait_for_public_endpoint(
-                public_url,
-                self._server_process,
-                self._tunnel_process,
-                stop_event,
-            )
-        self._set_status(
-            RemoteMcpStatus(
-                state="online",
-                mode=mode.value,
-                public_url=public_url,
-                local_port=port,
-            )
-        )
-        self._append_log(f"online url={public_url}")
+            self._wait_for_public_endpoint(public_url, self._server_process, self._tunnel_process, stop_event)
+        self._set_status(RemoteMcpStatus(state="online", mode=mode.value, public_url=public_url, local_port=port))
+        self._append_log(f"online url={public_url} local_port={port}")
         while not stop_event.wait(0.5):
             server_code = self._server_process.poll()
             tunnel_code = self._tunnel_process.poll()
@@ -170,11 +157,19 @@ class RemoteMcpManager:
             if tunnel_code is not None:
                 raise RuntimeError(f"Secure tunnel stopped ({tunnel_code}).")
 
-    def _runtime(
-        self, mode: ConnectionMode
-    ) -> tuple[int, str, TunnelProvider, list[str]]:
+    def _preferred_port(self) -> int:
+        prefs = self.preferences.load()
+        if prefs.port_mode == "manual":
+            if not self._port_is_available(prefs.manual_port):
+                raise RuntimeError(
+                    f"Configured local MCP port {prefs.manual_port} is already in use. Change it in Settings."
+                )
+            return prefs.manual_port
+        return self._available_port()
+
+    def _runtime(self, mode: ConnectionMode) -> tuple[int, str, TunnelProvider, list[str]]:
         if mode is ConnectionMode.DEV_QUICK:
-            return self._available_port(), self.identity_store.dev_mcp_path(), QuickTunnelProvider(), []
+            return self._preferred_port(), self.identity_store.dev_mcp_path(), QuickTunnelProvider(), []
         configuration = self.provisioning_store.load()
         if configuration is None:
             raise RuntimeError("This installation has not been provisioned for a stable connection.")
@@ -183,20 +178,14 @@ class RemoteMcpManager:
         if not account_user_id:
             raise RuntimeError("Sign in to your Privacy Gate account before starting remote MCP.")
         auth_args = [
-            "--auth-mode",
-            "jwt",
-            "--resource",
-            f"https://{configuration.hostname}/mcp",
-            "--issuer",
-            configuration.oauth_issuer,
-            "--jwks-url",
-            configuration.oauth_jwks_url,
-            "--token-audience",
-            SUPABASE_TOKEN_AUDIENCE,
-            "--expected-subject",
-            account_user_id,
+            "--auth-mode", "jwt",
+            "--resource", f"https://{configuration.hostname}/mcp",
+            "--issuer", configuration.oauth_issuer,
+            "--jwks-url", configuration.oauth_jwks_url,
+            "--token-audience", SUPABASE_TOKEN_AUDIENCE,
+            "--expected-subject", account_user_id,
         ]
-        return 8766, "/mcp", NamedTunnelProvider(
+        return self._preferred_port(), "/mcp", NamedTunnelProvider(
             configuration, self.provisioning_store, self._log_handle
         ), auth_args
 
@@ -214,6 +203,15 @@ class RemoteMcpManager:
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as listener:
             listener.bind(("127.0.0.1", 0))
             return int(listener.getsockname()[1])
+
+    @staticmethod
+    def _port_is_available(port: int) -> bool:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as listener:
+            try:
+                listener.bind(("127.0.0.1", int(port)))
+            except OSError:
+                return False
+        return True
 
     @staticmethod
     def _wait_for_port(port: int, process: subprocess.Popen[str]) -> None:
@@ -245,14 +243,9 @@ class RemoteMcpManager:
         tunnel_process: subprocess.Popen[str],
         stop_event: threading.Event,
     ) -> None:
-        """Wait until Cloudflare actually routes to MCP instead of only starting its process."""
         deadline = time.monotonic() + 45
         ssl_context = truststore.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
-        with httpx.Client(
-            timeout=5,
-            verify=ssl_context,
-            follow_redirects=False,
-        ) as client:
+        with httpx.Client(timeout=5, verify=ssl_context, follow_redirects=False) as client:
             while time.monotonic() < deadline and not stop_event.is_set():
                 if server_process.poll() is not None:
                     raise RuntimeError("The local MCP service stopped during public readiness.")
@@ -260,8 +253,6 @@ class RemoteMcpManager:
                     raise RuntimeError("The secure tunnel stopped during public readiness.")
                 try:
                     response = client.get(public_url)
-                    # OAuth-protected MCP normally answers 401. MCP method/accept
-                    # validation may answer 400, 405 or 406; all prove end-to-end routing.
                     if response.status_code in {400, 401, 405, 406}:
                         return
                 except httpx.HTTPError:
