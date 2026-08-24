@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import base64
 import hashlib
-import json
+import html
 import os
 import secrets
 import threading
@@ -32,6 +32,12 @@ def configured_client_id() -> str:
     return os.environ.get("PRIVACY_GATE_GOOGLE_CLIENT_ID", "").strip()
 
 
+def configured_client_secret() -> str:
+    # Optional for Google's installed-app flow. Supported for compatibility
+    # with Desktop clients whose downloaded credential contains a client secret.
+    return os.environ.get("PRIVACY_GATE_GOOGLE_CLIENT_SECRET", "").strip()
+
+
 def _pkce_pair() -> tuple[str, str]:
     verifier = secrets.token_urlsafe(64)[:96]
     digest = hashlib.sha256(verifier.encode("ascii")).digest()
@@ -39,12 +45,25 @@ def _pkce_pair() -> tuple[str, str]:
     return verifier, challenge
 
 
-def authorize_desktop(client_id: str, timeout_seconds: int = 180) -> dict:
-    """Run Google's installed-app OAuth flow with PKCE and a loopback callback.
+def _oauth_error(response: httpx.Response, prefix: str) -> GoogleOAuthError:
+    """Return provider diagnostics without ever exposing tokens or auth codes."""
+    detail = ""
+    try:
+        payload = response.json()
+        error = str(payload.get("error") or "").strip()
+        description = str(payload.get("error_description") or "").strip()
+        if error and description:
+            detail = f"{error}: {description}"
+        elif error:
+            detail = error
+    except Exception:
+        detail = ""
+    suffix = f" — {detail}" if detail else ""
+    return GoogleOAuthError(f"{prefix} (HTTP {response.status_code}){suffix}")
 
-    The browser receives only the public client id + PKCE challenge. The code
-    verifier stays inside PrivacyGate. No database is involved.
-    """
+
+def authorize_desktop(client_id: str, timeout_seconds: int = 180) -> dict:
+    """Run Google's installed-app OAuth flow with PKCE and a loopback callback."""
     client_id = client_id.strip()
     if not client_id:
         raise GoogleOAuthError("Google OAuth client ID is not configured for this build.")
@@ -60,14 +79,30 @@ def authorize_desktop(client_id: str, timeout_seconds: int = 180) -> dict:
             result["code"] = query.get("code", [""])[0]
             result["state"] = query.get("state", [""])[0]
             result["error"] = query.get("error", [""])[0]
-            body = (
-                "<!doctype html><html><body style='font-family:Segoe UI,Arial;padding:40px'>"
-                "<h2>PrivacyGate connection completed</h2>"
-                "<p>You can close this browser tab and return to PrivacyGate.</p>"
-                "</body></html>"
-            ).encode("utf-8")
+            success = bool(result.get("code")) and not result.get("error")
+            status_title = "Connection received" if success else "Connection not completed"
+            status_text = (
+                "Google returned securely to PrivacyGate. You can close this tab; PrivacyGate is finishing the connection on this PC."
+                if success
+                else "Google did not complete the authorization. You can close this tab and return to PrivacyGate."
+            )
+            body = f"""<!doctype html>
+<html lang='en'>
+<head>
+<meta charset='utf-8'>
+<meta name='viewport' content='width=device-width,initial-scale=1'>
+<title>PrivacyGate — {html.escape(status_title)}</title>
+<style>
+*{{box-sizing:border-box}} body{{margin:0;min-height:100vh;display:grid;place-items:center;background:#F7FAFC;color:#062B4F;font-family:Segoe UI,Inter,Arial,sans-serif}}
+.card{{width:min(560px,calc(100% - 40px));background:#fff;border:1px solid #D7E2EA;border-radius:20px;padding:38px;box-shadow:0 18px 50px rgba(6,43,79,.10)}}
+.mark{{width:54px;height:54px;border-radius:16px;display:grid;place-items:center;background:#E8F6F6;color:#0B7180;font-size:28px;font-weight:800;margin-bottom:22px}}
+h1{{margin:0 0 10px;font-size:28px;letter-spacing:-.4px}} p{{margin:0;color:#557184;line-height:1.55;font-size:15px}} .brand{{margin-top:28px;padding-top:20px;border-top:1px solid #E4EBF0;color:#D3A13B;font-size:12px;font-weight:800;letter-spacing:.8px;text-transform:uppercase}}
+</style>
+</head>
+<body><main class='card'><div class='mark'>{'✓' if success else '!'}</div><h1>{html.escape(status_title)}</h1><p>{html.escape(status_text)}</p><div class='brand'>AI PM LAB · PrivacyGate</div></main></body></html>""".encode("utf-8")
             self.send_response(200)
             self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Cache-Control", "no-store")
             self.send_header("Content-Length", str(len(body)))
             self.end_headers()
             self.wfile.write(body)
@@ -113,19 +148,20 @@ def authorize_desktop(client_id: str, timeout_seconds: int = 180) -> dict:
     if not code:
         raise GoogleOAuthError("Google did not return an authorization code.")
 
-    response = httpx.post(
-        TOKEN_URL,
-        data={
-            "client_id": client_id,
-            "code": code,
-            "code_verifier": verifier,
-            "grant_type": "authorization_code",
-            "redirect_uri": redirect_uri,
-        },
-        timeout=20.0,
-    )
+    token_data = {
+        "client_id": client_id,
+        "code": code,
+        "code_verifier": verifier,
+        "grant_type": "authorization_code",
+        "redirect_uri": redirect_uri,
+    }
+    client_secret = configured_client_secret()
+    if client_secret:
+        token_data["client_secret"] = client_secret
+
+    response = httpx.post(TOKEN_URL, data=token_data, timeout=20.0)
     if response.status_code >= 400:
-        raise GoogleOAuthError(f"Google token exchange failed (HTTP {response.status_code}).")
+        raise _oauth_error(response, "Google token exchange failed")
     payload = response.json()
     if not payload.get("access_token"):
         raise GoogleOAuthError("Google did not return an access token.")
@@ -136,17 +172,17 @@ def authorize_desktop(client_id: str, timeout_seconds: int = 180) -> dict:
 def refresh_access_token(client_id: str, refresh_token: str) -> dict:
     if not client_id or not refresh_token:
         raise GoogleOAuthError("Google connection cannot be refreshed because local OAuth credentials are incomplete.")
-    response = httpx.post(
-        TOKEN_URL,
-        data={
-            "client_id": client_id,
-            "refresh_token": refresh_token,
-            "grant_type": "refresh_token",
-        },
-        timeout=20.0,
-    )
+    token_data = {
+        "client_id": client_id,
+        "refresh_token": refresh_token,
+        "grant_type": "refresh_token",
+    }
+    client_secret = configured_client_secret()
+    if client_secret:
+        token_data["client_secret"] = client_secret
+    response = httpx.post(TOKEN_URL, data=token_data, timeout=20.0)
     if response.status_code >= 400:
-        raise GoogleOAuthError(f"Google connection refresh failed (HTTP {response.status_code}). Reconnect Google Drive.")
+        raise _oauth_error(response, "Google connection refresh failed")
     payload = response.json()
     if not payload.get("access_token"):
         raise GoogleOAuthError("Google did not return a refreshed access token.")
