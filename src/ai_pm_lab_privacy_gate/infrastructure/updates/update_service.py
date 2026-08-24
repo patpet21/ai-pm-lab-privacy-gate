@@ -9,6 +9,9 @@ import truststore
 
 
 MANIFEST_URL = "https://privacygate.propertydex.xyz/release.json"
+DEFAULT_WEBSITE_URL = "https://privacygate.propertydex.xyz/"
+MICROSOFT_STORE_PRODUCT_ID = "9NMPZCVJLLZ3"
+DEFAULT_STORE_URL = f"ms-windows-store://pdp/?ProductId={MICROSOFT_STORE_PRODUCT_ID}"
 
 
 @dataclass(frozen=True, slots=True)
@@ -17,6 +20,8 @@ class UpdateInfo:
     download_url: str
     sha256: str
     notes_url: str
+    website_url: str = DEFAULT_WEBSITE_URL
+    store_url: str = DEFAULT_STORE_URL
 
 
 def _version_tuple(value: str) -> tuple[int, ...]:
@@ -28,8 +33,9 @@ class UpdateService:
         self.manifest_url = manifest_url
 
     def check(self, current_version: str) -> UpdateInfo | None:
-        # Use the operating-system trust store so corporate proxies and local
-        # security products such as AVG do not break the optional update check.
+        # The tiny public release manifest is the notification source. We do
+        # not continuously query Microsoft Store. Store is contacted only when
+        # the customer chooses the Store update path.
         context = truststore.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
         with httpx.Client(timeout=8, follow_redirects=True, verify=context) as client:
             response = client.get(self.manifest_url, headers={"Accept": "application/json"})
@@ -49,6 +55,8 @@ class UpdateService:
         return UpdateInfo(
             version=latest,
             download_url=str(package["url"]),
-            sha256=str(package["sha256"]),
+            sha256=str(package.get("sha256", "")),
             notes_url=str(payload.get("notes_url", package["url"])),
+            website_url=str(payload.get("website_url", DEFAULT_WEBSITE_URL)),
+            store_url=str(payload.get("store_url", DEFAULT_STORE_URL)),
         )
