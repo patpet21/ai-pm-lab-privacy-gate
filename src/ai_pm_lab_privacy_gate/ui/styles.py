@@ -73,6 +73,43 @@ QPushButton#Danger { background: #FFF2F0; color: #A33A31; border: 1px solid #E9B
 QPushButton#Tiny { background: #EAF1F5; color: #244B63; padding: 5px 9px; font-size: 8pt; }
 QToolButton#InfoButton { background: #E7F2F5; color: #176777; border: 1px solid #B9D5DD; border-radius: 9px; padding: 0; min-width: 18px; max-width: 18px; min-height: 18px; max-height: 18px; font-size: 8pt; font-weight: 800; }
 QToolButton#InfoButton:hover { background: #168492; color: white; }
+QRadioButton {
+    color: #123B56;
+    spacing: 10px;
+    padding: 7px 10px;
+    border-radius: 8px;
+    font-weight: 650;
+}
+QRadioButton:hover { background: #EFF7F8; }
+QRadioButton:checked {
+    background: #E3F5F2;
+    color: #0A5F68;
+    font-weight: 800;
+}
+QRadioButton::indicator {
+    width: 19px;
+    height: 19px;
+    border-radius: 10px;
+    border: 2px solid #8AA6B7;
+    background: white;
+}
+QRadioButton::indicator:hover { border: 2px solid #168492; }
+QRadioButton::indicator:checked {
+    border: 6px solid #168492;
+    background: white;
+}
+QCheckBox { spacing: 9px; font-weight: 650; }
+QCheckBox::indicator {
+    width: 18px;
+    height: 18px;
+    border: 2px solid #8AA6B7;
+    border-radius: 4px;
+    background: white;
+}
+QCheckBox::indicator:checked {
+    background: #168492;
+    border: 2px solid #168492;
+}
 QComboBox, QLineEdit, QPlainTextEdit, QListWidget, QTableWidget, QTabWidget::pane {
     background: white; border: 1px solid #C9D6DF; border-radius: 8px;
 }
