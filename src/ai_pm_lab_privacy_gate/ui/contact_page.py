@@ -1,14 +1,19 @@
 from __future__ import annotations
 
 import httpx
-from PySide6.QtCore import QThreadPool, QUrl, Signal
+from PySide6.QtCore import QProcess, QThreadPool, QUrl, Signal
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (
+    QApplication,
     QFrame, QGridLayout, QHBoxLayout, QLabel, QLineEdit, QMessageBox,
     QPlainTextEdit, QPushButton, QVBoxLayout, QWidget,
 )
 
 from ai_pm_lab_privacy_gate import __version__
+from ai_pm_lab_privacy_gate.infrastructure.updates.store_update_service import (
+    StoreUpdateService,
+    is_store_packaged_install,
+)
 from ai_pm_lab_privacy_gate.infrastructure.updates.update_service import UpdateService
 from ai_pm_lab_privacy_gate.ui.workers import FunctionWorker
 
@@ -16,11 +21,13 @@ from ai_pm_lab_privacy_gate.ui.workers import FunctionWorker
 class ContactPage(QWidget):
     FORM_ENDPOINT = "https://formspree.io/f/mkodolrn"
     update_available = Signal(object)
+    store_update_event = Signal(object)
 
     def __init__(self) -> None:
         super().__init__()
         self.thread_pool = QThreadPool.globalInstance()
         self._workers: set[FunctionWorker] = set()
+        self._store_versions_attempted: set[str] = set()
         root = QVBoxLayout(self)
         root.setContentsMargins(24, 20, 24, 20)
         root.setSpacing(10)
@@ -129,10 +136,126 @@ class ContactPage(QWidget):
             if not silent:
                 QMessageBox.information(self, "PrivacyGate updates", f"Version {__version__} is current.")
             return
+        if is_store_packaged_install():
+            # release.json is the trigger; StoreContext is queried only after a
+            # newer PrivacyGate release is known to exist.
+            if silent and result.version in self._store_versions_attempted:
+                return
+            self._store_versions_attempted.add(result.version)
+            self._try_store_silent_update(result, silent)
+            return
         if silent:
             self.update_available.emit(result)
             return
         self.show_update_dialog(result)
+
+    def _try_store_silent_update(self, release, silent: bool) -> None:
+        self._busy(self.update_button, "Updating…")
+        self._run(
+            lambda: StoreUpdateService().try_silent_update(),
+            lambda result: self._handle_store_result(result, release, silent),
+            lambda error: self._handle_store_result(
+                type("StoreError", (), {"status": "error", "message": error})(), release, silent
+            ),
+            lambda: self._ready(self.update_button, "Check for updates"),
+        )
+
+    def _handle_store_result(self, result, release, silent: bool) -> None:
+        event = {
+            "status": result.status,
+            "message": result.message,
+            "release": release,
+        }
+        if silent:
+            self.store_update_event.emit(event)
+        else:
+            self.show_store_update_event(event)
+
+    def show_store_update_event(self, event) -> None:
+        status = event["status"]
+        message = event.get("message", "")
+        release = event["release"]
+
+        if status == "installed":
+            box = QMessageBox(self)
+            box.setWindowTitle("PrivacyGate update installed")
+            box.setIcon(QMessageBox.Icon.Information)
+            box.setText(f"PrivacyGate {release.version} has been installed by Microsoft Store.")
+            box.setInformativeText(
+                "Restart PrivacyGate to use the new version. Your local Library and mappings remain on this device."
+            )
+            restart = box.addButton("Restart PrivacyGate", QMessageBox.ButtonRole.AcceptRole)
+            box.addButton("Later", QMessageBox.ButtonRole.RejectRole)
+            box.exec()
+            if box.clickedButton() is restart:
+                QProcess.startDetached(QApplication.applicationFilePath(), [])
+                QApplication.quit()
+            return
+
+        if status == "action_required":
+            box = QMessageBox(self)
+            box.setWindowTitle("PrivacyGate update ready")
+            box.setIcon(QMessageBox.Icon.Information)
+            box.setText(f"PrivacyGate {release.version} is ready to install.")
+            box.setInformativeText(
+                message or "Windows requires confirmation to complete this Microsoft Store update."
+            )
+            install = box.addButton("Install update", QMessageBox.ButtonRole.AcceptRole)
+            open_store = box.addButton("Open Microsoft Store", QMessageBox.ButtonRole.ActionRole)
+            box.addButton("Later", QMessageBox.ButtonRole.RejectRole)
+            box.exec()
+            if box.clickedButton() is install:
+                self._install_store_update(release)
+            elif box.clickedButton() is open_store:
+                QDesktopServices.openUrl(QUrl(release.store_url))
+            return
+
+        if status == "preparing":
+            box = QMessageBox(self)
+            box.setWindowTitle("Microsoft Store is preparing the update")
+            box.setIcon(QMessageBox.Icon.Information)
+            box.setText(f"PrivacyGate {release.version} has been released, but Microsoft Store is not serving it to this device yet.")
+            box.setInformativeText(
+                "PrivacyGate will try again the next time the release check runs. You do not need to reinstall the app."
+            )
+            open_store = box.addButton("Open Microsoft Store", QMessageBox.ButtonRole.ActionRole)
+            box.addButton("OK", QMessageBox.ButtonRole.AcceptRole)
+            box.exec()
+            if box.clickedButton() is open_store:
+                QDesktopServices.openUrl(QUrl(release.store_url))
+            return
+
+        if status == "canceled":
+            QMessageBox.information(self, "PrivacyGate update", "The Microsoft Store update was canceled. You can try again later.")
+            return
+
+        box = QMessageBox(self)
+        box.setWindowTitle("Microsoft Store update unavailable")
+        box.setIcon(QMessageBox.Icon.Warning)
+        box.setText("PrivacyGate could not complete the Microsoft Store update right now.")
+        box.setInformativeText(message or "You can retry later or open the Microsoft Store page.")
+        open_store = box.addButton("Open Microsoft Store", QMessageBox.ButtonRole.ActionRole)
+        box.addButton("Later", QMessageBox.ButtonRole.RejectRole)
+        box.exec()
+        if box.clickedButton() is open_store:
+            QDesktopServices.openUrl(QUrl(release.store_url))
+
+    def _install_store_update(self, release) -> None:
+        self._busy(self.update_button, "Installing…")
+        self._run(
+            lambda: StoreUpdateService().install_with_store_ui(),
+            lambda result: self.show_store_update_event({
+                "status": result.status,
+                "message": result.message,
+                "release": release,
+            }),
+            lambda error: self.show_store_update_event({
+                "status": "error",
+                "message": error,
+                "release": release,
+            }),
+            lambda: self._ready(self.update_button, "Check for updates"),
+        )
 
     def show_update_dialog(self, result) -> None:
         box = QMessageBox(self)
@@ -140,15 +263,12 @@ class ContactPage(QWidget):
         box.setIcon(QMessageBox.Icon.Information)
         box.setText(f"PrivacyGate {result.version} is available.")
         box.setInformativeText(
-            "Choose Microsoft Store for the managed Windows update path, or open the PrivacyGate website for direct Windows EXE and macOS downloads. Your local Library and mappings remain on this device."
+            "This installation is not managed by Microsoft Store. Open the PrivacyGate website for the current Windows EXE or macOS download. Your local Library and mappings remain on this device."
         )
-        store_button = box.addButton("Microsoft Store", QMessageBox.ButtonRole.AcceptRole)
-        website_button = box.addButton("PrivacyGate website", QMessageBox.ButtonRole.ActionRole)
+        website_button = box.addButton("PrivacyGate website", QMessageBox.ButtonRole.AcceptRole)
         box.addButton("Later", QMessageBox.ButtonRole.RejectRole)
         box.exec()
-        if box.clickedButton() is store_button:
-            QDesktopServices.openUrl(QUrl(result.store_url))
-        elif box.clickedButton() is website_button:
+        if box.clickedButton() is website_button:
             QDesktopServices.openUrl(QUrl(result.website_url))
 
     @staticmethod
