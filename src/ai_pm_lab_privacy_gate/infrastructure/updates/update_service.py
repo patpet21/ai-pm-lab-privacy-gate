@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import os
 import platform
 import ssl
 
@@ -12,6 +13,7 @@ MANIFEST_URL = "https://privacygate.propertydex.xyz/release.json"
 DEFAULT_WEBSITE_URL = "https://privacygate.propertydex.xyz/"
 MICROSOFT_STORE_PRODUCT_ID = "9NMPZCVJLLZ3"
 DEFAULT_STORE_URL = f"ms-windows-store://pdp/?ProductId={MICROSOFT_STORE_PRODUCT_ID}"
+SIMULATED_VERSION = "9.9.9"
 
 
 @dataclass(frozen=True, slots=True)
@@ -22,6 +24,7 @@ class UpdateInfo:
     notes_url: str
     website_url: str = DEFAULT_WEBSITE_URL
     store_url: str = DEFAULT_STORE_URL
+    simulated: bool = False
 
 
 def _version_tuple(value: str) -> tuple[int, ...]:
@@ -33,9 +36,17 @@ class UpdateService:
         self.manifest_url = manifest_url
 
     def check(self, current_version: str) -> UpdateInfo | None:
-        # The tiny public release manifest is the notification source. We do
-        # not continuously query Microsoft Store. Store is contacted only when
-        # the customer chooses the Store update path.
+        if os.environ.get("PRIVACY_GATE_SIMULATE_UPDATE") == "1":
+            return UpdateInfo(
+                version=SIMULATED_VERSION,
+                download_url=DEFAULT_WEBSITE_URL,
+                sha256="",
+                notes_url=DEFAULT_WEBSITE_URL,
+                website_url=DEFAULT_WEBSITE_URL,
+                store_url=DEFAULT_STORE_URL,
+                simulated=True,
+            )
+
         context = truststore.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
         with httpx.Client(timeout=8, follow_redirects=True, verify=context) as client:
             response = client.get(self.manifest_url, headers={"Accept": "application/json"})
@@ -59,4 +70,5 @@ class UpdateService:
             notes_url=str(payload.get("notes_url", package["url"])),
             website_url=str(payload.get("website_url", DEFAULT_WEBSITE_URL)),
             store_url=str(payload.get("store_url", DEFAULT_STORE_URL)),
+            simulated=False,
         )
