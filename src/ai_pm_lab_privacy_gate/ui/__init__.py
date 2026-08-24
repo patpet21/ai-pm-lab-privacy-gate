@@ -7,6 +7,7 @@ from .google_oauth_ui import install_google_oauth_ui
 from .brand_palette import apply_brand_palette
 from .brand_icons import apply_brand_icons
 from .connected_apps_browse_polish import apply_connected_apps_browse_polish
+from .protect_source_picker import apply_protect_source_picker
 
 install_mcp_log_guard()
 install_redesign()
@@ -22,10 +23,11 @@ _original_main_window_init = MainWindow.__init__
 
 def _main_window_init_with_brand(self, *args, **kwargs) -> None:
     _original_main_window_init(self, *args, **kwargs)
-    # Final visual pass: brand palette/icons, then Connected Apps browse behavior.
+    # Final UI pass: brand treatment plus Connected Apps quick-access behavior.
     apply_brand_palette(self)
     apply_brand_icons(self)
     apply_connected_apps_browse_polish(self)
+    apply_protect_source_picker(self)
 
 
 MainWindow.__init__ = _main_window_init_with_brand
