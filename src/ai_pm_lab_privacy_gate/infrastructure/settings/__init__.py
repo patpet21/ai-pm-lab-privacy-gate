@@ -1,0 +1,1 @@
+"""Local PrivacyGate application preferences."""
