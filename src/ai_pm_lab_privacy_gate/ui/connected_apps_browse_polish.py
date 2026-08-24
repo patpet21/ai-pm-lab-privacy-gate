@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import time
+
+import httpx
 from PySide6.QtCore import QSize, Qt
 from PySide6.QtWidgets import (
     QAbstractButton,
@@ -52,6 +55,49 @@ def _display_kind(kind: str) -> str:
     return names.get(kind, kind.replace("application/", ""))
 
 
+def _transient_network_error(exc: Exception) -> bool:
+    if isinstance(exc, (httpx.ConnectError, httpx.ConnectTimeout, httpx.ReadTimeout, httpx.NetworkError)):
+        return True
+    text = str(exc).lower()
+    return any(
+        marker in text
+        for marker in (
+            "winerror 10051",
+            "winerror 10060",
+            "winerror 10061",
+            "network is unreachable",
+            "rete non raggiungibile",
+            "connection reset",
+            "temporarily unavailable",
+        )
+    )
+
+
+def _retry_network(operation, attempts: int = 3):
+    """Retry only transient transport failures; auth/API errors are never retried."""
+    last_error: Exception | None = None
+    for attempt in range(attempts):
+        try:
+            return operation()
+        except Exception as exc:
+            last_error = exc
+            if not _transient_network_error(exc) or attempt == attempts - 1:
+                raise
+            time.sleep(0.35 * (attempt + 1))
+    if last_error is not None:
+        raise last_error
+    raise RuntimeError("The connected service did not return a result.")
+
+
+def _friendly_connection_error(title: str, exc: Exception) -> str:
+    if _transient_network_error(exc):
+        return (
+            f"{title} is temporarily unreachable from this PC. "
+            "PrivacyGate kept your connection; check the network and try Browse again in a few seconds."
+        )
+    return str(exc) or f"Unable to reach {title}."
+
+
 def _open_source_browser(main_window, provider: str, title: str) -> None:
     page = main_window.cloud_automation_page
     service = getattr(page, "_connected_apps_service", None)
@@ -60,9 +106,13 @@ def _open_source_browser(main_window, provider: str, title: str) -> None:
         return
 
     try:
-        items = service.list_root_items(provider, limit=60)
+        items = _retry_network(lambda: service.list_root_items(provider, limit=60))
     except Exception as exc:
-        QMessageBox.warning(main_window, f"Unable to read {title}", str(exc))
+        QMessageBox.warning(
+            main_window,
+            f"Unable to read {title}",
+            _friendly_connection_error(title, exc),
+        )
         return
 
     # Do not render empty-name records as mysterious blank rows.
@@ -154,9 +204,13 @@ def _open_source_browser(main_window, provider: str, title: str) -> None:
             )
             return
         try:
-            local_path = materialize_google_drive_item(service, remote)
+            local_path = _retry_network(lambda: materialize_google_drive_item(service, remote))
         except Exception as exc:
-            QMessageBox.warning(dialog, "Unable to import from Google Drive", str(exc))
+            QMessageBox.warning(
+                dialog,
+                "Unable to import from Google Drive",
+                _friendly_connection_error("Google Drive", exc),
+            )
             return
 
         protect = main_window.protection_page
