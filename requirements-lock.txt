@@ -97,4 +97,8 @@ uvicorn==0.52.1
 wasabi==1.1.3
 weasel==1.0.0
 wheel==0.47.0
+winrt-runtime==3.2.1; sys_platform == 'win32'
+winrt-Windows.Foundation==3.2.1; sys_platform == 'win32'
+winrt-Windows.Foundation.Collections==3.2.1; sys_platform == 'win32'
+winrt-Windows.Services.Store==3.2.1; sys_platform == 'win32'
 wrapt==2.3.0
