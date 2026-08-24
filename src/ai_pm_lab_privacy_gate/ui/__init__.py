@@ -3,6 +3,7 @@ from .redesign import install_redesign
 from .protect_quick_actions import install_protect_quick_actions
 from .layout_polish import install_layout_polish
 from .connected_apps_ui import install_connected_apps_ui
+from .google_oauth_ui import install_google_oauth_ui
 from .brand_palette import apply_brand_palette
 from .brand_icons import apply_brand_icons
 
@@ -11,6 +12,7 @@ install_redesign()
 install_protect_quick_actions()
 install_layout_polish()
 install_connected_apps_ui()
+install_google_oauth_ui()
 
 from .main_window import MainWindow
 
