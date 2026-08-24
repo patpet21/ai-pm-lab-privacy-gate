@@ -51,6 +51,7 @@ class MainWindow(QMainWindow):
         self._quit_requested = False
         self._tray_notice_shown = False
         self._pending_update = None
+        self._pending_store_event = None
         self.setWindowTitle(f"AI PM LAB Privacy Gate — {__version__}")
         self.resize(1460, 920)
         self.setMinimumSize(1120, 720)
@@ -208,6 +209,7 @@ class MainWindow(QMainWindow):
         self.protection_page.open_connections.connect(lambda: self._show_page(4))
         self.library_page.restore_requested.connect(self._open_restore)
         self.contact_page.update_available.connect(self._handle_update_available)
+        self.contact_page.store_update_event.connect(self._handle_store_update_event)
         self.nav_buttons[0].setChecked(True)
         self._show_page(0)
         if self.connection_identity.is_remote_enabled():
@@ -217,18 +219,54 @@ class MainWindow(QMainWindow):
 
     def _handle_update_available(self, result) -> None:
         self._pending_update = result
+        self._pending_store_event = None
         if self.isVisible() and not self.isMinimized():
             self.contact_page.show_update_dialog(result)
             return
         if self.tray_icon is not None:
             self.tray_icon.showMessage(
                 f"PrivacyGate {result.version} is available",
-                "Click this notification to choose Microsoft Store or the PrivacyGate website. Your local Library remains on this device.",
+                "Click to open the PrivacyGate download options. Your local Library remains on this device.",
                 QSystemTrayIcon.MessageIcon.Information,
                 10000,
             )
 
+    def _handle_store_update_event(self, event) -> None:
+        self._pending_store_event = event
+        self._pending_update = None
+        if self.isVisible() and not self.isMinimized():
+            self.contact_page.show_store_update_event(event)
+            return
+        if self.tray_icon is None:
+            return
+        status = event.get("status", "")
+        release = event.get("release")
+        version = getattr(release, "version", "new")
+        if status == "installed":
+            title = f"PrivacyGate {version} installed"
+            message = "Click to restart PrivacyGate and use the new version."
+        elif status == "action_required":
+            title = f"PrivacyGate {version} is ready"
+            message = "Click to install the Microsoft Store update."
+        elif status == "preparing":
+            title = "Microsoft Store is preparing the update"
+            message = "The release is approved but is not available to this device yet. Click for details."
+        else:
+            title = "PrivacyGate Store update"
+            message = "The Microsoft Store update could not complete right now. Click for options."
+        self.tray_icon.showMessage(
+            title,
+            message,
+            QSystemTrayIcon.MessageIcon.Information,
+            10000,
+        )
+
     def _show_pending_update(self) -> None:
+        if self._pending_store_event is not None:
+            event = self._pending_store_event
+            self.show_from_background()
+            self.contact_page.show_store_update_event(event)
+            return
         if self._pending_update is None:
             return
         self.show_from_background()
