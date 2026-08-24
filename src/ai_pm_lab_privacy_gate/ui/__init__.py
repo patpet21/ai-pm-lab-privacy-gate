@@ -8,6 +8,7 @@ from .brand_palette import apply_brand_palette
 from .brand_icons import apply_brand_icons
 from .connected_apps_browse_polish import apply_connected_apps_browse_polish
 from .protect_source_picker import apply_protect_source_picker
+from .page_split import apply_apps_mcp_split
 
 install_mcp_log_guard()
 install_redesign()
@@ -23,11 +24,12 @@ _original_main_window_init = MainWindow.__init__
 
 def _main_window_init_with_brand(self, *args, **kwargs) -> None:
     _original_main_window_init(self, *args, **kwargs)
-    # Final UI pass: brand treatment plus Connected Apps quick-access behavior.
+    # Final UI pass: visual system, Connected Apps behavior, then page split.
     apply_brand_palette(self)
     apply_brand_icons(self)
     apply_connected_apps_browse_polish(self)
     apply_protect_source_picker(self)
+    apply_apps_mcp_split(self)
 
 
 MainWindow.__init__ = _main_window_init_with_brand
