@@ -16,11 +16,17 @@ import httpx
 
 AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
 TOKEN_URL = "https://oauth2.googleapis.com/token"
-SCOPES = (
+DRIVE_SCOPES = (
     "openid",
     "email",
     "profile",
     "https://www.googleapis.com/auth/drive.readonly",
+)
+GMAIL_SCOPES = (
+    "openid",
+    "email",
+    "profile",
+    "https://www.googleapis.com/auth/gmail.readonly",
 )
 
 
@@ -33,8 +39,6 @@ def configured_client_id() -> str:
 
 
 def configured_client_secret() -> str:
-    # Optional for Google's installed-app flow. Supported for compatibility
-    # with Desktop clients whose downloaded credential contains a client secret.
     return os.environ.get("PRIVACY_GATE_GOOGLE_CLIENT_SECRET", "").strip()
 
 
@@ -46,7 +50,6 @@ def _pkce_pair() -> tuple[str, str]:
 
 
 def _oauth_error(response: httpx.Response, prefix: str) -> GoogleOAuthError:
-    """Return provider diagnostics without ever exposing tokens or auth codes."""
     detail = ""
     try:
         payload = response.json()
@@ -62,11 +65,16 @@ def _oauth_error(response: httpx.Response, prefix: str) -> GoogleOAuthError:
     return GoogleOAuthError(f"{prefix} (HTTP {response.status_code}){suffix}")
 
 
-def authorize_desktop(client_id: str, timeout_seconds: int = 180) -> dict:
+def authorize_desktop(
+    client_id: str,
+    timeout_seconds: int = 180,
+    scopes: tuple[str, ...] | None = None,
+) -> dict:
     """Run Google's installed-app OAuth flow with PKCE and a loopback callback."""
     client_id = client_id.strip()
     if not client_id:
         raise GoogleOAuthError("Google OAuth client ID is not configured for this build.")
+    requested_scopes = scopes or DRIVE_SCOPES
 
     verifier, challenge = _pkce_pair()
     state = secrets.token_urlsafe(32)
@@ -74,7 +82,7 @@ def authorize_desktop(client_id: str, timeout_seconds: int = 180) -> dict:
     ready = threading.Event()
 
     class CallbackHandler(BaseHTTPRequestHandler):
-        def do_GET(self):  # noqa: N802 - stdlib API
+        def do_GET(self):  # noqa: N802
             query = parse_qs(urlparse(self.path).query)
             result["code"] = query.get("code", [""])[0]
             result["state"] = query.get("state", [""])[0]
@@ -86,20 +94,7 @@ def authorize_desktop(client_id: str, timeout_seconds: int = 180) -> dict:
                 if success
                 else "Google did not complete the authorization. You can close this tab and return to PrivacyGate."
             )
-            body = f"""<!doctype html>
-<html lang='en'>
-<head>
-<meta charset='utf-8'>
-<meta name='viewport' content='width=device-width,initial-scale=1'>
-<title>PrivacyGate — {html.escape(status_title)}</title>
-<style>
-*{{box-sizing:border-box}} body{{margin:0;min-height:100vh;display:grid;place-items:center;background:#F7FAFC;color:#062B4F;font-family:Segoe UI,Inter,Arial,sans-serif}}
-.card{{width:min(560px,calc(100% - 40px));background:#fff;border:1px solid #D7E2EA;border-radius:20px;padding:38px;box-shadow:0 18px 50px rgba(6,43,79,.10)}}
-.mark{{width:54px;height:54px;border-radius:16px;display:grid;place-items:center;background:#E8F6F6;color:#0B7180;font-size:28px;font-weight:800;margin-bottom:22px}}
-h1{{margin:0 0 10px;font-size:28px;letter-spacing:-.4px}} p{{margin:0;color:#557184;line-height:1.55;font-size:15px}} .brand{{margin-top:28px;padding-top:20px;border-top:1px solid #E4EBF0;color:#D3A13B;font-size:12px;font-weight:800;letter-spacing:.8px;text-transform:uppercase}}
-</style>
-</head>
-<body><main class='card'><div class='mark'>{'✓' if success else '!'}</div><h1>{html.escape(status_title)}</h1><p>{html.escape(status_text)}</p><div class='brand'>AI PM LAB · PrivacyGate</div></main></body></html>""".encode("utf-8")
+            body = f"""<!doctype html><html lang='en'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'><title>PrivacyGate — {html.escape(status_title)}</title><style>*{{box-sizing:border-box}} body{{margin:0;min-height:100vh;display:grid;place-items:center;background:#F7FAFC;color:#062B4F;font-family:Segoe UI,Inter,Arial,sans-serif}}.card{{width:min(560px,calc(100% - 40px));background:#fff;border:1px solid #D7E2EA;border-radius:20px;padding:38px;box-shadow:0 18px 50px rgba(6,43,79,.10)}}.mark{{width:54px;height:54px;border-radius:16px;display:grid;place-items:center;background:#E8F6F6;color:#0B7180;font-size:28px;font-weight:800;margin-bottom:22px}}h1{{margin:0 0 10px;font-size:28px}} p{{margin:0;color:#557184;line-height:1.55;font-size:15px}} .brand{{margin-top:28px;padding-top:20px;border-top:1px solid #E4EBF0;color:#D3A13B;font-size:12px;font-weight:800;letter-spacing:.8px;text-transform:uppercase}}</style></head><body><main class='card'><div class='mark'>{'✓' if success else '!'}</div><h1>{html.escape(status_title)}</h1><p>{html.escape(status_text)}</p><div class='brand'>AI PM LAB · PrivacyGate</div></main></body></html>""".encode("utf-8")
             self.send_response(200)
             self.send_header("Content-Type", "text/html; charset=utf-8")
             self.send_header("Cache-Control", "no-store")
@@ -113,22 +108,19 @@ h1{{margin:0 0 10px;font-size:28px;letter-spacing:-.4px}} p{{margin:0;color:#557
 
     server = HTTPServer(("127.0.0.1", 0), CallbackHandler)
     server.timeout = 0.5
-    port = server.server_port
-    redirect_uri = f"http://127.0.0.1:{port}"
+    redirect_uri = f"http://127.0.0.1:{server.server_port}"
 
-    auth_query = urlencode(
-        {
-            "client_id": client_id,
-            "redirect_uri": redirect_uri,
-            "response_type": "code",
-            "scope": " ".join(SCOPES),
-            "access_type": "offline",
-            "prompt": "consent",
-            "state": state,
-            "code_challenge": challenge,
-            "code_challenge_method": "S256",
-        }
-    )
+    auth_query = urlencode({
+        "client_id": client_id,
+        "redirect_uri": redirect_uri,
+        "response_type": "code",
+        "scope": " ".join(requested_scopes),
+        "access_type": "offline",
+        "prompt": "consent",
+        "state": state,
+        "code_challenge": challenge,
+        "code_challenge_method": "S256",
+    })
     webbrowser.open(f"{AUTH_URL}?{auth_query}")
 
     deadline = time.monotonic() + timeout_seconds
@@ -158,7 +150,6 @@ h1{{margin:0 0 10px;font-size:28px;letter-spacing:-.4px}} p{{margin:0;color:#557
     client_secret = configured_client_secret()
     if client_secret:
         token_data["client_secret"] = client_secret
-
     response = httpx.post(TOKEN_URL, data=token_data, timeout=20.0)
     if response.status_code >= 400:
         raise _oauth_error(response, "Google token exchange failed")
@@ -172,11 +163,7 @@ h1{{margin:0 0 10px;font-size:28px;letter-spacing:-.4px}} p{{margin:0;color:#557
 def refresh_access_token(client_id: str, refresh_token: str) -> dict:
     if not client_id or not refresh_token:
         raise GoogleOAuthError("Google connection cannot be refreshed because local OAuth credentials are incomplete.")
-    token_data = {
-        "client_id": client_id,
-        "refresh_token": refresh_token,
-        "grant_type": "refresh_token",
-    }
+    token_data = {"client_id": client_id, "refresh_token": refresh_token, "grant_type": "refresh_token"}
     client_secret = configured_client_secret()
     if client_secret:
         token_data["client_secret"] = client_secret
