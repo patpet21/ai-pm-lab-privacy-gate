@@ -21,6 +21,7 @@ from .source_metadata import install_source_metadata
 from .library_save_dialog import install_library_save_dialog
 from .privacy_preflight import install_privacy_preflight
 from .business_foundation import install_business_foundation, apply_business_main_window
+from .team_action_recovery import install_team_action_recovery
 from .library_source_folders import install_library_source_folders
 from .library_visual_upgrade import install_library_visual_upgrade
 from .page_split import apply_apps_mcp_split
@@ -58,6 +59,10 @@ install_privacy_preflight()
 # Apps flows. Basic remains today's behavior; managed policy enforcement is
 # centralized in PolicyEngine instead of being scattered through screens.
 install_business_foundation()
+# If an organization was attached server-side while the app was already open,
+# recover from the stale Individual view instead of showing a duplicate-workspace
+# error. The existing organization is synced immediately after the action worker.
+install_team_action_recovery()
 install_library_source_folders()
 # Visual-only Library upgrade. It wraps the existing table/actions instead of
 # replacing their storage, Restore, MCP or connector behavior.
