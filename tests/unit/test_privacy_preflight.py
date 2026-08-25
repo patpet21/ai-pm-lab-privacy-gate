@@ -1,7 +1,10 @@
 from pathlib import Path
 from types import SimpleNamespace
 
-from ai_pm_lab_privacy_gate.ui.privacy_preflight import build_preflight_snapshot
+from ai_pm_lab_privacy_gate.ui.privacy_preflight import (
+    build_preflight_snapshot,
+    get_ai_destination,
+)
 
 
 class _Combo:
@@ -34,7 +37,13 @@ def test_preflight_safe_when_all_detected_items_are_protected() -> None:
     page.current_result = SimpleNamespace(applied_findings=findings)
     page.current_document = SimpleNamespace(source_path=Path("Lease.pdf"), source_kind="pdf")
 
-    snapshot = build_preflight_snapshot(page, residual_findings=())
+    destination = get_ai_destination("chatgpt")
+    snapshot = build_preflight_snapshot(
+        page,
+        destination=destination.label,
+        delivery=destination.delivery,
+        residual_findings=(),
+    )
 
     assert snapshot.detected == 3
     assert snapshot.protected == 3
@@ -44,7 +53,8 @@ def test_preflight_safe_when_all_detected_items_are_protected() -> None:
     assert snapshot.detected_original_data_leaving is False
     assert snapshot.source == "Local file"
     assert snapshot.item == "Lease.pdf"
-    assert snapshot.destination == "ChatGPT"
+    assert snapshot.destination == "ChatGPT / GPT"
+    assert snapshot.delivery == "clipboard + browser"
 
 
 def test_preflight_flags_allowed_and_residual_external_content() -> None:
@@ -63,7 +73,13 @@ def test_preflight_flags_allowed_and_residual_external_content() -> None:
         "item_kind": "email",
     }
 
-    snapshot = build_preflight_snapshot(page, residual_findings=(_finding("possible-1"),))
+    destination = get_ai_destination("claude")
+    snapshot = build_preflight_snapshot(
+        page,
+        destination=destination.label,
+        delivery=destination.delivery,
+        residual_findings=(_finding("possible-1"),),
+    )
 
     assert snapshot.detected == 3
     assert snapshot.protected == 2
@@ -74,6 +90,24 @@ def test_preflight_flags_allowed_and_residual_external_content() -> None:
     assert snapshot.source == "Gmail"
     assert snapshot.account == "account@example.com"
     assert snapshot.item == "Security alert"
+    assert snapshot.destination == "Claude"
+    assert snapshot.delivery == "clipboard + browser"
     assert "Gmail" in snapshot.source_line
     assert "account@example.com" in snapshot.source_line
     assert "Security alert" in snapshot.source_line
+
+
+def test_ai_destination_catalog_supports_chatgpt_claude_and_generic_ai() -> None:
+    chatgpt = get_ai_destination("chatgpt")
+    claude = get_ai_destination("claude")
+    other = get_ai_destination("other")
+    fallback = get_ai_destination("unknown-provider")
+
+    assert chatgpt.url == "https://chatgpt.com/"
+    assert chatgpt.delivery == "clipboard + browser"
+    assert claude.url == "https://claude.ai/"
+    assert claude.delivery == "clipboard + browser"
+    assert other.url == ""
+    assert other.delivery == "clipboard only"
+    assert fallback.key == "other"
+    assert fallback.delivery == "clipboard only"
