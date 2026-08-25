@@ -15,13 +15,46 @@ _ORIGINAL_TOKEN = ConnectedAppsService._token
 _ORIGINAL_DISCONNECT = ConnectedAppsService.disconnect
 
 
+def _stored_google_client_id(self: ConnectedAppsService, preferred_provider: str = "google_drive") -> str:
+    """Resolve the app-level Google OAuth client without coupling it to one account.
+
+    Older PrivacyGate builds stored the OAuth client id beside the connected
+    account. Multi-account must be able to add another account even when the
+    environment variable is not present, so seed/reuse an app-level local copy.
+    The client id is not an access credential, but keeping the compatibility
+    value in the existing SecretStore avoids extra config files and preserves
+    upgrades from current installations.
+    """
+    configured = configured_client_id()
+    if configured:
+        self.secret_store.set("oauth.google.client_id", configured)
+        return configured
+
+    cached = self.secret_store.get("oauth.google.client_id") or ""
+    if cached:
+        return cached
+
+    candidates = (
+        f"connected.{preferred_provider}.client_id",
+        "connected.google_drive.client_id",
+        "connected.gmail.client_id",
+    )
+    for key in candidates:
+        value = (self.secret_store.get(key) or "").strip()
+        if value:
+            self.secret_store.set("oauth.google.client_id", value)
+            return value
+    return ""
+
+
 def _connect_google_oauth(self: ConnectedAppsService, client_id: str | None = None) -> None:
-    resolved_client_id = (client_id or configured_client_id()).strip()
+    resolved_client_id = (client_id or _stored_google_client_id(self, "google_drive")).strip()
     payload = authorize_desktop(resolved_client_id)
     access_token = payload.get("access_token", "")
     refresh_token = payload.get("refresh_token", "")
     if not access_token:
         raise RuntimeError("Google OAuth did not return an access token.")
+    self.secret_store.set("oauth.google.client_id", resolved_client_id)
     self.secret_store.set("connected.google_drive.token", access_token)
     self.secret_store.set("connected.google_drive.client_id", resolved_client_id)
     self.secret_store.set("connected.google_drive.expires_at", str(token_expiry_timestamp(payload)))
@@ -31,7 +64,7 @@ def _connect_google_oauth(self: ConnectedAppsService, client_id: str | None = No
 
 def _refresh_google_token(self: ConnectedAppsService) -> str:
     refresh_token = self.secret_store.get("connected.google_drive.refresh_token") or ""
-    client_id = self.secret_store.get("connected.google_drive.client_id") or configured_client_id()
+    client_id = self.secret_store.get("connected.google_drive.client_id") or _stored_google_client_id(self, "google_drive")
     if not refresh_token:
         raise RuntimeError("Google Drive needs to be reconnected because no refresh token is available.")
     payload = refresh_access_token(client_id, refresh_token)
@@ -85,6 +118,9 @@ def _disconnect(self: ConnectedAppsService, provider: str) -> None:
             "connected.google_drive.expires_at",
         ):
             self.secret_store.delete(key)
+        # Deliberately keep oauth.google.client_id. It belongs to the PrivacyGate
+        # developer app, not to an individual Google account, and is needed to
+        # connect another account after the last account is disconnected.
 
 
 def install_google_oauth_adapter() -> None:
@@ -92,6 +128,7 @@ def install_google_oauth_adapter() -> None:
         return
     ConnectedAppsService.connect_google_oauth = _connect_google_oauth  # type: ignore[attr-defined]
     ConnectedAppsService.force_google_refresh = _force_google_refresh  # type: ignore[attr-defined]
+    ConnectedAppsService.google_oauth_client_id = _stored_google_client_id  # type: ignore[attr-defined]
     ConnectedAppsService._token = _token  # type: ignore[method-assign]
     ConnectedAppsService.disconnect = _disconnect  # type: ignore[method-assign]
     ConnectedAppsService._google_oauth_installed = True  # type: ignore[attr-defined]
