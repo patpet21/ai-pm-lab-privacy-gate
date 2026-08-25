@@ -60,6 +60,27 @@ def _display_kind(kind: str) -> str:
     return names.get(kind, kind.replace("application/", ""))
 
 
+def _active_account_details(service, provider: str) -> tuple[str, str]:
+    if service is None or not hasattr(service, "list_connected_accounts"):
+        return "", ""
+    try:
+        accounts = tuple(service.list_connected_accounts(provider))
+    except Exception:
+        return "", ""
+    active = next((account for account in accounts if account.is_active), None)
+    if active is None and len(accounts) == 1:
+        active = accounts[0]
+    if active is None:
+        active = next((account for account in accounts if account.is_default), None)
+    if active is None:
+        return "", ""
+    account_id = str(getattr(active, "account_id", "") or "").strip()
+    account_label = str(
+        getattr(active, "label", "") or getattr(active, "subtitle", "") or ""
+    ).strip()
+    return account_id, account_label
+
+
 def _transient_network_error(exc: Exception) -> bool:
     if isinstance(exc, (httpx.ConnectError, httpx.ConnectTimeout, httpx.ReadTimeout, httpx.NetworkError)):
         return True
@@ -270,6 +291,7 @@ def _open_source_browser(main_window, provider: str, title: str) -> None:
         if remote is None:
             return
         protect = main_window.protection_page
+        account_id, account_label = _active_account_details(service, provider)
 
         if provider == "google_drive":
             try:
@@ -289,7 +311,20 @@ def _open_source_browser(main_window, provider: str, title: str) -> None:
                 document_button.click()
             protect.input_tabs.setCurrentIndex(1)
             protect.pdf_path.setText(str(local_path))
-            protect._external_source_name = f"Google Drive • {remote.title}"
+            source_parts = ["Google Drive"]
+            if account_label:
+                source_parts.append(account_label)
+            source_parts.append(remote.title)
+            protect._external_source_name = " • ".join(source_parts)
+            protect._external_source_metadata = {
+                "provider": "google_drive",
+                "provider_label": "Google Drive",
+                "account_id": account_id,
+                "account_label": account_label,
+                "item_id": str(remote.item_id or ""),
+                "item_title": str(remote.title or ""),
+                "item_kind": str(remote.kind or ""),
+            }
             status = f"Imported from Google Drive: {remote.title} — ready for local scan"
 
         elif provider == "gmail":
@@ -309,7 +344,20 @@ def _open_source_browser(main_window, provider: str, title: str) -> None:
                 paste_button.click()
             protect.input_tabs.setCurrentIndex(0)
             protect.text_input.setPlainText(email_text)
-            protect._external_source_name = f"Gmail • {remote.title}"
+            source_parts = ["Gmail"]
+            if account_label:
+                source_parts.append(account_label)
+            source_parts.append(remote.title)
+            protect._external_source_name = " • ".join(source_parts)
+            protect._external_source_metadata = {
+                "provider": "gmail",
+                "provider_label": "Gmail",
+                "account_id": account_id,
+                "account_label": account_label,
+                "item_id": str(remote.item_id or ""),
+                "item_title": str(remote.title or ""),
+                "item_kind": str(remote.kind or "email"),
+            }
             status = f"Imported from Gmail: {remote.title} — ready for local scan"
 
         else:
