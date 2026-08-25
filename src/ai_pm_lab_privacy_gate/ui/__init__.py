@@ -18,6 +18,7 @@ from .apps_multi_account import install_apps_multi_account
 from .account_aware_routing import install_account_aware_routing
 from .automatic_temp_cleanup import install_automatic_temp_cleanup
 from .source_metadata import install_source_metadata
+from .library_save_dialog import install_library_save_dialog
 from .privacy_preflight import install_privacy_preflight
 from .library_source_folders import install_library_source_folders
 from .library_visual_upgrade import install_library_visual_upgrade
@@ -44,6 +45,10 @@ install_account_aware_routing()
 # remote connections, Library contents, Restore mappings or connector tokens.
 install_automatic_temp_cleanup()
 install_source_metadata()
+# Replace only the generic title prompt with a branded local-first save dialog.
+# The underlying Library save, connector provenance and restore mapping behavior
+# remain unchanged.
+install_library_save_dialog()
 # Manual AI handoff gate for ChatGPT/GPT, Claude and other AI tools. The handoff
 # runs the local second scan, saves to Library, copies only protected content and
 # never auto-submits anything to an AI service.
