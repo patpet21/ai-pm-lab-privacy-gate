@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sqlite3
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -24,7 +25,7 @@ class DocumentSourceMetadataRepository:
     """Local provenance metadata for Library documents.
 
     This table deliberately stores no document contents, OAuth tokens, restore
-    mappings or MCP state.  It only records which connector/account/item supplied
+    mappings or MCP state. It only records which connector/account/item supplied
     a document so the local Library can organize content as provider -> account.
     """
 
@@ -32,11 +33,19 @@ class DocumentSourceMetadataRepository:
         self.db_path = Path(db_path)
         self._ensure_schema()
 
-    def _connect(self) -> sqlite3.Connection:
+    @contextmanager
+    def _connect(self):
         connection = sqlite3.connect(self.db_path)
         connection.row_factory = sqlite3.Row
         connection.execute("PRAGMA foreign_keys = ON")
-        return connection
+        try:
+            yield connection
+            connection.commit()
+        except Exception:
+            connection.rollback()
+            raise
+        finally:
+            connection.close()
 
     def _ensure_schema(self) -> None:
         with self._connect() as connection:
