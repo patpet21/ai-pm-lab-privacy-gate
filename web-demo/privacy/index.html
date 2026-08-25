@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Privacy Policy for AI PM LAB PrivacyGate, including Google Drive and Gmail connected-account access.">
+  <title>Privacy Policy — AI PM LAB PrivacyGate</title>
+  <link rel="stylesheet" href="/styles.css">
+  <link rel="stylesheet" href="/legal.css">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="/" aria-label="AI PM LAB PrivacyGate home">
+      <img src="/assets/privacy-gate-icon.png" alt="AI PM LAB PrivacyGate logo">
+      <span><strong>AI PM LAB</strong><small>PRIVACY GATE</small></span>
+    </a>
+    <nav><a href="/">Home</a><a href="/terms">Terms</a></nav>
+  </header>
+
+  <main class="legal-shell">
+    <section class="legal-hero">
+      <p class="eyebrow">AI PM LAB · PRIVACYGATE</p>
+      <h1>Privacy Policy</h1>
+      <p>PrivacyGate is designed as a local-first privacy layer that helps users review and protect sensitive business data before using external AI or automation services.</p>
+      <p class="legal-meta">Last updated: August 25, 2026</p>
+    </section>
+
+    <div class="legal-content">
+      <section>
+        <h2>1. Local-first desktop application</h2>
+        <p>The PrivacyGate desktop application performs its core privacy processing on the user's device. Microsoft Presidio, spaCy analysis, document text extraction, detection review, protection, local Library storage, and reversible restoration are designed to run locally.</p>
+        <p>PrivacyGate does not require users to upload original documents to an AI PM LAB server in order to use the core protection workflow.</p>
+      </section>
+
+      <section class="legal-callout">
+        <h2>2. Google Drive and Gmail connected accounts</h2>
+        <p>When a user explicitly connects a Google account, PrivacyGate may request read-only access to Google Drive and/or Gmail so the user can select business content to bring into the local PrivacyGate workflow.</p>
+        <p>PrivacyGate currently uses Google OAuth scopes such as:</p>
+        <ul>
+          <li><code>https://www.googleapis.com/auth/drive.readonly</code> for read-only access to files the connected user can access in Google Drive.</li>
+          <li><code>https://www.googleapis.com/auth/gmail.readonly</code> for read-only access to Gmail messages and metadata available to the connected user.</li>
+          <li>Basic identity scopes such as <code>openid</code>, <code>email</code>, and <code>profile</code> to identify the connected Google account in the PrivacyGate interface.</li>
+        </ul>
+        <p>Each connected Google account is authorized by the user through Google's OAuth consent flow. PrivacyGate supports multiple connected accounts and keeps each account's local authorization data separate.</p>
+      </section>
+
+      <section>
+        <h2>3. How Google user data is used</h2>
+        <p>Google user data is used only to provide user-requested PrivacyGate functionality, such as listing available Drive files, reading selected Drive content, listing Gmail messages, reading selected email content, identifying the connected account, and bringing selected content into the local privacy-protection workflow.</p>
+        <p>PrivacyGate does not use Google user data for advertising, ad targeting, data brokerage, credit decisions, or sale to third parties. PrivacyGate does not use Google user data to train general-purpose AI models.</p>
+        <p>PrivacyGate does not automatically send raw Google Drive or Gmail content to a third-party AI service. If a user later chooses to copy, export, or explicitly share protected output with an AI or automation service, that action is initiated by the user. PrivacyGate is designed to keep original values and reversible restore mappings under local control.</p>
+      </section>
+
+      <section>
+        <h2>4. Google API Services User Data Policy</h2>
+        <p>PrivacyGate's use and transfer to any other app of information received from Google APIs will adhere to the <a href="https://developers.google.com/terms/api-services-user-data-policy" target="_blank" rel="noopener noreferrer">Google API Services User Data Policy</a>, including the Limited Use requirements.</p>
+      </section>
+
+      <section>
+        <h2>5. Local credentials and storage</h2>
+        <p>OAuth access tokens, refresh tokens, connected-account identifiers, protected Library data, and reversible mappings may be stored locally on the user's device as needed to provide the requested functionality. Sensitive local credentials are stored using the application's encrypted secret-storage mechanisms, including Windows DPAPI or the macOS Keychain where supported.</p>
+        <p>Application data is generally stored under the PrivacyGate local application-data directory. Temporary local working files may also be created while selected documents or messages are being processed.</p>
+      </section>
+
+      <section>
+        <h2>6. Remote MCP and optional external services</h2>
+        <p>PrivacyGate separates local processing from optional external integrations. Remote MCP, AI websites, automation services, contact forms, analytics, and other third-party services are not required for the core local protection workflow.</p>
+        <p>When Remote MCP is enabled by the user, PrivacyGate is designed to expose protected Library content rather than original files or reversible restore mappings. Third-party services remain subject to their own privacy policies and terms.</p>
+      </section>
+
+      <section>
+        <h2>7. Website and analytics</h2>
+        <p>The public PrivacyGate website is hosted by Netlify. The browser demo processes pasted demonstration text in the browser and is not intended for real customer records. The website may use Google Analytics to understand aggregate traffic and interaction patterns.</p>
+        <p>The website contact form is processed by Formspree. Visitors should not submit customer documents, credentials, reversible mappings, or other sensitive information through the contact form.</p>
+      </section>
+
+      <section>
+        <h2>8. Retention, deletion, and revocation</h2>
+        <p>Users control their connected accounts and local PrivacyGate data. A connected Google account can be disconnected from PrivacyGate, which removes the application's locally stored credentials for that account. Users may also revoke PrivacyGate access from their Google Account security settings.</p>
+        <p>Users may remove Library content from PrivacyGate and may remove the application's local data after making any backup they require. Uninstalling or updating the application may not automatically remove all locally retained user data.</p>
+      </section>
+
+      <section>
+        <h2>9. Data security</h2>
+        <p>PrivacyGate is designed to minimize unnecessary disclosure by keeping privacy analysis and reversible mappings local where possible, using encrypted local credential storage, and requesting read-only Google access for current Drive and Gmail functionality.</p>
+        <p>No software can guarantee absolute security. Users are responsible for protecting access to their device, operating-system account, connected services, and any exported protected content.</p>
+      </section>
+
+      <section>
+        <h2>10. Changes to this policy</h2>
+        <p>This Privacy Policy may be updated as PrivacyGate features, integrations, or legal requirements change. The current version will be published at this URL with an updated effective date.</p>
+      </section>
+
+      <section>
+        <h2>11. Contact</h2>
+        <p>Privacy and security questions may be sent to <a href="mailto:peter@propertydex.xyz">peter@propertydex.xyz</a> or <a href="mailto:trigosatconsulting@gmail.com">trigosatconsulting@gmail.com</a>.</p>
+        <p>Do not email real customer documents, passwords, API keys, original sensitive records, or reversible restore mappings.</p>
+      </section>
+    </div>
+
+    <a class="button secondary legal-back" href="/">Back to PrivacyGate</a>
+  </main>
+
+  <footer>
+    <span>AI PM LAB Privacy Gate · by Trigosat Consulting</span>
+    <div class="legal-footer-links"><a href="/privacy">Privacy</a><a href="/terms">Terms</a><a href="mailto:peter@propertydex.xyz">Contact</a></div>
+  </footer>
+</body>
+</html>
