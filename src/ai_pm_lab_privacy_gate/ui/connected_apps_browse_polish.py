@@ -6,12 +6,14 @@ import httpx
 from PySide6.QtCore import QSize, Qt
 from PySide6.QtWidgets import (
     QAbstractButton,
+    QApplication,
     QDialog,
     QHBoxLayout,
     QLabel,
     QListWidget,
     QListWidgetItem,
     QMessageBox,
+    QProgressDialog,
     QPushButton,
     QVBoxLayout,
 )
@@ -91,13 +93,46 @@ def _retry_network(operation, attempts: int = 3):
     raise RuntimeError("The connected service did not return a result.")
 
 
+def _run_busy(parent, title: str, message: str, operation):
+    busy = QProgressDialog(message, "", 0, 0, parent)
+    busy.setWindowTitle(title)
+    busy.setWindowModality(Qt.WindowModality.ApplicationModal)
+    busy.setCancelButton(None)
+    busy.setMinimumDuration(0)
+    busy.setMinimumWidth(380)
+    busy.setAutoClose(False)
+    busy.setAutoReset(False)
+    busy.show()
+    QApplication.processEvents()
+    try:
+        return operation()
+    finally:
+        busy.close()
+        QApplication.processEvents()
+
+
 def _friendly_connection_error(title: str, exc: Exception) -> str:
     if _transient_network_error(exc):
         return (
             f"{title} is temporarily unreachable from this PC. "
             "PrivacyGate kept your connection; check the network and try again in a few seconds."
         )
+    if isinstance(exc, httpx.HTTPStatusError) and exc.response.status_code == 401:
+        return (
+            f"{title} rejected the saved session. PrivacyGate already tried to refresh it automatically. "
+            "If this repeats, use Reconnect once from Apps."
+        )
     return str(exc) or f"Unable to reach {title}."
+
+
+def _drive_call_with_refresh(service, operation):
+    try:
+        return _retry_network(operation)
+    except httpx.HTTPStatusError as exc:
+        if exc.response.status_code != 401 or not hasattr(service, "force_google_refresh"):
+            raise
+        service.force_google_refresh()
+        return _retry_network(operation)
 
 
 def _open_source_browser(main_window, provider: str, title: str) -> None:
@@ -107,11 +142,38 @@ def _open_source_browser(main_window, provider: str, title: str) -> None:
         QMessageBox.warning(main_window, title, "Connected Apps service is unavailable.")
         return
 
-    try:
-        items = _retry_network(lambda: service.list_root_items(provider, limit=60))
-    except Exception as exc:
-        QMessageBox.warning(main_window, f"Unable to read {title}", _friendly_connection_error(title, exc))
-        return
+    next_page_token = ""
+    if provider == "gmail" and hasattr(service, "list_gmail_page"):
+        try:
+            items, next_page_token = _run_busy(
+                main_window,
+                "Loading Gmail",
+                "Loading the latest 30 emails…",
+                lambda: _retry_network(lambda: service.list_gmail_page("", 30)),
+            )
+        except Exception as exc:
+            QMessageBox.warning(main_window, f"Unable to read {title}", _friendly_connection_error(title, exc))
+            return
+    else:
+        try:
+            operation = lambda: service.list_root_items(provider, limit=60)
+            if provider == "google_drive":
+                items = _run_busy(
+                    main_window,
+                    "Loading Google Drive",
+                    "Loading files from Google Drive…",
+                    lambda: _drive_call_with_refresh(service, operation),
+                )
+            else:
+                items = _run_busy(
+                    main_window,
+                    f"Loading {title}",
+                    f"Loading data from {title}…",
+                    lambda: _retry_network(operation),
+                )
+        except Exception as exc:
+            QMessageBox.warning(main_window, f"Unable to read {title}", _friendly_connection_error(title, exc))
+            return
 
     items = tuple(item for item in items if item.item_id and item.title.strip())
 
@@ -146,18 +208,24 @@ def _open_source_browser(main_window, provider: str, title: str) -> None:
     )
 
     item_lookup = {}
-    for remote in items:
-        kind = _display_kind(remote.kind)
-        metadata = kind
-        if remote.subtitle:
-            metadata += f"   •   {remote.subtitle}"
-        row = QListWidgetItem(f"{remote.title}\n{metadata}")
-        row.setSizeHint(QSize(0, 58))
-        row.setData(Qt.ItemDataRole.UserRole, remote.item_id)
-        listing.addItem(row)
-        item_lookup[remote.item_id] = remote
 
-    if not items:
+    def append_items(batch) -> None:
+        for remote in batch:
+            if not remote.item_id or not remote.title.strip() or remote.item_id in item_lookup:
+                continue
+            kind = _display_kind(remote.kind)
+            metadata = kind
+            if remote.subtitle:
+                metadata += f"   •   {remote.subtitle}"
+            row = QListWidgetItem(f"{remote.title}\n{metadata}")
+            row.setSizeHint(QSize(0, 58))
+            row.setData(Qt.ItemDataRole.UserRole, remote.item_id)
+            listing.addItem(row)
+            item_lookup[remote.item_id] = remote
+
+    append_items(items)
+
+    if not item_lookup:
         row = QListWidgetItem("No readable sources were returned by this provider.")
         row.setFlags(Qt.ItemFlag.NoItemFlags)
         row.setSizeHint(QSize(0, 48))
@@ -166,12 +234,16 @@ def _open_source_browser(main_window, provider: str, title: str) -> None:
     root.addWidget(listing, 1)
 
     footer = QHBoxLayout()
-    count = QLabel(f"{len(items)} item(s)")
+    count = QLabel(f"{len(item_lookup)} item(s)")
     count.setStyleSheet("color:#3E5B70;font-weight:700;")
+    load_more = QPushButton("Load 30 more", objectName="Secondary")
+    load_more.setVisible(provider == "gmail" and bool(next_page_token))
     use_button = QPushButton("Use in Protect", objectName="Primary")
     use_button.setEnabled(False)
     close = QPushButton("Close", objectName="Secondary")
     footer.addWidget(count)
+    if provider == "gmail":
+        footer.addWidget(load_more)
     footer.addStretch(1)
     footer.addWidget(close)
     footer.addWidget(use_button)
@@ -182,6 +254,28 @@ def _open_source_browser(main_window, provider: str, title: str) -> None:
     )
     listing.itemDoubleClicked.connect(lambda _item: use_button.click())
     close.clicked.connect(dialog.reject)
+
+    def load_more_gmail() -> None:
+        nonlocal next_page_token
+        if not next_page_token or not hasattr(service, "list_gmail_page"):
+            load_more.hide()
+            return
+        try:
+            batch, token = _run_busy(
+                dialog,
+                "Loading Gmail",
+                "Loading 30 more emails…",
+                lambda: _retry_network(lambda: service.list_gmail_page(next_page_token, 30)),
+            )
+        except Exception as exc:
+            QMessageBox.warning(dialog, "Unable to load more Gmail messages", _friendly_connection_error("Gmail", exc))
+            return
+        append_items(batch)
+        next_page_token = token
+        count.setText(f"{len(item_lookup)} item(s)")
+        load_more.setVisible(bool(next_page_token))
+
+    load_more.clicked.connect(load_more_gmail)
 
     def use_selected() -> None:
         current = listing.currentItem()
@@ -195,7 +289,12 @@ def _open_source_browser(main_window, provider: str, title: str) -> None:
 
         if provider == "google_drive":
             try:
-                local_path = _retry_network(lambda: materialize_google_drive_item(service, remote))
+                local_path = _run_busy(
+                    dialog,
+                    "Importing from Google Drive",
+                    "Preparing a local working copy for PrivacyGate…",
+                    lambda: _drive_call_with_refresh(service, lambda: materialize_google_drive_item(service, remote)),
+                )
             except Exception as exc:
                 QMessageBox.warning(dialog, "Unable to import from Google Drive", _friendly_connection_error("Google Drive", exc))
                 return
@@ -208,7 +307,12 @@ def _open_source_browser(main_window, provider: str, title: str) -> None:
 
         elif provider == "gmail":
             try:
-                local_path = _retry_network(lambda: materialize_gmail_message(service, remote))
+                local_path = _run_busy(
+                    dialog,
+                    "Importing from Gmail",
+                    "Preparing the selected email locally…",
+                    lambda: _retry_network(lambda: materialize_gmail_message(service, remote)),
+                )
                 email_text = local_path.read_text(encoding="utf-8")
             except Exception as exc:
                 QMessageBox.warning(dialog, "Unable to import from Gmail", _friendly_connection_error("Gmail", exc))
