@@ -75,8 +75,10 @@ def install_library_source_folders() -> None:
             "ClickUp",
             "Asana",
             "Trello",
-            "OneDrive / SharePoint",
+            "monday.com",
+            "Jira",
             "Notion",
+            "OneDrive / SharePoint",
             "Dropbox",
             "Slack",
             "Local files",
@@ -101,7 +103,6 @@ def install_library_source_folders() -> None:
         for row, document in enumerate(self._documents):
             hidden = bool(selected and _source_group(document.source_name) != selected)
             self.table.setRowHidden(row, hidden)
-        # Select the first visible row after filtering.
         for row in range(self.table.rowCount()):
             if not self.table.isRowHidden(row):
                 self.table.selectRow(row)
