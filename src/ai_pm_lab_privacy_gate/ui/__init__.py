@@ -19,6 +19,7 @@ from .account_aware_routing import install_account_aware_routing
 from .automatic_temp_cleanup import install_automatic_temp_cleanup
 from .source_metadata import install_source_metadata
 from .library_source_folders import install_library_source_folders
+from .library_visual_upgrade import install_library_visual_upgrade
 from .page_split import apply_apps_mcp_split
 from .runtime_fixes import apply_runtime_fixes
 
@@ -43,6 +44,9 @@ install_account_aware_routing()
 install_automatic_temp_cleanup()
 install_source_metadata()
 install_library_source_folders()
+# Visual-only Library upgrade. It wraps the existing table/actions instead of
+# replacing their storage, Restore, MCP or connector behavior.
+install_library_visual_upgrade()
 
 from .main_window import MainWindow
 
