@@ -12,7 +12,6 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 from urllib.parse import parse_qs, urlencode, urlparse
 
 import httpx
-from PySide6.QtWidgets import QInputDialog, QLineEdit
 
 
 class ProviderOAuthError(RuntimeError):
@@ -122,23 +121,65 @@ def connect_clickup() -> dict:
 
 
 def connect_asana() -> dict:
-    """Asana native OAuth using the OOB redirect required for native apps.
+    """Connect Asana without asking the user to copy an authorization code.
 
-    PrivacyGate defaults to Asana Full permissions mode while we validate the
-    connector, so it deliberately omits the OAuth ``scope`` parameter. Asana's
-    authorization endpoint then uses the app's registered ``default`` scope.
-    If we later switch the Asana developer app to explicit least-privilege
-    scopes, set PRIVACY_GATE_ASANA_SCOPES to a non-empty space-separated list.
+    Asana redirects to an HTTPS page hosted with the PrivacyGate website. That
+    static relay immediately forwards the short-lived OAuth response to a local
+    loopback listener on this device. PKCE and state protect the handoff; the
+    access token is exchanged and stored only by the desktop app.
     """
     client_id = os.environ.get("PRIVACY_GATE_ASANA_CLIENT_ID", "").strip()
     client_secret = os.environ.get("PRIVACY_GATE_ASANA_CLIENT_SECRET", "").strip()
     if not client_id or not client_secret:
         raise ProviderOAuthError("OAuth client ID/secret is not configured for this provider.")
 
-    redirect_uri = "urn:ietf:wg:oauth:2.0:oob"
+    redirect_uri = os.environ.get(
+        "PRIVACY_GATE_ASANA_REDIRECT_URI",
+        "https://privacygate.propertydex.xyz/oauth/asana/callback",
+    ).strip()
+    parsed_redirect = urlparse(redirect_uri)
+    if parsed_redirect.scheme != "https" or not parsed_redirect.netloc:
+        raise ProviderOAuthError("Asana redirect URI must be the registered HTTPS PrivacyGate callback URL.")
+
     state = secrets.token_urlsafe(28)
     verifier = secrets.token_urlsafe(64)
-    challenge = base64.urlsafe_b64encode(hashlib.sha256(verifier.encode("ascii")).digest()).decode("ascii").rstrip("=")
+    challenge = base64.urlsafe_b64encode(
+        hashlib.sha256(verifier.encode("ascii")).digest()
+    ).decode("ascii").rstrip("=")
+
+    result: dict[str, str] = {}
+    ready = threading.Event()
+
+    class Handler(BaseHTTPRequestHandler):
+        def do_GET(self):  # noqa: N802
+            parsed = urlparse(self.path)
+            if parsed.path != "/asana":
+                self.send_response(404)
+                self.end_headers()
+                return
+            query = parse_qs(parsed.query)
+            result["code"] = query.get("code", [""])[0]
+            result["state"] = query.get("state", [""])[0]
+            result["error"] = query.get("error", [""])[0]
+            body = _callback_page("Asana connection received")
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            ready.set()
+
+        def log_message(self, _format, *_args):
+            return
+
+    try:
+        server = HTTPServer(("127.0.0.1", 8768), Handler)
+    except OSError as exc:
+        raise ProviderOAuthError(
+            "PrivacyGate could not open its local Asana callback on port 8768. Close any other PrivacyGate test window and try again."
+        ) from exc
+    server.timeout = 0.5
 
     params = {
         "client_id": client_id,
@@ -154,15 +195,24 @@ def connect_asana() -> dict:
 
     webbrowser.open(f"https://app.asana.com/-/oauth_authorize?{urlencode(params)}")
 
-    code, ok = QInputDialog.getText(
-        None,
-        "Connect Asana",
-        "After you click Allow in Asana, the browser will show an authorization code.\n\nCopy that code, return to PrivacyGate, and paste it here:",
-        QLineEdit.EchoMode.Normal,
-    )
-    code = code.strip()
-    if not ok or not code:
-        raise ProviderOAuthError("Asana authorization was cancelled before the code was entered.")
+    deadline = time.monotonic() + 180
+    try:
+        while time.monotonic() < deadline and not ready.is_set():
+            server.handle_request()
+    finally:
+        server.server_close()
+
+    if not ready.is_set():
+        raise ProviderOAuthError(
+            "Asana sign-in timed out. Keep PrivacyGate open while approving access in the browser and try Connect again."
+        )
+    if result.get("state") != state:
+        raise ProviderOAuthError("OAuth security check failed (state mismatch).")
+    if result.get("error"):
+        raise ProviderOAuthError(f"Authorization was not completed: {result['error']}")
+    code = result.get("code", "")
+    if not code:
+        raise ProviderOAuthError("Asana did not return an authorization code to PrivacyGate.")
 
     return _exchange_code(
         token_url="https://app.asana.com/-/oauth_token",
