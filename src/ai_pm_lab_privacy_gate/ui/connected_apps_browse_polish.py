@@ -10,6 +10,7 @@ from PySide6.QtWidgets import (
     QDialog,
     QHBoxLayout,
     QLabel,
+    QLineEdit,
     QListWidget,
     QListWidgetItem,
     QMessageBox,
@@ -34,8 +35,7 @@ _PROVIDER_BY_TITLE = {
 def _provider_from_button(button: QAbstractButton) -> tuple[str, str] | None:
     parent = button.parentWidget()
     while parent is not None:
-        labels = parent.findChildren(QLabel)
-        for label in labels:
+        for label in parent.findChildren(QLabel):
             title = label.text().strip()
             provider = _PROVIDER_BY_TITLE.get(title)
             if provider:
@@ -99,7 +99,7 @@ def _run_busy(parent, title: str, message: str, operation):
     busy.setWindowModality(Qt.WindowModality.ApplicationModal)
     busy.setCancelButton(None)
     busy.setMinimumDuration(0)
-    busy.setMinimumWidth(380)
+    busy.setMinimumWidth(390)
     busy.setAutoClose(False)
     busy.setAutoReset(False)
     busy.show()
@@ -142,57 +142,39 @@ def _open_source_browser(main_window, provider: str, title: str) -> None:
         QMessageBox.warning(main_window, title, "Connected Apps service is unavailable.")
         return
 
-    next_page_token = ""
-    if provider == "gmail" and hasattr(service, "list_gmail_page"):
-        try:
-            items, next_page_token = _run_busy(
-                main_window,
-                "Loading Gmail",
-                "Loading the latest 30 emails…",
-                lambda: _retry_network(lambda: service.list_gmail_page("", 30)),
-            )
-        except Exception as exc:
-            QMessageBox.warning(main_window, f"Unable to read {title}", _friendly_connection_error(title, exc))
-            return
-    else:
-        try:
-            operation = lambda: service.list_root_items(provider, limit=60)
-            if provider == "google_drive":
-                items = _run_busy(
-                    main_window,
-                    "Loading Google Drive",
-                    "Loading files from Google Drive…",
-                    lambda: _drive_call_with_refresh(service, operation),
-                )
-            else:
-                items = _run_busy(
-                    main_window,
-                    f"Loading {title}",
-                    f"Loading data from {title}…",
-                    lambda: _retry_network(operation),
-                )
-        except Exception as exc:
-            QMessageBox.warning(main_window, f"Unable to read {title}", _friendly_connection_error(title, exc))
-            return
-
-    items = tuple(item for item in items if item.item_id and item.title.strip())
-
     dialog = QDialog(main_window)
     dialog.setWindowTitle(f"{title} — available sources")
-    dialog.resize(820, 600)
-    dialog.setMinimumSize(700, 500)
+    dialog.resize(860, 650)
+    dialog.setMinimumSize(720, 520)
     root = QVBoxLayout(dialog)
     root.setContentsMargins(22, 20, 22, 18)
-    root.setSpacing(12)
+    root.setSpacing(11)
 
     heading = QLabel(f"{title} sources", objectName="PageTitle")
     root.addWidget(heading)
     explanation = QLabel(
-        "Select a source to bring a local working copy into PrivacyGate. Nothing shown here has been sent to an AI."
+        "Search and select a source to bring a local working copy into PrivacyGate. Nothing shown here is sent to AI."
     )
     explanation.setWordWrap(True)
     explanation.setStyleSheet("color:#28475D;font-size:11px;")
     root.addWidget(explanation)
+
+    search_row = QHBoxLayout()
+    search = QLineEdit()
+    search.setPlaceholderText(f"Search {title} — file, workspace, board or keyword…")
+    search.setClearButtonEnabled(True)
+    search.setMinimumHeight(38)
+    search.setStyleSheet(
+        "QLineEdit{background:#FFFFFF;color:#10263A;border:1px solid #C8D6E0;"
+        "border-radius:9px;padding:7px 11px;font-size:11px;}"
+        "QLineEdit:focus{border-color:#1595A3;}"
+    )
+    search_button = QPushButton("Search", objectName="Primary")
+    clear_search = QPushButton("All", objectName="Secondary")
+    search_row.addWidget(search, 1)
+    search_row.addWidget(search_button)
+    search_row.addWidget(clear_search)
+    root.addLayout(search_row)
 
     listing = QListWidget()
     listing.setAlternatingRowColors(False)
@@ -204,17 +186,30 @@ def _open_source_browser(main_window, provider: str, title: str) -> None:
         "border-radius:8px; padding:10px 12px; margin:1px 0; }"
         "QListWidget::item:hover { background:#EAF7F7; color:#062B4F; border:1px solid #B8E1E4; }"
         "QListWidget::item:selected { background:#0B7180; color:#FFFFFF; border:1px solid #0B7180; }"
-        "QListWidget::item:selected:active { background:#0B7180; color:#FFFFFF; }"
     )
+    root.addWidget(listing, 1)
+
+    footer = QHBoxLayout()
+    count = QLabel("0 item(s)")
+    count.setStyleSheet("color:#3E5B70;font-weight:700;")
+    close = QPushButton("Close", objectName="Secondary")
+    use_button = QPushButton("Use in Protect", objectName="Primary")
+    use_button.setEnabled(False)
+    footer.addWidget(count)
+    footer.addStretch(1)
+    footer.addWidget(close)
+    footer.addWidget(use_button)
+    root.addLayout(footer)
 
     item_lookup = {}
 
-    def append_items(batch) -> None:
-        for remote in batch:
-            if not remote.item_id or not remote.title.strip() or remote.item_id in item_lookup:
+    def populate(rows) -> None:
+        listing.clear()
+        item_lookup.clear()
+        for remote in rows:
+            if not remote.item_id or not remote.title.strip():
                 continue
-            kind = _display_kind(remote.kind)
-            metadata = kind
+            metadata = _display_kind(remote.kind)
             if remote.subtitle:
                 metadata += f"   •   {remote.subtitle}"
             row = QListWidgetItem(f"{remote.title}\n{metadata}")
@@ -222,60 +217,50 @@ def _open_source_browser(main_window, provider: str, title: str) -> None:
             row.setData(Qt.ItemDataRole.UserRole, remote.item_id)
             listing.addItem(row)
             item_lookup[remote.item_id] = remote
-
-    append_items(items)
-
-    if not item_lookup:
-        row = QListWidgetItem("No readable sources were returned by this provider.")
-        row.setFlags(Qt.ItemFlag.NoItemFlags)
-        row.setSizeHint(QSize(0, 48))
-        listing.addItem(row)
-
-    root.addWidget(listing, 1)
-
-    footer = QHBoxLayout()
-    count = QLabel(f"{len(item_lookup)} item(s)")
-    count.setStyleSheet("color:#3E5B70;font-weight:700;")
-    load_more = QPushButton("Load 30 more", objectName="Secondary")
-    load_more.setVisible(provider == "gmail" and bool(next_page_token))
-    use_button = QPushButton("Use in Protect", objectName="Primary")
-    use_button.setEnabled(False)
-    close = QPushButton("Close", objectName="Secondary")
-    footer.addWidget(count)
-    if provider == "gmail":
-        footer.addWidget(load_more)
-    footer.addStretch(1)
-    footer.addWidget(close)
-    footer.addWidget(use_button)
-    root.addLayout(footer)
-
-    listing.currentItemChanged.connect(
-        lambda current, _previous: use_button.setEnabled(bool(current and current.data(Qt.ItemDataRole.UserRole)))
-    )
-    listing.itemDoubleClicked.connect(lambda _item: use_button.click())
-    close.clicked.connect(dialog.reject)
-
-    def load_more_gmail() -> None:
-        nonlocal next_page_token
-        if not next_page_token or not hasattr(service, "list_gmail_page"):
-            load_more.hide()
-            return
-        try:
-            batch, token = _run_busy(
-                dialog,
-                "Loading Gmail",
-                "Loading 30 more emails…",
-                lambda: _retry_network(lambda: service.list_gmail_page(next_page_token, 30)),
-            )
-        except Exception as exc:
-            QMessageBox.warning(dialog, "Unable to load more Gmail messages", _friendly_connection_error("Gmail", exc))
-            return
-        append_items(batch)
-        next_page_token = token
+        if not item_lookup:
+            empty = QListWidgetItem("No matching sources found.")
+            empty.setFlags(Qt.ItemFlag.NoItemFlags)
+            empty.setSizeHint(QSize(0, 48))
+            listing.addItem(empty)
         count.setText(f"{len(item_lookup)} item(s)")
-        load_more.setVisible(bool(next_page_token))
+        use_button.setEnabled(False)
 
-    load_more.clicked.connect(load_more_gmail)
+    def load(query: str = "") -> None:
+        label = "Searching" if query else "Loading"
+        message = (
+            f"Searching {title} for ‘{query}’…" if query else f"Loading data from {title}…"
+        )
+        try:
+            operation = (
+                (lambda: service.search_items(provider, query, 60))
+                if query and hasattr(service, "search_items")
+                else (lambda: service.list_root_items(provider, limit=60))
+            )
+            if provider == "google_drive":
+                rows = _run_busy(
+                    dialog,
+                    f"{label} Google Drive",
+                    message,
+                    lambda: _drive_call_with_refresh(service, operation),
+                )
+            else:
+                rows = _run_busy(
+                    dialog,
+                    f"{label} {title}",
+                    message,
+                    lambda: _retry_network(operation),
+                )
+        except Exception as exc:
+            QMessageBox.warning(dialog, f"Unable to read {title}", _friendly_connection_error(title, exc))
+            return
+        populate(rows)
+
+    def run_search() -> None:
+        load(search.text().strip())
+
+    def reset_search() -> None:
+        search.clear()
+        load("")
 
     def use_selected() -> None:
         current = listing.currentItem()
@@ -284,7 +269,6 @@ def _open_source_browser(main_window, provider: str, title: str) -> None:
         remote = item_lookup.get(current.data(Qt.ItemDataRole.UserRole))
         if remote is None:
             return
-
         protect = main_window.protection_page
 
         if provider == "google_drive":
@@ -293,7 +277,9 @@ def _open_source_browser(main_window, provider: str, title: str) -> None:
                     dialog,
                     "Importing from Google Drive",
                     "Preparing a local working copy for PrivacyGate…",
-                    lambda: _drive_call_with_refresh(service, lambda: materialize_google_drive_item(service, remote)),
+                    lambda: _drive_call_with_refresh(
+                        service, lambda: materialize_google_drive_item(service, remote)
+                    ),
                 )
             except Exception as exc:
                 QMessageBox.warning(dialog, "Unable to import from Google Drive", _friendly_connection_error("Google Drive", exc))
@@ -303,6 +289,7 @@ def _open_source_browser(main_window, provider: str, title: str) -> None:
                 document_button.click()
             protect.input_tabs.setCurrentIndex(1)
             protect.pdf_path.setText(str(local_path))
+            protect._external_source_name = f"Google Drive • {remote.title}"
             status = f"Imported from Google Drive: {remote.title} — ready for local scan"
 
         elif provider == "gmail":
@@ -322,13 +309,14 @@ def _open_source_browser(main_window, provider: str, title: str) -> None:
                 paste_button.click()
             protect.input_tabs.setCurrentIndex(0)
             protect.text_input.setPlainText(email_text)
+            protect._external_source_name = f"Gmail • {remote.title}"
             status = f"Imported from Gmail: {remote.title} — ready for local scan"
 
         else:
             QMessageBox.information(
                 dialog,
                 f"{title} import",
-                "Browsing is connected. Direct import into Protect for this provider is the next connector step.",
+                "Browsing and search are connected. Direct import into Protect for this provider is the next connector step.",
             )
             return
 
@@ -336,7 +324,19 @@ def _open_source_browser(main_window, provider: str, title: str) -> None:
         dialog.accept()
         main_window.statusBar().showMessage(status, 9000)
 
+    listing.currentItemChanged.connect(
+        lambda current, _previous: use_button.setEnabled(
+            bool(current and current.data(Qt.ItemDataRole.UserRole))
+        )
+    )
+    listing.itemDoubleClicked.connect(lambda _item: use_button.click())
+    search.returnPressed.connect(run_search)
+    search_button.clicked.connect(run_search)
+    clear_search.clicked.connect(reset_search)
+    close.clicked.connect(dialog.reject)
     use_button.clicked.connect(use_selected)
+
+    load("")
     dialog.exec()
 
 
