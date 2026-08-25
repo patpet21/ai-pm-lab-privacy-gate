@@ -65,12 +65,26 @@ def _oauth_error(response: httpx.Response, prefix: str) -> GoogleOAuthError:
     return GoogleOAuthError(f"{prefix} (HTTP {response.status_code}){suffix}")
 
 
+def _resolved_secret(client_secret: str | None) -> str:
+    if client_secret is None:
+        return configured_client_secret()
+    return client_secret.strip()
+
+
 def authorize_desktop(
     client_id: str,
     timeout_seconds: int = 180,
     scopes: tuple[str, ...] | None = None,
+    client_secret: str | None = None,
 ) -> dict:
-    """Run Google's installed-app OAuth flow with PKCE and a loopback callback."""
+    """Run Google's installed-app OAuth flow with PKCE and a loopback callback.
+
+    ``client_secret`` is optional because native/desktop OAuth clients are public
+    clients. Some existing PrivacyGate Google credentials, however, were created
+    from a client configuration whose token endpoint requires the matching
+    secret. Callers may therefore provide the locally encrypted app credential
+    without coupling it to an individual connected account.
+    """
     client_id = client_id.strip()
     if not client_id:
         raise GoogleOAuthError("Google OAuth client ID is not configured for this build.")
@@ -116,9 +130,10 @@ def authorize_desktop(
         "response_type": "code",
         "scope": " ".join(requested_scopes),
         "access_type": "offline",
-        # Multi-account UX: always show the account chooser instead of silently
-        # reusing the browser's currently signed-in Google account.
+        # Deliberately force account choice for multi-account even when the
+        # browser already has a Google session.
         "prompt": "select_account consent",
+        "include_granted_scopes": "true",
         "state": state,
         "code_challenge": challenge,
         "code_challenge_method": "S256",
@@ -149,9 +164,9 @@ def authorize_desktop(
         "grant_type": "authorization_code",
         "redirect_uri": redirect_uri,
     }
-    client_secret = configured_client_secret()
-    if client_secret:
-        token_data["client_secret"] = client_secret
+    secret = _resolved_secret(client_secret)
+    if secret:
+        token_data["client_secret"] = secret
     response = httpx.post(TOKEN_URL, data=token_data, timeout=20.0)
     if response.status_code >= 400:
         raise _oauth_error(response, "Google token exchange failed")
@@ -162,13 +177,17 @@ def authorize_desktop(
     return payload
 
 
-def refresh_access_token(client_id: str, refresh_token: str) -> dict:
+def refresh_access_token(
+    client_id: str,
+    refresh_token: str,
+    client_secret: str | None = None,
+) -> dict:
     if not client_id or not refresh_token:
         raise GoogleOAuthError("Google connection cannot be refreshed because local OAuth credentials are incomplete.")
     token_data = {"client_id": client_id, "refresh_token": refresh_token, "grant_type": "refresh_token"}
-    client_secret = configured_client_secret()
-    if client_secret:
-        token_data["client_secret"] = client_secret
+    secret = _resolved_secret(client_secret)
+    if secret:
+        token_data["client_secret"] = secret
     response = httpx.post(TOKEN_URL, data=token_data, timeout=20.0)
     if response.status_code >= 400:
         raise _oauth_error(response, "Google connection refresh failed")
