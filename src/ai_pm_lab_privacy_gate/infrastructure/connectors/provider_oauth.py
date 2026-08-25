@@ -122,12 +122,13 @@ def connect_clickup() -> dict:
 
 
 def connect_asana() -> dict:
-    """Asana native OAuth.
+    """Asana native OAuth using the OOB redirect required for native apps.
 
-    Asana currently rejects HTTP loopback callbacks for native apps and requires
-    the out-of-band redirect URI. The browser therefore displays a one-time
-    authorization code that the user pastes back into PrivacyGate. PKCE protects
-    the authorization-code exchange even though the callback is out-of-band.
+    PrivacyGate defaults to Asana Full permissions mode while we validate the
+    connector, so it deliberately omits the OAuth ``scope`` parameter. Asana's
+    authorization endpoint then uses the app's registered ``default`` scope.
+    If we later switch the Asana developer app to explicit least-privilege
+    scopes, set PRIVACY_GATE_ASANA_SCOPES to a non-empty space-separated list.
     """
     client_id = os.environ.get("PRIVACY_GATE_ASANA_CLIENT_ID", "").strip()
     client_secret = os.environ.get("PRIVACY_GATE_ASANA_CLIENT_SECRET", "").strip()
@@ -139,12 +140,6 @@ def connect_asana() -> dict:
     verifier = secrets.token_urlsafe(64)
     challenge = base64.urlsafe_b64encode(hashlib.sha256(verifier.encode("ascii")).digest()).decode("ascii").rstrip("=")
 
-    # Keep the requested access read-only and limited to the resources used by
-    # the PrivacyGate Asana browser/import flow.
-    scope = os.environ.get(
-        "PRIVACY_GATE_ASANA_SCOPES",
-        "workspaces:read projects:read tasks:read users:read",
-    ).strip()
     params = {
         "client_id": client_id,
         "redirect_uri": redirect_uri,
@@ -152,8 +147,11 @@ def connect_asana() -> dict:
         "state": state,
         "code_challenge_method": "S256",
         "code_challenge": challenge,
-        "scope": scope,
     }
+    explicit_scopes = os.environ.get("PRIVACY_GATE_ASANA_SCOPES", "").strip()
+    if explicit_scopes:
+        params["scope"] = explicit_scopes
+
     webbrowser.open(f"https://app.asana.com/-/oauth_authorize?{urlencode(params)}")
 
     code, ok = QInputDialog.getText(
