@@ -14,6 +14,7 @@ from .clickup_browser_route import install_clickup_browser_route
 from .project_platform_routes import install_project_platform_routes
 from .apps_catalog_upgrade import install_apps_catalog_upgrade
 from .apps_disconnect_layout import install_apps_disconnect_layout
+from .apps_multi_account import install_apps_multi_account
 from .source_metadata import install_source_metadata
 from .library_source_folders import install_library_source_folders
 from .page_split import apply_apps_mcp_split
@@ -28,6 +29,7 @@ install_google_oauth_ui()
 activate_oauth_ready_sources()
 install_apps_catalog_upgrade()
 install_apps_disconnect_layout()
+install_apps_multi_account()
 install_gmail_browser_route()
 install_clickup_browser_route()
 install_project_platform_routes()
