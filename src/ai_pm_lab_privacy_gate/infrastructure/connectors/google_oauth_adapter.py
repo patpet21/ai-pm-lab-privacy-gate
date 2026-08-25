@@ -5,6 +5,7 @@ import time
 from .google_oauth import (
     authorize_desktop,
     configured_client_id,
+    configured_client_secret,
     refresh_access_token,
     token_expiry_timestamp,
 )
@@ -16,15 +17,7 @@ _ORIGINAL_DISCONNECT = ConnectedAppsService.disconnect
 
 
 def _stored_google_client_id(self: ConnectedAppsService, preferred_provider: str = "google_drive") -> str:
-    """Resolve the app-level Google OAuth client without coupling it to one account.
-
-    Older PrivacyGate builds stored the OAuth client id beside the connected
-    account. Multi-account must be able to add another account even when the
-    environment variable is not present, so seed/reuse an app-level local copy.
-    The client id is not an access credential, but keeping the compatibility
-    value in the existing SecretStore avoids extra config files and preserves
-    upgrades from current installations.
-    """
+    """Resolve the app-level Google OAuth client without coupling it to one account."""
     configured = configured_client_id()
     if configured:
         self.secret_store.set("oauth.google.client_id", configured)
@@ -47,14 +40,31 @@ def _stored_google_client_id(self: ConnectedAppsService, preferred_provider: str
     return ""
 
 
+def _stored_google_client_secret(self: ConnectedAppsService) -> str:
+    """Return the Google developer-client secret from encrypted app storage.
+
+    It is application configuration, not an end-user account token. Existing
+    Google clients that require it for token exchange/refresh need the value on
+    every account, so store it once using the same DPAPI/Keychain SecretStore.
+    """
+    configured = configured_client_secret()
+    if configured:
+        self.secret_store.set("oauth.google.client_secret", configured)
+        return configured
+    return (self.secret_store.get("oauth.google.client_secret") or "").strip()
+
+
 def _connect_google_oauth(self: ConnectedAppsService, client_id: str | None = None) -> None:
     resolved_client_id = (client_id or _stored_google_client_id(self, "google_drive")).strip()
-    payload = authorize_desktop(resolved_client_id)
+    client_secret = _stored_google_client_secret(self)
+    payload = authorize_desktop(resolved_client_id, client_secret=client_secret)
     access_token = payload.get("access_token", "")
     refresh_token = payload.get("refresh_token", "")
     if not access_token:
         raise RuntimeError("Google OAuth did not return an access token.")
     self.secret_store.set("oauth.google.client_id", resolved_client_id)
+    if client_secret:
+        self.secret_store.set("oauth.google.client_secret", client_secret)
     self.secret_store.set("connected.google_drive.token", access_token)
     self.secret_store.set("connected.google_drive.client_id", resolved_client_id)
     self.secret_store.set("connected.google_drive.expires_at", str(token_expiry_timestamp(payload)))
@@ -67,7 +77,17 @@ def _refresh_google_token(self: ConnectedAppsService) -> str:
     client_id = self.secret_store.get("connected.google_drive.client_id") or _stored_google_client_id(self, "google_drive")
     if not refresh_token:
         raise RuntimeError("Google Drive needs to be reconnected because no refresh token is available.")
-    payload = refresh_access_token(client_id, refresh_token)
+    client_secret = _stored_google_client_secret(self)
+    try:
+        payload = refresh_access_token(client_id, refresh_token, client_secret=client_secret)
+    except Exception as exc:
+        message = str(exc)
+        if "client_secret is missing" in message.lower():
+            raise RuntimeError(
+                "Google needs the developer OAuth client secret for this existing connection. "
+                "Configure it once on this device, then retry; PrivacyGate will keep it encrypted locally for all Google accounts."
+            ) from exc
+        raise
     refreshed = payload.get("access_token", "")
     if not refreshed:
         raise RuntimeError("Google Drive refresh did not return an access token")
@@ -87,19 +107,16 @@ def _google_token(self: ConnectedAppsService) -> str:
     except ValueError:
         expires_at = 0
 
-    # Refresh slightly before expiry to avoid a request racing the expiry time.
     if expires_at and time.time() < expires_at - 120:
         return token
 
     refresh_token = self.secret_store.get("connected.google_drive.refresh_token") or ""
     if not refresh_token:
-        # Legacy/manual-token connection: keep using it until provider rejects it.
         return token
     return _refresh_google_token(self)
 
 
 def _force_google_refresh(self: ConnectedAppsService) -> str:
-    """Refresh Drive credentials immediately after a provider-side 401."""
     return _refresh_google_token(self)
 
 
@@ -118,9 +135,8 @@ def _disconnect(self: ConnectedAppsService, provider: str) -> None:
             "connected.google_drive.expires_at",
         ):
             self.secret_store.delete(key)
-        # Deliberately keep oauth.google.client_id. It belongs to the PrivacyGate
-        # developer app, not to an individual Google account, and is needed to
-        # connect another account after the last account is disconnected.
+        # Keep oauth.google.client_id and oauth.google.client_secret: these
+        # belong to the PrivacyGate developer OAuth client, not one user account.
 
 
 def install_google_oauth_adapter() -> None:
@@ -129,6 +145,7 @@ def install_google_oauth_adapter() -> None:
     ConnectedAppsService.connect_google_oauth = _connect_google_oauth  # type: ignore[attr-defined]
     ConnectedAppsService.force_google_refresh = _force_google_refresh  # type: ignore[attr-defined]
     ConnectedAppsService.google_oauth_client_id = _stored_google_client_id  # type: ignore[attr-defined]
+    ConnectedAppsService.google_oauth_client_secret = _stored_google_client_secret  # type: ignore[attr-defined]
     ConnectedAppsService._token = _token  # type: ignore[method-assign]
     ConnectedAppsService.disconnect = _disconnect  # type: ignore[method-assign]
     ConnectedAppsService._google_oauth_installed = True  # type: ignore[attr-defined]
