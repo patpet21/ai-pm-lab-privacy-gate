@@ -5,6 +5,7 @@ from dataclasses import replace
 from PySide6.QtCore import QThreadPool, QTimer, Qt, Signal
 from PySide6.QtWidgets import (
     QApplication,
+    QAbstractItemView,
     QCheckBox,
     QComboBox,
     QDialog,
@@ -12,10 +13,12 @@ from PySide6.QtWidgets import (
     QFrame,
     QGridLayout,
     QHBoxLayout,
+    QHeaderView,
     QInputDialog,
     QLabel,
     QMessageBox,
     QPushButton,
+    QStackedWidget,
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
@@ -26,7 +29,7 @@ from ai_pm_lab_privacy_gate.domain.company_policy import (
     CompanyPolicy,
     ProtectionDirective,
 )
-from ai_pm_lab_privacy_gate.domain.plans import PlanCode, all_plans
+from ai_pm_lab_privacy_gate.domain.plans import PlanCode
 from ai_pm_lab_privacy_gate.infrastructure.auth.supabase_account import (
     AccountSession,
     SupabaseAccountClient,
@@ -41,8 +44,21 @@ from ai_pm_lab_privacy_gate.infrastructure.policy.supabase_team import (
     SupabaseTeamClient,
     TeamServiceError,
 )
+from ai_pm_lab_privacy_gate.ui.organization_admin import (
+    set_device_status,
+    set_member_role,
+    set_member_status,
+)
 from ai_pm_lab_privacy_gate.ui.workers import FunctionWorker
 
+
+NAVY = "#062B4F"
+TEAL = "#0B7180"
+GREEN = "#23824B"
+RED = "#A23A3A"
+MUTED = "#61798A"
+BORDER = "#DCE5EA"
+SOFT = "#F7FAFC"
 
 _RULE_LABELS = {
     "US_SSN": "Social Security Number",
@@ -71,30 +87,81 @@ _CONNECTORS = (
 )
 
 
+def _card() -> QFrame:
+    frame = QFrame()
+    frame.setStyleSheet(
+        f"QFrame{{background:#FFFFFF;border:1px solid {BORDER};border-radius:12px;}}"
+    )
+    return frame
+
+
+def _status_chip(text: str, *, tone: str = "teal") -> QLabel:
+    palette = {
+        "teal": ("#E8F6F6", TEAL, "#B8E1E4"),
+        "green": ("#EDF8F4", GREEN, "#B9DECD"),
+        "red": ("#FDECEC", RED, "#F1C1C1"),
+        "neutral": ("#F1F5F7", MUTED, BORDER),
+    }
+    bg, fg, border = palette.get(tone, palette["neutral"])
+    label = QLabel(text)
+    label.setStyleSheet(
+        f"background:{bg};color:{fg};border:1px solid {border};"
+        "border-radius:9px;padding:5px 9px;font-size:9px;font-weight:900;"
+    )
+    return label
+
+
+def _metric_card(title: str) -> tuple[QFrame, QLabel, QLabel]:
+    card = _card()
+    layout = QVBoxLayout(card)
+    layout.setContentsMargins(14, 11, 14, 11)
+    layout.setSpacing(3)
+    label = QLabel(title.upper())
+    label.setStyleSheet(f"color:{MUTED};font-size:8px;font-weight:900;")
+    value = QLabel("—")
+    value.setStyleSheet(f"color:{NAVY};font-size:20px;font-weight:950;")
+    detail = QLabel("")
+    detail.setStyleSheet(f"color:{MUTED};font-size:8px;")
+    detail.setWordWrap(True)
+    layout.addWidget(label)
+    layout.addWidget(value)
+    layout.addWidget(detail)
+    return card, value, detail
+
+
+def _directive_label(directive: ProtectionDirective) -> str:
+    return {
+        ProtectionDirective.REQUIRED_PROTECT: "Required protect",
+        ProtectionDirective.DEFAULT_PROTECT: "Protect by default",
+        ProtectionDirective.USER_CHOICE: "Employee choice",
+        ProtectionDirective.ALLOW: "Allowed visible",
+    }[directive]
+
+
 class PolicyEditorDialog(QDialog):
     def __init__(self, policy: CompanyPolicy, parent=None) -> None:
         super().__init__(parent)
         self.policy = policy
         self.setWindowTitle("Company privacy policy")
-        self.resize(760, 680)
+        self.resize(800, 700)
         root = QVBoxLayout(self)
         root.setContentsMargins(20, 18, 20, 18)
         root.setSpacing(12)
 
         title = QLabel(f"{policy.organization_name} — Company Policy")
-        title.setStyleSheet("font-size:20px;font-weight:900;color:#062B4F;")
+        title.setStyleSheet(f"font-size:20px;font-weight:900;color:{NAVY};")
         note = QLabel(
             "These rules are distributed to managed devices. Documents, restore mappings "
-            "and connector tokens stay on each employee's computer."
+            "and connector tokens remain on each employee's computer."
         )
         note.setWordWrap(True)
-        note.setStyleSheet("color:#61798A;")
+        note.setStyleSheet(f"color:{MUTED};")
         root.addWidget(title)
         root.addWidget(note)
 
-        ai_box = QFrame()
-        ai_box.setObjectName("Card")
+        ai_box = _card()
         ai_layout = QHBoxLayout(ai_box)
+        ai_layout.setContentsMargins(14, 11, 14, 11)
         ai_layout.addWidget(QLabel("Allowed AI"))
         self.ai_checks: dict[str, QCheckBox] = {}
         for key, label in (
@@ -109,9 +176,9 @@ class PolicyEditorDialog(QDialog):
         ai_layout.addStretch(1)
         root.addWidget(ai_box)
 
-        apps_box = QFrame()
-        apps_box.setObjectName("Card")
+        apps_box = _card()
         apps_layout = QGridLayout(apps_box)
+        apps_layout.setContentsMargins(14, 11, 14, 11)
         apps_layout.addWidget(QLabel("Allowed Apps"), 0, 0, 1, 4)
         self.connector_checks: dict[str, QCheckBox] = {}
         for index, (key, label) in enumerate(_CONNECTORS):
@@ -124,7 +191,12 @@ class PolicyEditorDialog(QDialog):
         root.addWidget(QLabel("Protection rules"))
         self.rules_table = QTableWidget(len(_RULE_LABELS), 2)
         self.rules_table.setHorizontalHeaderLabels(["Sensitive data", "Company rule"])
-        self.rules_table.horizontalHeader().setStretchLastSection(True)
+        self.rules_table.horizontalHeader().setSectionResizeMode(
+            0, QHeaderView.ResizeMode.Stretch
+        )
+        self.rules_table.horizontalHeader().setSectionResizeMode(
+            1, QHeaderView.ResizeMode.Stretch
+        )
         self.rule_combos: dict[str, QComboBox] = {}
         for row, (entity_type, label) in enumerate(_RULE_LABELS.items()):
             item = QTableWidgetItem(label)
@@ -173,7 +245,15 @@ class PolicyEditorDialog(QDialog):
 
 
 class TeamPage(QWidget):
+    """Role-aware Organization workspace.
+
+    The historic class name is retained for compatibility with existing runtime
+    wiring. Business/Enterprise users see an operational organization dashboard;
+    Basic/Pro users see only enrollment controls. No document metadata is shown.
+    """
+
     policy_changed = Signal(object)
+    state_changed = Signal(object)
     open_account = Signal()
 
     def __init__(
@@ -201,31 +281,31 @@ class TeamPage(QWidget):
 
         self._build_ui()
         self._render()
-        QTimer.singleShot(1200, self.refresh_silent)
+        QTimer.singleShot(900, self.refresh_silent)
 
+    # ------------------------------------------------------------------ UI
     def _build_ui(self) -> None:
         root = QVBoxLayout(self)
-        root.setContentsMargins(24, 22, 24, 18)
-        root.setSpacing(14)
+        root.setContentsMargins(24, 20, 24, 18)
+        root.setSpacing(12)
 
         header = QHBoxLayout()
-        titles = QVBoxLayout()
-        title = QLabel("Team & Plans")
-        title.setStyleSheet("color:#062B4F;font-size:27px;font-weight:900;")
+        title_box = QVBoxLayout()
+        title = QLabel("Organization")
+        title.setStyleSheet(f"color:{NAVY};font-size:27px;font-weight:950;")
         subtitle = QLabel(
-            "Basic, Pro, Business and Enterprise share one product foundation. "
-            "Business/Enterprise add company policy, members and managed devices — not shared documents."
+            "Manage company privacy policy, members and managed devices. "
+            "Employee documents remain local and are never listed here."
         )
         subtitle.setWordWrap(True)
-        subtitle.setStyleSheet("color:#61798A;font-size:11px;")
-        titles.addWidget(title)
-        titles.addWidget(subtitle)
-        header.addLayout(titles, 1)
-        self.plan_badge = QLabel()
-        self.plan_badge.setStyleSheet(
-            "background:#E8F6F6;color:#0B7180;border:1px solid #B8E1E4;"
-            "border-radius:10px;padding:7px 11px;font-size:10px;font-weight:900;"
-        )
+        subtitle.setStyleSheet(f"color:{MUTED};font-size:10px;")
+        title_box.addWidget(title)
+        title_box.addWidget(subtitle)
+        header.addLayout(title_box, 1)
+
+        self.plan_badge = _status_chip("BASIC")
+        self.role_badge = _status_chip("INDIVIDUAL", tone="neutral")
+        header.addWidget(self.role_badge, alignment=Qt.AlignmentFlag.AlignTop)
         header.addWidget(self.plan_badge, alignment=Qt.AlignmentFlag.AlignTop)
         root.addLayout(header)
 
@@ -234,48 +314,68 @@ class TeamPage(QWidget):
         self.alert.setVisible(False)
         root.addWidget(self.alert)
 
-        plans = QGridLayout()
-        plans.setSpacing(10)
-        self.plan_cards: dict[PlanCode, QFrame] = {}
-        self.plan_markers: dict[PlanCode, QLabel] = {}
-        for column, definition in enumerate(all_plans()):
-            card = QFrame()
-            card.setObjectName("Card")
-            layout = QVBoxLayout(card)
-            heading = QLabel(definition.label)
-            heading.setStyleSheet("color:#062B4F;font-size:16px;font-weight:900;")
-            description = QLabel(definition.description)
-            description.setWordWrap(True)
-            description.setStyleSheet("color:#61798A;font-size:9px;")
-            marker = QLabel()
-            marker.setObjectName("Muted")
-            layout.addWidget(heading)
-            layout.addWidget(description)
-            layout.addStretch(1)
-            layout.addWidget(marker)
-            plans.addWidget(card, 0, column)
-            self.plan_cards[definition.code] = card
-            self.plan_markers[definition.code] = marker
-        root.addLayout(plans)
+        self.individual_card = self._build_individual_card()
+        root.addWidget(self.individual_card)
 
-        self.workspace = QFrame()
-        self.workspace.setObjectName("Card")
-        workspace_layout = QVBoxLayout(self.workspace)
-        workspace_layout.setContentsMargins(18, 16, 18, 16)
+        self.organization_shell = QWidget()
+        shell_layout = QVBoxLayout(self.organization_shell)
+        shell_layout.setContentsMargins(0, 0, 0, 0)
+        shell_layout.setSpacing(10)
+
+        shell_layout.addWidget(self._build_org_header())
+
+        nav = QHBoxLayout()
+        nav.setSpacing(6)
+        self.section_buttons: list[QPushButton] = []
+        self.sections = QStackedWidget()
+        for index, (label, page) in enumerate(
+            (
+                ("Overview", self._build_overview()),
+                ("Members", self._build_members()),
+                ("Policy", self._build_policy()),
+                ("Devices", self._build_devices()),
+            )
+        ):
+            button = QPushButton(label)
+            button.setCheckable(True)
+            button.setAutoExclusive(True)
+            button.clicked.connect(
+                lambda _checked=False, page_index=index: self._show_section(page_index)
+            )
+            self.section_buttons.append(button)
+            nav.addWidget(button)
+            self.sections.addWidget(page)
+        nav.addStretch(1)
+        shell_layout.addLayout(nav)
+        shell_layout.addWidget(self.sections, 1)
+        root.addWidget(self.organization_shell, 1)
+
+        self.section_buttons[0].setChecked(True)
+        self._show_section(0)
+
+    def _build_individual_card(self) -> QFrame:
+        card = _card()
+        layout = QVBoxLayout(card)
+        layout.setContentsMargins(18, 16, 18, 16)
+        layout.setSpacing(9)
 
         top = QHBoxLayout()
-        self.org_title = QLabel()
-        self.org_title.setStyleSheet("color:#062B4F;font-size:18px;font-weight:900;")
-        self.sync_label = QLabel()
-        self.sync_label.setStyleSheet("color:#61798A;")
-        top.addWidget(self.org_title)
+        title = QLabel("Individual PrivacyGate")
+        title.setStyleSheet(f"color:{NAVY};font-size:18px;font-weight:900;")
+        self.individual_sync = QLabel("Local-first")
+        self.individual_sync.setStyleSheet(f"color:{MUTED};")
+        top.addWidget(title)
         top.addStretch(1)
-        top.addWidget(self.sync_label)
-        workspace_layout.addLayout(top)
+        top.addWidget(self.individual_sync)
+        layout.addLayout(top)
 
-        self.org_summary = QLabel()
-        self.org_summary.setWordWrap(True)
-        workspace_layout.addWidget(self.org_summary)
+        note = QLabel(
+            "Basic and Pro are individual plans. Join a company to receive its privacy "
+            "policy, or create a Business workspace if you administer an organization."
+        )
+        note.setWordWrap(True)
+        note.setStyleSheet(f"color:{MUTED};")
+        layout.addWidget(note)
 
         actions = QHBoxLayout()
         self.refresh_button = QPushButton("Refresh", objectName="Secondary")
@@ -283,42 +383,314 @@ class TeamPage(QWidget):
         self.create_button = QPushButton(
             "Create Business workspace", objectName="Primary"
         )
-        self.edit_policy_button = QPushButton("Edit company policy", objectName="Primary")
-        self.invite_button = QPushButton("Create invite", objectName="Secondary")
         actions.addWidget(self.refresh_button)
         actions.addWidget(self.join_button)
         actions.addWidget(self.create_button)
-        actions.addWidget(self.edit_policy_button)
-        actions.addWidget(self.invite_button)
         actions.addStretch(1)
-        workspace_layout.addLayout(actions)
+        layout.addLayout(actions)
 
-        self.policy_summary = QLabel()
-        self.policy_summary.setWordWrap(True)
-        self.policy_summary.setStyleSheet(
-            "background:#F7FAFC;border:1px solid #DCE5EA;border-radius:9px;"
-            "padding:10px;color:#17384E;"
+        privacy = QLabel(
+            "No company policy is active. Existing PrivacyGate behavior remains unchanged."
         )
-        workspace_layout.addWidget(self.policy_summary)
-
-        details = QHBoxLayout()
-        self.members_label = QLabel()
-        self.members_label.setWordWrap(True)
-        self.devices_label = QLabel()
-        self.devices_label.setWordWrap(True)
-        details.addWidget(self.members_label, 1)
-        details.addWidget(self.devices_label, 1)
-        workspace_layout.addLayout(details)
-
-        root.addWidget(self.workspace)
-        root.addStretch(1)
+        privacy.setStyleSheet(
+            f"background:{SOFT};border:1px solid {BORDER};border-radius:9px;"
+            f"padding:10px;color:{NAVY};"
+        )
+        layout.addWidget(privacy)
 
         self.refresh_button.clicked.connect(self.refresh)
         self.join_button.clicked.connect(self._join_company)
         self.create_button.clicked.connect(self._create_workspace)
-        self.edit_policy_button.clicked.connect(self._edit_policy)
-        self.invite_button.clicked.connect(self._create_invite)
+        return card
 
+    def _build_org_header(self) -> QFrame:
+        card = _card()
+        layout = QVBoxLayout(card)
+        layout.setContentsMargins(18, 14, 18, 14)
+        layout.setSpacing(6)
+
+        top = QHBoxLayout()
+        self.org_title = QLabel()
+        self.org_title.setStyleSheet(f"color:{NAVY};font-size:20px;font-weight:950;")
+        self.sync_label = QLabel()
+        self.sync_label.setStyleSheet(f"color:{MUTED};")
+        top.addWidget(self.org_title)
+        top.addStretch(1)
+        top.addWidget(self.sync_label)
+        layout.addLayout(top)
+
+        self.org_summary = QLabel(
+            "Company controls privacy rules and approved destinations. "
+            "Employees keep separate local Libraries, restore mappings and connector tokens."
+        )
+        self.org_summary.setWordWrap(True)
+        self.org_summary.setStyleSheet(f"color:{MUTED};")
+        layout.addWidget(self.org_summary)
+
+        actions = QHBoxLayout()
+        self.org_refresh_button = QPushButton("Refresh", objectName="Secondary")
+        self.invite_button = QPushButton("Invite member", objectName="Primary")
+        self.edit_policy_button = QPushButton(
+            "Edit privacy policy", objectName="Secondary"
+        )
+        actions.addWidget(self.org_refresh_button)
+        actions.addWidget(self.invite_button)
+        actions.addWidget(self.edit_policy_button)
+        actions.addStretch(1)
+        layout.addLayout(actions)
+
+        self.org_refresh_button.clicked.connect(self.refresh)
+        self.invite_button.clicked.connect(self._create_invite)
+        self.edit_policy_button.clicked.connect(self._edit_policy)
+        return card
+
+    def _build_overview(self) -> QWidget:
+        page = QWidget()
+        layout = QVBoxLayout(page)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(10)
+
+        metrics = QGridLayout()
+        metrics.setSpacing(10)
+        self.seats_card, self.seats_value, self.seats_detail = _metric_card("Seats")
+        self.members_card, self.members_value, self.members_detail = _metric_card("Members")
+        self.devices_card, self.devices_value, self.devices_detail = _metric_card("Managed devices")
+        self.policy_card, self.policy_value, self.policy_detail = _metric_card("Policy")
+        for column, card in enumerate(
+            (self.seats_card, self.members_card, self.devices_card, self.policy_card)
+        ):
+            metrics.addWidget(card, 0, column)
+        layout.addLayout(metrics)
+
+        columns = QHBoxLayout()
+        columns.setSpacing(10)
+
+        policy_card = _card()
+        policy_layout = QVBoxLayout(policy_card)
+        policy_layout.setContentsMargins(16, 13, 16, 13)
+        policy_title = QLabel("Company privacy policy")
+        policy_title.setStyleSheet(f"color:{NAVY};font-size:14px;font-weight:900;")
+        self.overview_policy = QLabel()
+        self.overview_policy.setWordWrap(True)
+        self.overview_policy.setStyleSheet(f"color:{MUTED};")
+        policy_layout.addWidget(policy_title)
+        policy_layout.addWidget(self.overview_policy)
+        policy_layout.addStretch(1)
+        columns.addWidget(policy_card, 1)
+
+        destinations_card = _card()
+        dest_layout = QVBoxLayout(destinations_card)
+        dest_layout.setContentsMargins(16, 13, 16, 13)
+        dest_title = QLabel("Approved destinations")
+        dest_title.setStyleSheet(f"color:{NAVY};font-size:14px;font-weight:900;")
+        self.overview_destinations = QLabel()
+        self.overview_destinations.setWordWrap(True)
+        self.overview_destinations.setStyleSheet(f"color:{MUTED};")
+        dest_layout.addWidget(dest_title)
+        dest_layout.addWidget(self.overview_destinations)
+        dest_layout.addStretch(1)
+        columns.addWidget(destinations_card, 1)
+
+        layout.addLayout(columns)
+
+        boundary = _card()
+        boundary_layout = QVBoxLayout(boundary)
+        boundary_layout.setContentsMargins(16, 12, 16, 12)
+        title = QLabel("Privacy boundary")
+        title.setStyleSheet(f"color:{NAVY};font-size:13px;font-weight:900;")
+        self.boundary_text = QLabel(
+            "Admin sees organization identity, roles, device status and policy sync only. "
+            "Original/protected documents, Library contents, restore mappings and connector "
+            "OAuth tokens stay on each employee device."
+        )
+        self.boundary_text.setWordWrap(True)
+        self.boundary_text.setStyleSheet(f"color:{MUTED};")
+        boundary_layout.addWidget(title)
+        boundary_layout.addWidget(self.boundary_text)
+        layout.addWidget(boundary)
+        layout.addStretch(1)
+        return page
+
+    def _build_members(self) -> QWidget:
+        page = QWidget()
+        layout = QVBoxLayout(page)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(8)
+
+        top = QHBoxLayout()
+        title = QLabel("Members")
+        title.setStyleSheet(f"color:{NAVY};font-size:16px;font-weight:900;")
+        self.member_help = QLabel()
+        self.member_help.setStyleSheet(f"color:{MUTED};")
+        top.addWidget(title)
+        top.addStretch(1)
+        top.addWidget(self.member_help)
+        layout.addLayout(top)
+
+        self.members_table = QTableWidget(0, 4)
+        self.members_table.setHorizontalHeaderLabels(
+            ["Account", "Role", "Status", "Joined"]
+        )
+        self.members_table.setSelectionBehavior(
+            QAbstractItemView.SelectionBehavior.SelectRows
+        )
+        self.members_table.setSelectionMode(
+            QAbstractItemView.SelectionMode.SingleSelection
+        )
+        self.members_table.setEditTriggers(
+            QAbstractItemView.EditTrigger.NoEditTriggers
+        )
+        self.members_table.verticalHeader().setVisible(False)
+        self.members_table.horizontalHeader().setSectionResizeMode(
+            0, QHeaderView.ResizeMode.Stretch
+        )
+        for column in (1, 2, 3):
+            self.members_table.horizontalHeader().setSectionResizeMode(
+                column, QHeaderView.ResizeMode.ResizeToContents
+            )
+        layout.addWidget(self.members_table, 1)
+
+        actions = QHBoxLayout()
+        self.member_role_button = QPushButton("Change role", objectName="Secondary")
+        self.member_toggle_button = QPushButton("Disable / reactivate", objectName="Secondary")
+        self.member_revoke_button = QPushButton("Revoke member", objectName="Secondary")
+        actions.addWidget(self.member_role_button)
+        actions.addWidget(self.member_toggle_button)
+        actions.addWidget(self.member_revoke_button)
+        actions.addStretch(1)
+        layout.addLayout(actions)
+
+        self.member_role_button.clicked.connect(self._change_member_role)
+        self.member_toggle_button.clicked.connect(self._toggle_member_status)
+        self.member_revoke_button.clicked.connect(self._revoke_member)
+        return page
+
+    def _build_policy(self) -> QWidget:
+        page = QWidget()
+        layout = QVBoxLayout(page)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(10)
+
+        top = QHBoxLayout()
+        title = QLabel("Company privacy policy")
+        title.setStyleSheet(f"color:{NAVY};font-size:16px;font-weight:900;")
+        self.policy_version_chip = _status_chip("NO POLICY", tone="neutral")
+        top.addWidget(title)
+        top.addStretch(1)
+        top.addWidget(self.policy_version_chip)
+        layout.addLayout(top)
+
+        grids = QHBoxLayout()
+        grids.setSpacing(10)
+
+        rules = _card()
+        rules_layout = QVBoxLayout(rules)
+        rules_layout.setContentsMargins(16, 13, 16, 13)
+        rules_layout.addWidget(QLabel("Sensitive data rules"))
+        self.policy_rules = QLabel()
+        self.policy_rules.setWordWrap(True)
+        self.policy_rules.setStyleSheet(f"color:{MUTED};")
+        rules_layout.addWidget(self.policy_rules)
+        rules_layout.addStretch(1)
+        grids.addWidget(rules, 1)
+
+        destinations = _card()
+        dest_layout = QVBoxLayout(destinations)
+        dest_layout.setContentsMargins(16, 13, 16, 13)
+        dest_layout.addWidget(QLabel("AI & Apps"))
+        self.policy_destinations = QLabel()
+        self.policy_destinations.setWordWrap(True)
+        self.policy_destinations.setStyleSheet(f"color:{MUTED};")
+        dest_layout.addWidget(self.policy_destinations)
+        dest_layout.addStretch(1)
+        grids.addWidget(destinations, 1)
+        layout.addLayout(grids)
+
+        note = QLabel(
+            "Required rules are enforced again immediately before protection and AI handoff; "
+            "the UI checkbox is not the security boundary."
+        )
+        note.setWordWrap(True)
+        note.setStyleSheet(
+            f"background:#EDF8F4;border:1px solid #B9DECD;border-radius:9px;"
+            f"padding:10px;color:{GREEN};"
+        )
+        layout.addWidget(note)
+        layout.addStretch(1)
+        return page
+
+    def _build_devices(self) -> QWidget:
+        page = QWidget()
+        layout = QVBoxLayout(page)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(8)
+
+        top = QHBoxLayout()
+        title = QLabel("Managed devices")
+        title.setStyleSheet(f"color:{NAVY};font-size:16px;font-weight:900;")
+        self.device_help = QLabel()
+        self.device_help.setStyleSheet(f"color:{MUTED};")
+        top.addWidget(title)
+        top.addStretch(1)
+        top.addWidget(self.device_help)
+        layout.addLayout(top)
+
+        self.devices_table = QTableWidget(0, 7)
+        self.devices_table.setHorizontalHeaderLabels(
+            ["User", "Device", "Platform", "App", "Status", "Policy", "Last sync"]
+        )
+        self.devices_table.setSelectionBehavior(
+            QAbstractItemView.SelectionBehavior.SelectRows
+        )
+        self.devices_table.setSelectionMode(
+            QAbstractItemView.SelectionMode.SingleSelection
+        )
+        self.devices_table.setEditTriggers(
+            QAbstractItemView.EditTrigger.NoEditTriggers
+        )
+        self.devices_table.verticalHeader().setVisible(False)
+        self.devices_table.horizontalHeader().setSectionResizeMode(
+            0, QHeaderView.ResizeMode.Stretch
+        )
+        self.devices_table.horizontalHeader().setSectionResizeMode(
+            1, QHeaderView.ResizeMode.Stretch
+        )
+        for column in range(2, 7):
+            self.devices_table.horizontalHeader().setSectionResizeMode(
+                column, QHeaderView.ResizeMode.ResizeToContents
+            )
+        layout.addWidget(self.devices_table, 1)
+
+        actions = QHBoxLayout()
+        self.device_toggle_button = QPushButton("Disable / reactivate", objectName="Secondary")
+        self.device_revoke_button = QPushButton("Revoke device", objectName="Secondary")
+        actions.addWidget(self.device_toggle_button)
+        actions.addWidget(self.device_revoke_button)
+        actions.addStretch(1)
+        layout.addLayout(actions)
+
+        self.device_toggle_button.clicked.connect(self._toggle_device_status)
+        self.device_revoke_button.clicked.connect(self._revoke_device)
+        return page
+
+    def _show_section(self, index: int) -> None:
+        self.sections.setCurrentIndex(index)
+        for button_index, button in enumerate(self.section_buttons):
+            selected = button_index == index
+            button.setChecked(selected)
+            button.setStyleSheet(
+                (
+                    f"background:{TEAL};color:#FFFFFF;border:none;border-radius:9px;"
+                    "padding:8px 14px;font-weight:900;"
+                )
+                if selected
+                else (
+                    f"background:#FFFFFF;color:{NAVY};border:1px solid {BORDER};"
+                    "border-radius:9px;padding:8px 14px;font-weight:800;"
+                )
+            )
+
+    # ------------------------------------------------------------- sync/state
     def current_policy(self) -> CompanyPolicy | None:
         return self.state.policy
 
@@ -351,7 +723,7 @@ class TeamPage(QWidget):
         if show_errors:
             worker.signals.error.connect(
                 lambda message: QMessageBox.warning(
-                    self, "Team sync unavailable", message
+                    self, "Organization sync unavailable", message
                 )
             )
         worker.signals.finished.connect(self._worker_finished)
@@ -373,11 +745,19 @@ class TeamPage(QWidget):
             self.refresh_button,
             self.join_button,
             self.create_button,
+            self.org_refresh_button,
             self.edit_policy_button,
             self.invite_button,
+            self.member_role_button,
+            self.member_toggle_button,
+            self.member_revoke_button,
+            self.device_toggle_button,
+            self.device_revoke_button,
         ):
             button.setEnabled(not busy)
-        self.refresh_button.setText("Syncing…" if busy else "Refresh")
+        label = "Syncing…" if busy else "Refresh"
+        self.refresh_button.setText(label)
+        self.org_refresh_button.setText(label)
 
     def _apply_state(
         self,
@@ -394,25 +774,14 @@ class TeamPage(QWidget):
             self._devices = devices
         self._render()
         self.policy_changed.emit(state.policy)
+        self.state_changed.emit(state)
 
+    # ---------------------------------------------------------------- render
     def _render(self) -> None:
         self.plan_badge.setText(self.state.plan.label.upper())
-        for code, marker in self.plan_markers.items():
-            if code == self.state.plan:
-                marker.setText("CURRENT PLAN")
-                marker.setStyleSheet("color:#0B7180;font-size:8px;font-weight:900;")
-            elif code is PlanCode.BASIC:
-                marker.setText("FREE")
-                marker.setStyleSheet("color:#61798A;font-size:8px;font-weight:800;")
-            elif code is PlanCode.BUSINESS:
-                marker.setText("TEAM POLICY + SEATS")
-                marker.setStyleSheet("color:#61798A;font-size:8px;font-weight:800;")
-            elif code is PlanCode.ENTERPRISE:
-                marker.setText("ADVANCED ORGANIZATION")
-                marker.setStyleSheet("color:#61798A;font-size:8px;font-weight:800;")
-            else:
-                marker.setText("INDIVIDUAL")
-                marker.setStyleSheet("color:#61798A;font-size:8px;font-weight:800;")
+        self.role_badge.setText(
+            self.state.role.upper() if self.state.organization_id else "INDIVIDUAL"
+        )
 
         if self._cache_error:
             self.alert.setVisible(True)
@@ -424,101 +793,211 @@ class TeamPage(QWidget):
         else:
             self.alert.setVisible(False)
 
-        signed_in = bool(self.account_client.current_user_id)
-        if not self.state.organization_id:
-            self.org_title.setText("Individual workspace")
-            self.sync_label.setText("Local-first")
-            self.org_summary.setText(
-                "Your current PrivacyGate data remains local. Sign in to sync an entitlement, "
-                "join a company with an invitation code, or create a Business workspace. "
-                "Enterprise is provisioned centrally rather than by a reusable local key."
+        has_org = bool(self.state.organization_id)
+        self.individual_card.setVisible(not has_org)
+        self.organization_shell.setVisible(has_org)
+
+        if not has_org:
+            signed_in = bool(self.account_client.current_user_id)
+            self.individual_sync.setText(
+                "Synced individual account" if signed_in else "Sign in required for cloud entitlement"
             )
-            self.policy_summary.setText(
-                "No company policy is active. Existing PrivacyGate behavior remains unchanged."
-            )
-            self.members_label.setText("Members\n—")
-            identity = self.identity_store.load_or_create()
-            self.devices_label.setText(f"This device\n{identity.display_name} • local")
-            self.join_button.setVisible(True)
-            self.create_button.setVisible(True)
-            self.edit_policy_button.setVisible(False)
-            self.invite_button.setVisible(False)
-            if not signed_in:
-                self.sync_label.setText("Sign in required for cloud policy sync")
             return
 
-        policy = self.state.policy
-        self.org_title.setText(self.state.organization_name or "Company workspace")
-        sync = self.state.synced_at.replace("T", " ")[:16] if self.state.synced_at else "cached"
+        self.org_title.setText(self.state.organization_name or "Organization")
+        sync = (
+            self.state.synced_at.replace("T", " ")[:16]
+            if self.state.synced_at
+            else "cached"
+        )
         self.sync_label.setText(
             f"{self.state.role.title()} • {self.state.plan.label} • synced {sync}"
         )
-        self.org_summary.setText(
-            "Company controls privacy rules and approved destinations. "
-            "Each employee keeps a separate local Library, restore mappings and connector tokens."
-        )
+
+        can_admin = self.state.role in {"owner", "admin"}
+        can_manage = self.state.role in {"owner", "admin"}
+        is_manager = self.state.role in {"owner", "admin", "manager"}
+
+        self.invite_button.setVisible(can_admin)
+        self.edit_policy_button.setVisible(can_admin and self.state.policy is not None)
+        self.member_role_button.setVisible(can_manage)
+        self.member_toggle_button.setVisible(can_manage)
+        self.member_revoke_button.setVisible(can_manage)
+        self.device_toggle_button.setVisible(can_manage)
+        self.device_revoke_button.setVisible(can_manage)
+
+        self.section_buttons[1].setVisible(is_manager)
+        self.section_buttons[3].setVisible(is_manager)
+        if not is_manager and self.sections.currentIndex() in {1, 3}:
+            self._show_section(0)
+
+        self._render_overview()
+        self._render_members()
+        self._render_policy()
+        self._render_devices()
+
+    def _render_overview(self) -> None:
+        active_members = [
+            row for row in self._members if str(row.get("status") or "") == "active"
+        ]
+        active_devices = [
+            row for row in self._devices if str(row.get("status") or "") == "active"
+        ]
+        synced_devices = [
+            row
+            for row in active_devices
+            if self.state.policy
+            and int(row.get("last_policy_version") or 0) == self.state.policy.version
+        ]
+
+        if self.state.role in {"owner", "admin", "manager"}:
+            used = len(active_members)
+            limit = self.state.seat_limit
+            self.seats_value.setText(f"{used} / {limit if limit is not None else '—'}")
+            self.seats_detail.setText("Active memberships / licensed seats")
+            self.members_value.setText(str(len(self._members)))
+            self.members_detail.setText(f"{used} active")
+            self.devices_value.setText(str(len(self._devices)))
+            self.devices_detail.setText(
+                f"{len(synced_devices)} on current policy"
+                if self.state.policy
+                else "No active company policy"
+            )
+        else:
+            self.seats_value.setText("Managed")
+            self.seats_detail.setText("Seat is controlled by your organization")
+            self.members_value.setText("Private")
+            self.members_detail.setText("Other members are not shown")
+            self.devices_value.setText("This device")
+            self.devices_detail.setText(
+                self.identity_store.load_or_create().display_name
+            )
+
+        policy = self.state.policy
         if policy:
+            self.policy_value.setText(f"v{policy.version}")
+            self.policy_detail.setText("Active company policy")
             required = [
-                entity.replace("_", " ").title()
+                _RULE_LABELS.get(entity, entity.replace("_", " ").title())
                 for entity, directive in policy.protection_rules.items()
                 if directive is ProtectionDirective.REQUIRED_PROTECT
             ]
+            self.overview_policy.setText(
+                "Required protection\n"
+                + ("\n".join(f"🔒 {item}" for item in required) or "No mandatory categories")
+            )
             allowed_ai = [
                 key.title()
-                for key, allowed in policy.allowed_ai.items()
-                if allowed
+                for key, enabled in policy.allowed_ai.items()
+                if enabled
             ]
             allowed_apps = [
-                key.replace("_", " ").title()
-                for key, allowed in policy.allowed_connectors.items()
-                if allowed
+                ("All approved connectors" if key == "*" else key.replace("_", " ").title())
+                for key, enabled in policy.allowed_connectors.items()
+                if enabled
             ]
-            self.policy_summary.setText(
-                f"{policy.policy_name} • v{policy.version} • ACTIVE\n"
-                f"Required protection: {', '.join(required) or 'None'}\n"
-                f"Allowed AI: {', '.join(allowed_ai) or 'None'}\n"
-                f"Allowed Apps: {', '.join(allowed_apps) or 'None'}"
+            self.overview_destinations.setText(
+                "AI\n"
+                + (", ".join(allowed_ai) or "None")
+                + "\n\nApps\n"
+                + (", ".join(allowed_apps) or "None")
             )
         else:
-            self.policy_summary.setText("Company policy unavailable.")
+            self.policy_value.setText("—")
+            self.policy_detail.setText("Policy unavailable")
+            self.overview_policy.setText("Company policy unavailable.")
+            self.overview_destinations.setText("Approved destinations unavailable.")
 
-        member_lines = ["Members"]
-        if self._members:
-            for member in self._members[:8]:
-                identity = str(member.get("email") or member.get("user_id") or "Member")
-                member_lines.append(
-                    f"• {identity} — {str(member.get('role') or 'member').title()}"
-                )
-        else:
-            member_lines.append("• Synced member details available to managers/admins")
-        self.members_label.setText("\n".join(member_lines))
+    def _render_members(self) -> None:
+        self.members_table.setRowCount(len(self._members))
+        for row, member in enumerate(self._members):
+            email = str(member.get("email") or member.get("user_id") or "Member")
+            role = str(member.get("role") or "member").title()
+            status = str(member.get("status") or "active").title()
+            joined = str(member.get("joined_at") or "").replace("T", " ")[:16]
+            values = (email, role, status, joined)
+            for column, value in enumerate(values):
+                item = QTableWidgetItem(value)
+                if column == 0:
+                    item.setData(Qt.ItemDataRole.UserRole, str(member.get("user_id") or ""))
+                    item.setData(int(Qt.ItemDataRole.UserRole) + 1, str(member.get("role") or "member"))
+                    item.setData(int(Qt.ItemDataRole.UserRole) + 2, str(member.get("status") or "active"))
+                self.members_table.setItem(row, column, item)
+        self.member_help.setText(
+            "Owner/Admin can manage roles and access."
+            if self.state.role in {"owner", "admin"}
+            else "Read-only organization view."
+        )
 
-        device_lines = ["Devices"]
-        if self._devices:
-            for device in self._devices[:8]:
-                name = str(device.get("display_name") or "Device")
-                version = device.get("last_policy_version")
-                device_lines.append(
-                    f"• {name} — policy v{version if version is not None else '—'}"
-                )
-        else:
-            identity = self.identity_store.load_or_create()
-            device_lines.append(f"• {identity.display_name} — protected locally")
-        self.devices_label.setText("\n".join(device_lines))
+    def _render_policy(self) -> None:
+        policy = self.state.policy
+        if not policy:
+            self.policy_version_chip.setText("UNAVAILABLE")
+            self.policy_rules.setText("Company policy unavailable.")
+            self.policy_destinations.setText("Approved destinations unavailable.")
+            return
 
-        can_admin = self.state.role in {"owner", "admin"}
-        self.join_button.setVisible(False)
-        self.create_button.setVisible(False)
-        self.edit_policy_button.setVisible(can_admin and policy is not None)
-        self.invite_button.setVisible(can_admin)
+        self.policy_version_chip.setText(f"ACTIVE • v{policy.version}")
+        rules: list[str] = []
+        for entity, directive in policy.protection_rules.items():
+            label = _RULE_LABELS.get(entity, entity.replace("_", " ").title())
+            lock = " 🔒" if directive is ProtectionDirective.REQUIRED_PROTECT else ""
+            rules.append(f"{label}: {_directive_label(directive)}{lock}")
+        self.policy_rules.setText("\n".join(rules))
 
+        ai_lines = [
+            f"{'✓' if enabled else '✕'} {key.title()}"
+            for key, enabled in policy.allowed_ai.items()
+        ]
+        app_lines = [
+            f"{'✓' if enabled else '✕'} "
+            + ("All other connectors" if key == "*" else key.replace("_", " ").title())
+            for key, enabled in policy.allowed_connectors.items()
+        ]
+        self.policy_destinations.setText(
+            "AI\n" + "\n".join(ai_lines) + "\n\nApps\n" + "\n".join(app_lines)
+        )
+
+    def _render_devices(self) -> None:
+        self.devices_table.setRowCount(len(self._devices))
+        for row, device in enumerate(self._devices):
+            policy_version = device.get("last_policy_version")
+            last_sync = str(device.get("last_policy_sync_at") or "").replace("T", " ")[:16]
+            values = (
+                str(device.get("email") or device.get("user_id") or "Member"),
+                str(device.get("display_name") or "Device"),
+                str(device.get("platform") or "—"),
+                str(device.get("app_version") or "—"),
+                str(device.get("status") or "active").title(),
+                f"v{policy_version}" if policy_version is not None else "—",
+                last_sync or "—",
+            )
+            for column, value in enumerate(values):
+                item = QTableWidgetItem(value)
+                if column == 0:
+                    item.setData(
+                        Qt.ItemDataRole.UserRole,
+                        str(device.get("installation_hash") or ""),
+                    )
+                    item.setData(
+                        int(Qt.ItemDataRole.UserRole) + 1,
+                        str(device.get("status") or "active"),
+                    )
+                self.devices_table.setItem(row, column, item)
+        self.device_help.setText(
+            "Owner/Admin can disable or revoke a managed endpoint."
+            if self.state.role in {"owner", "admin"}
+            else "Read-only organization view."
+        )
+
+    # -------------------------------------------------------------- enrollment
     def _require_signed_in(self) -> bool:
         if self.account_client.current_user_id:
             return True
         response = QMessageBox.question(
             self,
             "Sign in required",
-            "Team policy sync is attached to your PrivacyGate account. "
+            "Organization policy sync is attached to your PrivacyGate account. "
             "Open the account/connection page now?",
         )
         if response == QMessageBox.StandardButton.Yes:
@@ -561,21 +1040,29 @@ class TeamPage(QWidget):
         )
         if not ok:
             return
+
+        def operation(session: AccountSession):
+            try:
+                return self.team_client.create_business_workspace(
+                    session, name, seat_limit=seats
+                )
+            except TeamServiceError as error:
+                if "already belongs to an active PrivacyGate organization" in str(error):
+                    return self.team_client.fetch_team_state(session)
+                raise
+
         self._run_team_action(
-            lambda session: self.team_client.create_business_workspace(
-                session, name, seat_limit=seats
-            ),
-            success_message=(
-                "Business workspace created. A starter company policy is active and cached locally."
-            ),
+            operation,
+            success_message="Business workspace is active on this device.",
         )
 
+    # ------------------------------------------------------------ admin actions
     def _create_invite(self) -> None:
         if not self.state.organization_id or self.state.role not in {"owner", "admin"}:
             return
         role_label, ok = QInputDialog.getItem(
             self,
-            "Create company invite",
+            "Invite member",
             "Role:",
             ["Member", "Manager", "Admin"],
             0,
@@ -598,10 +1085,10 @@ class TeamPage(QWidget):
                 self,
                 "Invitation created",
                 f"One-time invitation code:\n\n{code}\n\n"
-                "The code has been copied to the clipboard. It expires automatically.",
+                "The code has been copied to the clipboard and expires automatically.",
             )
 
-        self._run_team_action(task, result_handler=success)
+        self._run_team_action(task, result_handler=success, refresh_after=True)
 
     def _edit_policy(self) -> None:
         if not self.state.policy or self.state.role not in {"owner", "admin"}:
@@ -615,12 +1102,160 @@ class TeamPage(QWidget):
             success_message="Company policy published and cached on this device.",
         )
 
+    def _selected_member(self) -> tuple[str, str, str] | None:
+        row = self.members_table.currentRow()
+        if row < 0:
+            QMessageBox.information(self, "Select a member", "Select a member first.")
+            return None
+        item = self.members_table.item(row, 0)
+        if item is None:
+            return None
+        return (
+            str(item.data(Qt.ItemDataRole.UserRole) or ""),
+            str(item.data(int(Qt.ItemDataRole.UserRole) + 1) or "member"),
+            str(item.data(int(Qt.ItemDataRole.UserRole) + 2) or "active"),
+        )
+
+    def _change_member_role(self) -> None:
+        selected = self._selected_member()
+        if not selected or not self.state.organization_id:
+            return
+        user_id, current_role, _status = selected
+        if current_role == "owner":
+            QMessageBox.information(
+                self, "Owner role", "The organization owner role cannot be changed here."
+            )
+            return
+        role_label, ok = QInputDialog.getItem(
+            self,
+            "Change member role",
+            "New role:",
+            ["Member", "Manager", "Admin"],
+            ["member", "manager", "admin"].index(current_role)
+            if current_role in {"member", "manager", "admin"}
+            else 0,
+            False,
+        )
+        if not ok:
+            return
+        self._run_team_action(
+            lambda session: set_member_role(
+                self.team_client, session, self.state.organization_id, user_id, role_label.lower()
+            ),
+            success_message="Member role updated.",
+            refresh_after=True,
+        )
+
+    def _toggle_member_status(self) -> None:
+        selected = self._selected_member()
+        if not selected or not self.state.organization_id:
+            return
+        user_id, role, status = selected
+        if role == "owner":
+            QMessageBox.information(
+                self, "Owner access", "The organization owner cannot be disabled."
+            )
+            return
+        target = "active" if status != "active" else "disabled"
+        self._run_team_action(
+            lambda session: set_member_status(
+                self.team_client, session, self.state.organization_id, user_id, target
+            ),
+            success_message=f"Member {target}.",
+            refresh_after=True,
+        )
+
+    def _revoke_member(self) -> None:
+        selected = self._selected_member()
+        if not selected or not self.state.organization_id:
+            return
+        user_id, role, _status = selected
+        if role == "owner":
+            QMessageBox.information(
+                self, "Owner access", "The organization owner cannot be revoked."
+            )
+            return
+        if (
+            QMessageBox.question(
+                self,
+                "Revoke member",
+                "Revoke this member and disable their organization devices?",
+            )
+            != QMessageBox.StandardButton.Yes
+        ):
+            return
+        self._run_team_action(
+            lambda session: set_member_status(
+                self.team_client, session, self.state.organization_id, user_id, "revoked"
+            ),
+            success_message="Member revoked.",
+            refresh_after=True,
+        )
+
+    def _selected_device(self) -> tuple[str, str] | None:
+        row = self.devices_table.currentRow()
+        if row < 0:
+            QMessageBox.information(self, "Select a device", "Select a device first.")
+            return None
+        item = self.devices_table.item(row, 0)
+        if item is None:
+            return None
+        installation_hash = str(item.data(Qt.ItemDataRole.UserRole) or "")
+        status = str(item.data(int(Qt.ItemDataRole.UserRole) + 1) or "active")
+        if not installation_hash:
+            QMessageBox.warning(
+                self,
+                "Device unavailable",
+                "This device record does not expose a management identifier yet. Refresh and try again.",
+            )
+            return None
+        return installation_hash, status
+
+    def _toggle_device_status(self) -> None:
+        selected = self._selected_device()
+        if not selected or not self.state.organization_id:
+            return
+        installation_hash, status = selected
+        target = "active" if status != "active" else "disabled"
+        self._run_team_action(
+            lambda session: set_device_status(
+                self.team_client, session, self.state.organization_id, installation_hash, target
+            ),
+            success_message=f"Device {target}.",
+            refresh_after=True,
+        )
+
+    def _revoke_device(self) -> None:
+        selected = self._selected_device()
+        if not selected or not self.state.organization_id:
+            return
+        installation_hash, _status = selected
+        if (
+            QMessageBox.question(
+                self,
+                "Revoke device",
+                "Revoke this endpoint from the organization? The device can no longer "
+                "sync managed policy until it is explicitly reactivated.",
+            )
+            != QMessageBox.StandardButton.Yes
+        ):
+            return
+        self._run_team_action(
+            lambda session: set_device_status(
+                self.team_client, session, self.state.organization_id, installation_hash, "revoked"
+            ),
+            success_message="Device revoked.",
+            refresh_after=True,
+        )
+
+    # ------------------------------------------------------------ worker helper
     def _run_team_action(
         self,
         operation,
         *,
         success_message: str = "",
         result_handler=None,
+        refresh_after: bool = False,
     ) -> None:
         if self._active_worker is not None:
             return
@@ -642,11 +1277,15 @@ class TeamPage(QWidget):
             elif result_handler is not None:
                 result_handler(result)
             if success_message:
-                QMessageBox.information(self, "PrivacyGate Team", success_message)
+                QMessageBox.information(self, "PrivacyGate Organization", success_message)
+            if refresh_after:
+                QTimer.singleShot(0, self.refresh_silent)
 
         worker.signals.result.connect(ready)
         worker.signals.error.connect(
-            lambda message: QMessageBox.warning(self, "Team action failed", message)
+            lambda message: QMessageBox.warning(
+                self, "Organization action failed", message
+            )
         )
         worker.signals.finished.connect(self._worker_finished)
         self.thread_pool.start(worker)

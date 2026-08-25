@@ -13,14 +13,7 @@ _INSTALLED = False
 
 
 def install_team_action_recovery() -> None:
-    """Make Team actions recover from a stale local organization snapshot.
-
-    A user can be promoted or attached to an organization in the control plane
-    while PrivacyGate is already open. If the stale page still shows the
-    individual workspace, attempting to create another workspace must not leave
-    the user with a misleading error. Instead, sync the existing organization
-    immediately after the current worker finishes.
-    """
+    """Recover organization actions from stale local snapshots without bypassing policy."""
 
     global _INSTALLED
     if _INSTALLED:
@@ -33,11 +26,12 @@ def install_team_action_recovery() -> None:
         *,
         success_message: str = "",
         result_handler=None,
+        refresh_after: bool = False,
     ) -> None:
         if self._active_worker is not None:
             return
 
-        self._team_refresh_after_worker = False
+        self._team_refresh_after_worker = bool(refresh_after)
 
         def task():
             session = self.account_client.restore_session()
@@ -52,13 +46,13 @@ def install_team_action_recovery() -> None:
         def ready(result: object) -> None:
             if isinstance(result, TeamState):
                 self._apply_state(result)
-                # Load manager-visible member/device details after the action
-                # worker has fully released the page's busy state.
                 self._team_refresh_after_worker = True
             elif result_handler is not None:
                 result_handler(result)
             if success_message:
-                QMessageBox.information(self, "PrivacyGate Team", success_message)
+                QMessageBox.information(
+                    self, "PrivacyGate Organization", success_message
+                )
 
         def failed(message: str) -> None:
             normalized = message.lower()
@@ -66,7 +60,9 @@ def install_team_action_recovery() -> None:
                 self._team_refresh_after_worker = True
                 try:
                     self.alert.setVisible(True)
-                    self.alert.setText("Existing company workspace found. Syncing your account…")
+                    self.alert.setText(
+                        "Existing organization found. Syncing your account…"
+                    )
                     self.alert.setStyleSheet(
                         "background:#EAF6F6;color:#0B7180;border:1px solid #B8E1E4;"
                         "border-radius:9px;padding:9px;font-weight:800;"
@@ -74,7 +70,7 @@ def install_team_action_recovery() -> None:
                 except Exception:
                     pass
                 return
-            QMessageBox.warning(self, "Team action failed", message)
+            QMessageBox.warning(self, "Organization action failed", message)
 
         def finished() -> None:
             self._active_worker = None
