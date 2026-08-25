@@ -8,10 +8,13 @@ from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
     QLabel,
+    QMenu,
     QPushButton,
+    QToolButton,
     QVBoxLayout,
 )
 
+from ai_pm_lab_privacy_gate.ui.iconography import icon
 from ai_pm_lab_privacy_gate.ui.protection_page import ProtectionPage
 
 
@@ -19,7 +22,7 @@ _INSTALLED = False
 
 
 def _named_save_to_library(page: ProtectionPage):
-    """Save through the standard title prompt and encrypted local Library."""
+    """Save through the standard PrivacyGate Library save flow."""
     return page._save_to_library()
 
 
@@ -79,9 +82,6 @@ def _save_and_download(page: ProtectionPage) -> None:
                         result, destination, source_document=document
                     )
                 except ValueError:
-                    # Some PDFs expose text in an order that cannot be mapped back
-                    # to every visual coordinate safely. Falling back automatically
-                    # is safer and much clearer than surfacing a developer error.
                     used_safe_layout = True
                     page.service.save_protected_pdf(
                         result, destination, source_document=None
@@ -140,14 +140,15 @@ def _save_and_download(page: ProtectionPage) -> None:
         page._redesign_end_operation("verify")
 
 
-def _copy_and_open_chatgpt(page: ProtectionPage) -> None:
+def _ai_handoff(page: ProtectionPage, destination_key: str) -> None:
     if page.current_result is None:
         return
-    page._redesign_begin_operation("verify", "Final privacy check before opening ChatGPT…")
+    handler = getattr(page, "_privacygate_ai_handoff", None)
+    if not callable(handler):
+        return
+    page._redesign_begin_operation("verify", "Running AI Privacy Preflight…")
     try:
-        page._copy_and_open_chatgpt()
-        if page.current_result is not None:
-            _status(page, "Protected text copied — ChatGPT opened")
+        handler(destination_key)
     finally:
         page._redesign_end_operation("verify")
 
@@ -166,6 +167,25 @@ def _save_only(page: ProtectionPage) -> None:
         page._redesign_end_operation("verify")
 
 
+def _ai_menu(page: ProtectionPage) -> QMenu:
+    menu = QMenu(page)
+    menu.addSection("AI destination")
+
+    chatgpt = menu.addAction(icon("external", color="#0B7180", size=17), "ChatGPT / GPT")
+    chatgpt.setToolTip("Preflight → save to Library → copy protected text → open ChatGPT")
+    chatgpt.triggered.connect(lambda _checked=False: _ai_handoff(page, "chatgpt"))
+
+    claude = menu.addAction(icon("external", color="#0B7180", size=17), "Claude")
+    claude.setToolTip("Preflight → save to Library → copy protected text → open Claude")
+    claude.triggered.connect(lambda _checked=False: _ai_handoff(page, "claude"))
+
+    other = menu.addAction(icon("copy", color="#0B7180", size=17), "Other AI tool")
+    other.setToolTip("Preflight → save to Library → copy protected text for another AI")
+    other.triggered.connect(lambda _checked=False: _ai_handoff(page, "other"))
+
+    return menu
+
+
 def _apply_quick_actions(page: ProtectionPage) -> None:
     if not hasattr(page, "_redesign_start_card"):
         return
@@ -181,7 +201,15 @@ def _apply_quick_actions(page: ProtectionPage) -> None:
     save_library = QPushButton("Save to Library")
     save_copy = QPushButton("Save + Copy")
     save_download = QPushButton("Save + Download")
-    open_ai = QPushButton("Copy & Open ChatGPT")
+
+    open_ai = QToolButton()
+    open_ai.setText("Save + Use with AI")
+    open_ai.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
+    open_ai.setMenu(_ai_menu(page))
+    open_ai.setToolTip(
+        "Choose ChatGPT / GPT, Claude or another AI tool. PrivacyGate runs Preflight "
+        "and saves the protected copy locally before the AI handoff."
+    )
 
     save_copy.setStyleSheet(
         "QPushButton{background:#078c89;color:white;border:none;border-radius:8px;"
@@ -194,9 +222,10 @@ def _apply_quick_actions(page: ProtectionPage) -> None:
         "QPushButton:hover{background:#b18125;}"
     )
     open_ai.setStyleSheet(
-        "QPushButton{background:white;color:#17384e;border:1px solid #b9cad7;"
-        "border-radius:8px;padding:10px 18px;font-weight:800;}"
-        "QPushButton:hover{background:#f5f9fb;}"
+        "QToolButton{background:white;color:#17384e;border:1px solid #8fc3c9;"
+        "border-radius:8px;padding:9px 17px;font-weight:850;}"
+        "QToolButton:hover{background:#eef8f9;border-color:#63aeb6;}"
+        "QToolButton::menu-indicator{width:14px;}"
     )
     save_library.setStyleSheet(
         "QPushButton{background:white;color:#087d72;border:1px solid #8fcfc9;"
@@ -229,8 +258,7 @@ def _apply_quick_actions(page: ProtectionPage) -> None:
                 break
         old_actions.hide()
         old_actions.setMaximumHeight(0)
-    # Actions belong after the document comparison so the user reviews the
-    # protected output before saving, downloading or opening an AI tool.
+
     results_layout.insertWidget(insert_at, bar)
 
     page._protect_quick_actions = bar
@@ -242,7 +270,6 @@ def _apply_quick_actions(page: ProtectionPage) -> None:
     save_library.clicked.connect(lambda: _save_only(page))
     save_copy.clicked.connect(lambda: _save_and_copy(page))
     save_download.clicked.connect(lambda: _save_and_download(page))
-    open_ai.clicked.connect(lambda: _copy_and_open_chatgpt(page))
 
     def hide_actions(*_args) -> None:
         bar.hide()
@@ -260,7 +287,6 @@ def _apply_quick_actions(page: ProtectionPage) -> None:
         bar.show()
         _status(page, "Protected copy ready")
 
-    # The redesign's protect handler was connected first, so this runs after it.
     page._redesign_protect_button.clicked.connect(after_protect)
     selection_timer = getattr(page, "_redesign_selection_timer", None)
     if selection_timer is not None:
