@@ -44,8 +44,9 @@ install_account_aware_routing()
 # remote connections, Library contents, Restore mappings or connector tokens.
 install_automatic_temp_cleanup()
 install_source_metadata()
-# Manual AI handoff gate. It reuses the existing residual scan and only wraps
-# Copy & Open ChatGPT; MCP, Restore and connector behavior remain untouched.
+# Manual AI handoff gate for ChatGPT/GPT, Claude and other AI tools. The handoff
+# runs the local second scan, saves to Library, copies only protected content and
+# never auto-submits anything to an AI service.
 install_privacy_preflight()
 install_library_source_folders()
 # Visual-only Library upgrade. It wraps the existing table/actions instead of
