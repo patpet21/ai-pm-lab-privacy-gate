@@ -225,9 +225,13 @@ def install_library_source_folders() -> None:
 
     def refresh(self: LibraryPage, *args) -> None:
         original_refresh(self, *args)
-        repository = getattr(self, "_source_metadata_repository", None)
-        if repository is None:
+        if not hasattr(self, "_source_metadata_repository"):
             return
+        # Re-create this lightweight local helper after every Library refresh.
+        # This also recreates its optional table after restoring an older backup
+        # that predates structured source provenance.
+        repository = DocumentSourceMetadataRepository(self.library.db_path)
+        self._source_metadata_repository = repository
         self._source_metadata_map = repository.list_for_documents(
             [document.document_id for document in self._documents]
         )
