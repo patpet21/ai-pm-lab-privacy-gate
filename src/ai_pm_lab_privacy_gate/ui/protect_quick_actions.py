@@ -177,7 +177,15 @@ def _save_only(page: ProtectionPage) -> None:
 
 def _ai_menu(page: ProtectionPage) -> QMenu:
     menu = QMenu(page)
-    menu.addSection("AI destination")
+    menu.setMinimumWidth(235)
+    menu.setStyleSheet(
+        "QMenu{background:#FFFFFF;color:#17384E;border:1px solid #C9D7E1;"
+        "border-radius:9px;padding:7px;}"
+        "QMenu::item{padding:9px 18px 9px 10px;border-radius:6px;font-weight:700;}"
+        "QMenu::item:selected{background:#EAF6F7;color:#0B7180;}"
+        "QMenu::separator{height:1px;background:#E2E9EE;margin:6px 5px;}"
+    )
+    menu.addSection("Choose AI destination")
 
     chatgpt = menu.addAction(icon("external", color="#0B7180", size=17), "ChatGPT / GPT")
     chatgpt.setToolTip("Preflight → save to Library → copy protected text → open ChatGPT")
@@ -211,12 +219,13 @@ def _apply_quick_actions(page: ProtectionPage) -> None:
     save_download = QPushButton("Save + Download")
 
     open_ai = QToolButton()
-    open_ai.setText("Save + Use with AI")
+    open_ai.setText("Save + Copy for AI")
     open_ai.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
     open_ai.setMenu(_ai_menu(page))
+    open_ai.setMinimumWidth(205)
     open_ai.setToolTip(
-        "Choose ChatGPT / GPT, Claude or another AI tool. PrivacyGate runs Preflight "
-        "and saves the protected copy locally before the AI handoff."
+        "Choose ChatGPT / GPT, Claude or another AI tool. PrivacyGate runs Preflight, "
+        "asks how to name the protected copy, saves it locally, then copies it for AI."
     )
 
     save_copy.setStyleSheet(
@@ -231,9 +240,10 @@ def _apply_quick_actions(page: ProtectionPage) -> None:
     )
     open_ai.setStyleSheet(
         "QToolButton{background:white;color:#17384e;border:1px solid #8fc3c9;"
-        "border-radius:8px;padding:9px 17px;font-weight:850;}"
+        "border-radius:8px;padding:9px 18px;font-weight:850;text-align:center;}"
         "QToolButton:hover{background:#eef8f9;border-color:#63aeb6;}"
-        "QToolButton::menu-indicator{width:14px;}"
+        "QToolButton::menu-indicator{subcontrol-origin:padding;subcontrol-position:right center;"
+        "right:7px;width:12px;}"
     )
     save_library.setStyleSheet(
         "QPushButton{background:white;color:#087d72;border:1px solid #8fcfc9;"
