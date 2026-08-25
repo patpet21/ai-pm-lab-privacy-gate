@@ -170,84 +170,22 @@
           <div class="mac-download-actions"><a class="button primary large" href="https://apps.microsoft.com/detail/9NMPZCVJLLZ3" target="_blank" rel="noopener noreferrer">Get from Microsoft Store</a><a class="button secondary large" href="https://github.com/patpet21/ai-pm-lab-privacy-gate-downloads/releases/download/v0.4.2/AI_PM_LAB_Privacy_Gate_Setup_0.4.2.exe">Direct .exe</a></div>
         </article>
         <article class="platform-card available">
-          <svg class="platform-icon apple" viewBox="0 0 24 24" aria-hidden="true"><path d="M17.1 12.5c0-2.6 2.1-3.9 2.2-4-1.2-1.8-3.1-2-3.8-2-1.6-.2-3.1.9-3.9.9-.8 0-2-1-3.3-.9-1.7 0-3.3 1-4.2 2.5-1.8 3.1-.5 7.7 1.3 10.2.9 1.2 1.9 2.6 3.3 2.5 1.3-.1 1.8-.8 3.4-.8 1.6 0 2 .8 3.4.8 1.4 0 2.3-1.3 3.2-2.5 1-1.4 1.4-2.8 1.4-2.9-.1 0-3-.9-3-3.8ZM14.4 4.8c.7-.9 1.2-2.1 1.1-3.3-1.1 0-2.4.7-3.2 1.6-.7.8-1.3 2-1.1 3.2 1.2.1 2.4-.6 3.2-1.5Z"/></svg>
-          <div><span class="platform-status">AVAILABLE NOW</span><h3>macOS 12+</h3><p>Native DMGs for Apple Silicon and Intel. Local Presidio engine, encrypted Keychain-backed library, PDF/Word/Excel workflow, restore, and optional MCP.</p></div>
-          <div class="mac-download-actions">
-            <a class="button primary large" href="https://github.com/patpet21/ai-pm-lab-privacy-gate-downloads/releases/download/v0.4.2/AI_PM_LAB_Privacy_Gate_0.4.2_Apple-Silicon.dmg">Apple Silicon .dmg</a>
-            <a class="button secondary large" href="https://github.com/patpet21/ai-pm-lab-privacy-gate-downloads/releases/download/v0.4.2/AI_PM_LAB_Privacy_Gate_0.4.2_Intel.dmg">Intel .dmg</a>
-          </div>
+          <svg class="platform-icon apple" viewBox="0 0 24 24" aria-hidden="true"><path d="M17.1 12.5c0-2.6 2.1-3.9 2.2-4-1.2-1.8-3.1-2-3.8-2-1.6-.2-3.1.9-3.9.9-.8 0-2-1-3.3-.9-1.7 0-3.3 1-4.2 2.5-1.8 3.1-.5 7.8 1.3 10.3.9 1.2 1.9 2.5 3.3 2.4 1.3-.1 1.8-.8 3.4-.8 1.6 0 2 .8 3.4.8 1.4 0 2.3-1.2 3.2-2.5 1-1.4 1.4-2.8 1.4-2.9-.1 0-2.7-1-2.7-3.9ZM14.4 4.8c.7-.9 1.2-2.1 1.1-3.3-1 .1-2.3.7-3 1.6-.7.8-1.2 2-1.1 3.2 1.2.1 2.3-.6 3-1.5Z"/></svg>
+          <div><span class="platform-status">AVAILABLE NOW</span><h3>macOS 12+</h3><p>Download the build for your Mac. Apple Silicon is for M1/M2/M3/M4/M5; Intel is for older Intel-based Macs.</p></div>
+          <div class="mac-download-actions"><a class="button primary large" href="https://github.com/patpet21/ai-pm-lab-privacy-gate-downloads/releases/download/v0.4.2/AI_PM_LAB_Privacy_Gate_0.4.2_macOS_arm64.dmg">Apple Silicon .dmg</a><a class="button secondary large" href="https://github.com/patpet21/ai-pm-lab-privacy-gate-downloads/releases/download/v0.4.2/AI_PM_LAB_Privacy_Gate_0.4.2_macOS_x86_64.dmg">Intel .dmg</a></div>
         </article>
-        <div class="release-links"><a href="https://github.com/patpet21/ai-pm-lab-privacy-gate-downloads" target="_blank" rel="noopener noreferrer">GitHub releases, checksums and release notes →</a><small>The download repository contains application release artifacts; the commercial website is distributed separately.</small></div>
-      </div>
-    </section>
-
-    <section class="updates-section" id="updates">
-      <div><p class="eyebrow">PRODUCT UPDATES</p><h2>Downloaded Privacy Gate?</h2><p>Leave your email to receive important releases, new file-format support, privacy features, and practical workflow ideas. No customer documents—ever.</p></div>
-      <form class="newsletter-form" id="newsletter-form" action="https://formspree.io/f/mkodolrn" method="POST">
-        <input type="hidden" name="_subject" value="Privacy Gate product updates signup">
-        <input type="hidden" name="form_type" value="product_updates">
-        <input type="hidden" name="source" value="Privacy Gate download section">
-        <label for="updates-email">Email address</label>
-        <div class="newsletter-row"><input id="updates-email" type="email" name="email" autocomplete="email" placeholder="you@company.com" required><button class="button primary" type="submit">Send me updates</button></div>
-        <label class="consent"><input type="checkbox" name="updates_consent" value="yes" required> I want occasional product and workflow updates and can unsubscribe at any time.</label>
-        <label class="honeypot" aria-hidden="true">Leave empty<input type="text" name="_gotcha" tabindex="-1" autocomplete="off"></label>
-        <p class="form-privacy">Submitted through Formspree. This form is separate from Privacy Gate’s local document processing.</p>
-        <p id="newsletter-status" class="form-status" role="status" aria-live="polite"></p>
-      </form>
-    </section>
-
-    <section class="trust-policy-section" id="trust">
-      <div>
-        <p class="eyebrow">OPEN SOURCE TRUST &amp; RELEASE INTEGRITY</p>
-        <h2>Code signing policy</h2>
-        <p>The Windows Microsoft Store edition is signed and distributed by Microsoft. Direct GitHub installers and current macOS DMGs remain unsigned; their SHA-256 checksums are published with every release.</p>
-        <p>Release artifacts are built from the public repository on GitHub-hosted runners. Maintainer roles, release controls, privacy guarantees, and dependency licenses are documented publicly.</p>
-      </div>
-      <div class="policy-links">
-        <a href="https://github.com/patpet21/ai-pm-lab-privacy-gate/blob/main/CODE_SIGNING_POLICY.md" target="_blank" rel="noopener noreferrer"><strong>Code signing policy</strong><span>Roles and release controls →</span></a>
-        <a href="https://github.com/patpet21/ai-pm-lab-privacy-gate/blob/main/PRIVACY.md" target="_blank" rel="noopener noreferrer"><strong>Privacy policy</strong><span>Local data and optional services →</span></a>
-        <a href="https://github.com/patpet21/ai-pm-lab-privacy-gate/blob/main/THIRD_PARTY_NOTICES.md" target="_blank" rel="noopener noreferrer"><strong>Open-source components</strong><span>Licenses and attributions →</span></a>
-        <a href="https://github.com/patpet21/ai-pm-lab-privacy-gate/actions/workflows/build-windows.yml" target="_blank" rel="noopener noreferrer"><strong>Windows build evidence</strong><span>GitHub Actions history →</span></a>
       </div>
     </section>
 
     <section class="contact-section" id="contact">
-      <div class="contact-copy">
-        <p class="eyebrow">LET'S DESIGN YOUR PRIVACY WORKFLOW</p>
-        <h2>Contact AI PM LAB</h2>
-        <p>Need help with local automation, n8n, MCP, AI connections, or a workflow tailored to your real-estate operations? Tell us what you want to accomplish.</p>
-        <div class="contact-methods">
-          <a href="mailto:peter@propertydex.xyz?subject=AI%20PM%20LAB%20Privacy%20Gate"><strong>Product &amp; consulting</strong><span>peter@propertydex.xyz</span></a>
-          <a href="mailto:trigosatconsulting@gmail.com?subject=AI%20PM%20LAB%20Privacy%20Gate"><strong>General contact</strong><span>trigosatconsulting@gmail.com</span></a>
-          <a href="https://www.linkedin.com/in/pietro-forestieri/" target="_blank" rel="noopener noreferrer"><strong>Connect on LinkedIn</strong><span>Pietro Forestieri →</span></a>
-        </div>
+      <div class="section-heading">
+        <div><p class="eyebrow">CONTACT</p><h2>Questions, pilot projects, or implementation support.</h2></div>
+        <p>Contact AI PM LAB / Trigosat Consulting about Privacy Gate, local-first AI workflows, or implementation support.</p>
       </div>
-
-      <form class="contact-form" id="contact-form" action="https://formspree.io/f/mkodolrn" method="POST">
-        <input type="hidden" name="_subject" value="AI PM LAB Privacy Gate website inquiry">
-        <input type="hidden" name="source" value="AI PM LAB Privacy Gate website">
-        <label>Name
-          <input type="text" name="name" autocomplete="name" required>
-        </label>
-        <label>Email
-          <input type="email" name="email" autocomplete="email" required>
-        </label>
-        <label>Company or role
-          <input type="text" name="company_role" autocomplete="organization">
-        </label>
-        <label>What are you interested in?
-          <select name="interest" required>
-            <option value="" selected disabled>Select an option</option>
-            <option>Privacy Gate support</option>
-            <option>Local automation / n8n</option>
-            <option>Cloud AI / MCP integration</option>
-            <option>Custom real-estate workflow</option>
-            <option>Partnership or other</option>
-          </select>
-        </label>
-        <label class="full-field">Message
-          <textarea name="message" rows="6" required placeholder="Describe your workflow or question. Please do not include personal data or confidential documents."></textarea>
-        </label>
+      <form class="contact-form" action="https://formspree.io/f/xnndqylp" method="POST">
+        <label>Name<input type="text" name="name" autocomplete="name" required></label>
+        <label>Email<input type="email" name="email" autocomplete="email" required></label>
+        <label class="full-field">Message<textarea name="message" rows="5" required></textarea></label>
         <label class="honeypot" aria-hidden="true">Leave this field empty
           <input type="text" name="_gotcha" tabindex="-1" autocomplete="off">
         </label>
@@ -262,7 +200,7 @@
 
   <footer>
     <span>AI PM LAB Privacy Gate · by Trigosat Consulting</span>
-    <div><a href="https://github.com/patpet21/ai-pm-lab-privacy-gate/blob/main/PRIVACY.md">Privacy</a><a href="https://github.com/patpet21/ai-pm-lab-privacy-gate/blob/main/CODE_SIGNING_POLICY.md">Code signing policy</a><a href="mailto:peter@propertydex.xyz">peter@propertydex.xyz</a><a href="mailto:trigosatconsulting@gmail.com">trigosatconsulting@gmail.com</a><a href="https://www.linkedin.com/in/pietro-forestieri/" target="_blank" rel="noopener noreferrer">LinkedIn</a></div>
+    <div><a href="/privacy">Privacy</a><a href="/terms">Terms</a><a href="https://github.com/patpet21/ai-pm-lab-privacy-gate/blob/main/CODE_SIGNING_POLICY.md">Code signing policy</a><a href="mailto:peter@propertydex.xyz">peter@propertydex.xyz</a><a href="mailto:trigosatconsulting@gmail.com">trigosatconsulting@gmail.com</a><a href="https://www.linkedin.com/in/pietro-forestieri/" target="_blank" rel="noopener noreferrer">LinkedIn</a></div>
   </footer>
   <script src="app.js"></script>
 </body>
