@@ -1,12 +1,12 @@
 from __future__ import annotations
 
 import re
-import tempfile
 from pathlib import Path
 
 import httpx
 
 from ai_pm_lab_privacy_gate.infrastructure.connectors.service import ConnectedAppsService, RemoteItem
+from ai_pm_lab_privacy_gate.infrastructure.security.temporary_workspace import new_working_path
 
 
 _GOOGLE_EXPORTS = {
@@ -29,10 +29,12 @@ def _safe_filename(name: str) -> str:
 
 
 def materialize_google_drive_item(service: ConnectedAppsService, item: RemoteItem) -> Path:
-    """Download/export one approved Drive item to a temporary local file.
+    """Download/export one approved Drive item to a managed local working file.
 
     Nothing is uploaded elsewhere. Native Google Docs/Sheets/Slides are exported
     to formats already understood by PrivacyGate's local protection pipeline.
+    The returned path is inside PrivacyGate's isolated temporary workspace and is
+    eligible for automatic cleanup after the protection workflow finishes.
     """
     if item.provider != "google_drive":
         raise ValueError("This importer currently supports Google Drive only.")
@@ -42,9 +44,6 @@ def materialize_google_drive_item(service: ConnectedAppsService, item: RemoteIte
     token = service._token("google_drive")  # connector-local credential accessor
     headers = {"Authorization": f"Bearer {token}"}
     export = _GOOGLE_EXPORTS.get(item.kind)
-
-    output_dir = Path(tempfile.gettempdir()) / "AI_PM_LAB_Privacy_Gate" / "connected-imports"
-    output_dir.mkdir(parents=True, exist_ok=True)
 
     if export:
         export_mime, suffix = export
@@ -73,6 +72,6 @@ def materialize_google_drive_item(service: ConnectedAppsService, item: RemoteIte
         )
 
     response.raise_for_status()
-    target = output_dir / filename
+    target = new_working_path("google_drive", filename)
     target.write_bytes(response.content)
     return target
