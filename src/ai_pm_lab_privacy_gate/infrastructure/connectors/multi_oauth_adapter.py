@@ -5,7 +5,7 @@ import time
 
 import httpx
 
-from .google_oauth import GMAIL_SCOPES, authorize_desktop, configured_client_id, refresh_access_token, token_expiry_timestamp
+from .google_oauth import GMAIL_SCOPES, authorize_desktop, configured_client_id, refresh_access_token
 from .provider_oauth import connect_asana, connect_clickup, connect_trello, refresh_asana
 from .service import ConnectedAppsService, ConnectionTestResult, RemoteItem
 
@@ -119,13 +119,23 @@ def _header(headers: list[dict], name: str) -> str:
     return ""
 
 
-def _list_gmail_page(self: ConnectedAppsService, page_token: str = "", limit: int = 30) -> tuple[tuple[RemoteItem, ...], str]:
+def _list_gmail_page(
+    self: ConnectedAppsService,
+    page_token: str = "",
+    limit: int = 30,
+    query: str = "",
+    label_id: str = "",
+) -> tuple[tuple[RemoteItem, ...], str]:
     token = self._token("gmail")
     limit = max(1, min(int(limit), 50))
     headers = {"Authorization": f"Bearer {token}"}
-    params = {"maxResults": str(limit)}
+    params: dict[str, object] = {"maxResults": str(limit)}
     if page_token:
         params["pageToken"] = page_token
+    if query.strip():
+        params["q"] = query.strip()
+    if label_id.strip():
+        params["labelIds"] = label_id.strip()
     response = httpx.get(
         "https://gmail.googleapis.com/gmail/v1/users/me/messages",
         headers=headers,
@@ -142,7 +152,7 @@ def _list_gmail_page(self: ConnectedAppsService, page_token: str = "", limit: in
         detail = httpx.get(
             f"https://gmail.googleapis.com/gmail/v1/users/me/messages/{message_id}",
             headers=headers,
-            params={"format": "metadata", "metadataHeaders": ["Subject", "From", "Date"]},
+            params={"format": "metadata", "metadataHeaders": ["Subject", "From", "To", "Date"]},
             timeout=self.timeout,
         )
         detail.raise_for_status()
@@ -151,8 +161,9 @@ def _list_gmail_page(self: ConnectedAppsService, page_token: str = "", limit: in
         subject = _header(msg_headers, "Subject") or "(No subject)"
         sender = _header(msg_headers, "From")
         date = _header(msg_headers, "Date")
+        snippet = str(message.get("snippet") or "").replace("\n", " ").strip()
         subtitle = " • ".join(part for part in (sender, date) if part)
-        rows.append(RemoteItem("gmail", message_id, subject, subtitle, "email", ""))
+        rows.append(RemoteItem("gmail", message_id, subject, subtitle, "email", snippet))
     return tuple(rows), str(payload.get("nextPageToken") or "")
 
 
