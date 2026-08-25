@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
+import hashlib
 
 from PySide6.QtCore import QThreadPool, QTimer, Qt, Signal
 from PySide6.QtWidgets import (
@@ -231,11 +232,15 @@ class PolicyEditorDialog(QDialog):
         return replace(
             self.policy,
             allowed_ai={
-                key: check.isChecked() for key, check in self.ai_checks.items()
+                **self.policy.allowed_ai,
+                **{key: check.isChecked() for key, check in self.ai_checks.items()},
             },
             allowed_connectors={
-                key: check.isChecked()
-                for key, check in self.connector_checks.items()
+                **self.policy.allowed_connectors,
+                **{
+                    key: check.isChecked()
+                    for key, check in self.connector_checks.items()
+                },
             },
             protection_rules={
                 key: ProtectionDirective(str(combo.currentData()))
@@ -1211,11 +1216,25 @@ class TeamPage(QWidget):
             return None
         return installation_hash, status
 
+    def _is_current_device(self, installation_hash: str) -> bool:
+        identity = self.identity_store.load_or_create()
+        current_hash = hashlib.sha256(
+            identity.installation_id.encode("ascii")
+        ).hexdigest()
+        return installation_hash == current_hash
+
     def _toggle_device_status(self) -> None:
         selected = self._selected_device()
         if not selected or not self.state.organization_id:
             return
         installation_hash, status = selected
+        if self._is_current_device(installation_hash):
+            QMessageBox.information(
+                self,
+                "Current device",
+                "For safety, manage this device from another Owner/Admin endpoint.",
+            )
+            return
         target = "active" if status != "active" else "disabled"
         self._run_team_action(
             lambda session: set_device_status(
@@ -1230,6 +1249,13 @@ class TeamPage(QWidget):
         if not selected or not self.state.organization_id:
             return
         installation_hash, _status = selected
+        if self._is_current_device(installation_hash):
+            QMessageBox.information(
+                self,
+                "Current device",
+                "For safety, revoke this device from another Owner/Admin endpoint.",
+            )
+            return
         if (
             QMessageBox.question(
                 self,
