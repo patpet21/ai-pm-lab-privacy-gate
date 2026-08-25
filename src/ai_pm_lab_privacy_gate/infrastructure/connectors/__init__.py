@@ -9,6 +9,7 @@ from .notion_auto_oauth import install_notion_auto_oauth
 from .jira_adf_fix import install_jira_adf_fix
 from .jira_refresh_adapter import install_jira_refresh_adapter
 from .multi_account_registry import install_multi_account_registry
+from .multi_account_label_refresh import install_multi_account_label_refresh
 
 install_google_oauth_adapter()
 install_multi_oauth_adapter()
@@ -23,5 +24,8 @@ install_jira_refresh_adapter()
 # provider keeps independent credentials while legacy adapters use an active
 # compatibility alias.
 install_multi_account_registry()
+# Post-registry display polish: refresh migrated access tokens before resolving
+# provider-side account labels in the Manage accounts dialog.
+install_multi_account_label_refresh()
 
 __all__ = ["ConnectedAppsService", "ConnectionTestResult", "RemoteItem"]
