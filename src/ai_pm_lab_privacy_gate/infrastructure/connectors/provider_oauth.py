@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import base64
+import hashlib
 import json
 import os
 import secrets
@@ -10,6 +12,7 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 from urllib.parse import parse_qs, urlencode, urlparse
 
 import httpx
+from PySide6.QtWidgets import QInputDialog, QLineEdit
 
 
 class ProviderOAuthError(RuntimeError):
@@ -18,6 +21,33 @@ class ProviderOAuthError(RuntimeError):
 
 def _callback_page(message: str = "Connection received") -> bytes:
     return f"""<!doctype html><html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'><style>*{{box-sizing:border-box}}body{{margin:0;min-height:100vh;display:grid;place-items:center;background:#F7FAFC;color:#062B4F;font-family:Segoe UI,Arial,sans-serif}}main{{width:min(540px,calc(100% - 40px));background:#fff;border:1px solid #D7E2EA;border-radius:20px;padding:36px;box-shadow:0 18px 48px rgba(6,43,79,.1)}}b{{display:inline-grid;place-items:center;width:50px;height:50px;border-radius:15px;background:#E8F6F6;color:#0B7180;font-size:24px}}h1{{font-size:25px;margin:18px 0 8px}}p{{color:#557184;line-height:1.55}}small{{display:block;margin-top:24px;padding-top:18px;border-top:1px solid #E4EBF0;color:#D3A13B;font-weight:800;letter-spacing:.7px}}</style></head><body><main><b>✓</b><h1>{message}</h1><p>You can close this tab and return to PrivacyGate. The connection is being stored securely on this device.</p><small>AI PM LAB · PRIVACYGATE</small></main></body></html>""".encode("utf-8")
+
+
+def _exchange_code(*, token_url: str, client_id: str, client_secret: str, code: str, redirect_uri: str, token_extra: dict[str, str] | None = None) -> dict:
+    data = {
+        "client_id": client_id,
+        "client_secret": client_secret,
+        "code": code,
+        "redirect_uri": redirect_uri,
+        "grant_type": "authorization_code",
+    }
+    data.update(token_extra or {})
+    response = httpx.post(token_url, data=data, timeout=25.0)
+    if response.status_code >= 400:
+        detail = ""
+        try:
+            payload = response.json()
+            detail = str(payload.get("error_description") or payload.get("error") or payload.get("message") or "")
+        except Exception:
+            pass
+        raise ProviderOAuthError(
+            f"Token exchange failed (HTTP {response.status_code})" + (f" — {detail}" if detail else "")
+        )
+    payload = response.json()
+    if not payload.get("access_token"):
+        raise ProviderOAuthError("The provider did not return an access token.")
+    payload["obtained_at"] = int(time.time())
+    return payload
 
 
 def _run_code_flow(*, auth_url: str, token_url: str, client_id: str, client_secret: str, redirect_uri: str, extra_auth: dict[str, str] | None = None, token_extra: dict[str, str] | None = None, timeout_seconds: int = 180) -> dict:
@@ -71,22 +101,14 @@ def _run_code_flow(*, auth_url: str, token_url: str, client_id: str, client_secr
     if not code:
         raise ProviderOAuthError("The provider did not return an authorization code.")
 
-    data = {"client_id": client_id, "client_secret": client_secret, "code": code, "redirect_uri": redirect_uri, "grant_type": "authorization_code"}
-    data.update(token_extra or {})
-    response = httpx.post(token_url, data=data, timeout=25.0)
-    if response.status_code >= 400:
-        detail = ""
-        try:
-            payload = response.json()
-            detail = str(payload.get("error_description") or payload.get("error") or payload.get("message") or "")
-        except Exception:
-            pass
-        raise ProviderOAuthError(f"Token exchange failed (HTTP {response.status_code})" + (f" — {detail}" if detail else ""))
-    payload = response.json()
-    if not payload.get("access_token"):
-        raise ProviderOAuthError("The provider did not return an access token.")
-    payload["obtained_at"] = int(time.time())
-    return payload
+    return _exchange_code(
+        token_url=token_url,
+        client_id=client_id,
+        client_secret=client_secret,
+        code=code,
+        redirect_uri=redirect_uri,
+        token_extra=token_extra,
+    )
 
 
 def connect_clickup() -> dict:
@@ -100,13 +122,57 @@ def connect_clickup() -> dict:
 
 
 def connect_asana() -> dict:
-    return _run_code_flow(
-        auth_url="https://app.asana.com/-/oauth_authorize",
+    """Asana native OAuth.
+
+    Asana currently rejects HTTP loopback callbacks for native apps and requires
+    the out-of-band redirect URI. The browser therefore displays a one-time
+    authorization code that the user pastes back into PrivacyGate. PKCE protects
+    the authorization-code exchange even though the callback is out-of-band.
+    """
+    client_id = os.environ.get("PRIVACY_GATE_ASANA_CLIENT_ID", "").strip()
+    client_secret = os.environ.get("PRIVACY_GATE_ASANA_CLIENT_SECRET", "").strip()
+    if not client_id or not client_secret:
+        raise ProviderOAuthError("OAuth client ID/secret is not configured for this provider.")
+
+    redirect_uri = "urn:ietf:wg:oauth:2.0:oob"
+    state = secrets.token_urlsafe(28)
+    verifier = secrets.token_urlsafe(64)
+    challenge = base64.urlsafe_b64encode(hashlib.sha256(verifier.encode("ascii")).digest()).decode("ascii").rstrip("=")
+
+    # Keep the requested access read-only and limited to the resources used by
+    # the PrivacyGate Asana browser/import flow.
+    scope = os.environ.get(
+        "PRIVACY_GATE_ASANA_SCOPES",
+        "workspaces:read projects:read tasks:read users:read",
+    ).strip()
+    params = {
+        "client_id": client_id,
+        "redirect_uri": redirect_uri,
+        "response_type": "code",
+        "state": state,
+        "code_challenge_method": "S256",
+        "code_challenge": challenge,
+        "scope": scope,
+    }
+    webbrowser.open(f"https://app.asana.com/-/oauth_authorize?{urlencode(params)}")
+
+    code, ok = QInputDialog.getText(
+        None,
+        "Connect Asana",
+        "After you click Allow in Asana, the browser will show an authorization code.\n\nCopy that code, return to PrivacyGate, and paste it here:",
+        QLineEdit.EchoMode.Normal,
+    )
+    code = code.strip()
+    if not ok or not code:
+        raise ProviderOAuthError("Asana authorization was cancelled before the code was entered.")
+
+    return _exchange_code(
         token_url="https://app.asana.com/-/oauth_token",
-        client_id=os.environ.get("PRIVACY_GATE_ASANA_CLIENT_ID", "").strip(),
-        client_secret=os.environ.get("PRIVACY_GATE_ASANA_CLIENT_SECRET", "").strip(),
-        redirect_uri=os.environ.get("PRIVACY_GATE_ASANA_REDIRECT_URI", "http://127.0.0.1:8768/asana").strip(),
-        extra_auth={"scope": "openid email profile tasks:read projects:read"},
+        client_id=client_id,
+        client_secret=client_secret,
+        code=code,
+        redirect_uri=redirect_uri,
+        token_extra={"code_verifier": verifier},
     )
 
 
