@@ -26,7 +26,6 @@ NAVY = "#062B4F"
 NAVY_SOFT = "#17384E"
 PETROL = "#0B7180"
 MUTED = "#61798A"
-BORDER = "#D7E2EA"
 
 
 def _run_busy(parent, title: str, message: str, operation):
@@ -108,14 +107,17 @@ def open_gmail_inbox(main_window) -> None:
 
     title = QLabel("Gmail messages")
     title.setStyleSheet(f"color:{NAVY};font-size:25px;font-weight:900;")
-    subtitle = QLabel("Browse your mailbox read-only. Only the message you choose is copied locally into PrivacyGate.")
+    subtitle = QLabel(
+        "Browse your mailbox read-only. Search by sender, company, subject or any Gmail keyword; only the selected message is copied locally."
+    )
+    subtitle.setWordWrap(True)
     subtitle.setStyleSheet(f"color:{MUTED};font-size:10px;")
     root.addWidget(title)
     root.addWidget(subtitle)
 
     toolbar = QHBoxLayout()
     search = QLineEdit()
-    search.setPlaceholderText("Search mail — sender, subject, keywords…")
+    search.setPlaceholderText("Search mail — e.g. Acme, from:john@company.com, subject:lease, has:attachment…")
     search.setClearButtonEnabled(True)
     search.setMinimumHeight(38)
     search.setStyleSheet(
@@ -139,8 +141,7 @@ def open_gmail_inbox(main_window) -> None:
         "QListWidget::item:hover{background:#EAF7F7;}"
         "QListWidget::item:selected{background:#0B7180;color:#FFFFFF;}"
     )
-    folder_defs = (("Inbox", "INBOX"), ("Starred", "STARRED"), ("Sent", "SENT"), ("All mail", ""))
-    for label, value in folder_defs:
+    for label, value in (("Inbox", "INBOX"), ("Starred", "STARRED"), ("Sent", "SENT"), ("All mail", "")):
         item = QListWidgetItem(label)
         item.setData(Qt.ItemDataRole.UserRole, value)
         folders.addItem(item)
@@ -199,7 +200,7 @@ def open_gmail_inbox(main_window) -> None:
             batch, next_token = _run_busy(
                 dialog,
                 "Loading Gmail",
-                "Loading 30 emails from Gmail…" if reset else "Loading 30 more emails…",
+                "Searching Gmail…" if state["query"] else ("Loading 30 emails from Gmail…" if reset else "Loading 30 more emails…"),
                 lambda: _retry(
                     lambda: service.list_gmail_page(
                         state["next"], 30, state["query"], state["label"]
@@ -248,6 +249,7 @@ def open_gmail_inbox(main_window) -> None:
             paste_button.click()
         protect.input_tabs.setCurrentIndex(0)
         protect.text_input.setPlainText(email_text)
+        protect._external_source_name = f"Gmail • {remote.title}"
         main_window._show_page(0)
         dialog.accept()
         main_window.statusBar().showMessage(
