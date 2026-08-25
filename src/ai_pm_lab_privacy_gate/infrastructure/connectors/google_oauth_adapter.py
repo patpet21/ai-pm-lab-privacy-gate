@@ -29,6 +29,20 @@ def _connect_google_oauth(self: ConnectedAppsService, client_id: str | None = No
         self.secret_store.set("connected.google_drive.refresh_token", refresh_token)
 
 
+def _refresh_google_token(self: ConnectedAppsService) -> str:
+    refresh_token = self.secret_store.get("connected.google_drive.refresh_token") or ""
+    client_id = self.secret_store.get("connected.google_drive.client_id") or configured_client_id()
+    if not refresh_token:
+        raise RuntimeError("Google Drive needs to be reconnected because no refresh token is available.")
+    payload = refresh_access_token(client_id, refresh_token)
+    refreshed = payload.get("access_token", "")
+    if not refreshed:
+        raise RuntimeError("Google Drive refresh did not return an access token")
+    self.secret_store.set("connected.google_drive.token", refreshed)
+    self.secret_store.set("connected.google_drive.expires_at", str(token_expiry_timestamp(payload)))
+    return refreshed
+
+
 def _google_token(self: ConnectedAppsService) -> str:
     token = self.secret_store.get("connected.google_drive.token") or ""
     if not token:
@@ -45,18 +59,15 @@ def _google_token(self: ConnectedAppsService) -> str:
         return token
 
     refresh_token = self.secret_store.get("connected.google_drive.refresh_token") or ""
-    client_id = self.secret_store.get("connected.google_drive.client_id") or configured_client_id()
     if not refresh_token:
         # Legacy/manual-token connection: keep using it until provider rejects it.
         return token
+    return _refresh_google_token(self)
 
-    payload = refresh_access_token(client_id, refresh_token)
-    refreshed = payload.get("access_token", "")
-    if not refreshed:
-        raise RuntimeError("Google Drive refresh did not return an access token")
-    self.secret_store.set("connected.google_drive.token", refreshed)
-    self.secret_store.set("connected.google_drive.expires_at", str(token_expiry_timestamp(payload)))
-    return refreshed
+
+def _force_google_refresh(self: ConnectedAppsService) -> str:
+    """Refresh Drive credentials immediately after a provider-side 401."""
+    return _refresh_google_token(self)
 
 
 def _token(self: ConnectedAppsService, provider: str) -> str:
@@ -80,6 +91,7 @@ def install_google_oauth_adapter() -> None:
     if getattr(ConnectedAppsService, "_google_oauth_installed", False):
         return
     ConnectedAppsService.connect_google_oauth = _connect_google_oauth  # type: ignore[attr-defined]
+    ConnectedAppsService.force_google_refresh = _force_google_refresh  # type: ignore[attr-defined]
     ConnectedAppsService._token = _token  # type: ignore[method-assign]
     ConnectedAppsService.disconnect = _disconnect  # type: ignore[method-assign]
     ConnectedAppsService._google_oauth_installed = True  # type: ignore[attr-defined]
