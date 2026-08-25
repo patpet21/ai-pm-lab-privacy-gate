@@ -57,11 +57,13 @@ def test_source_metadata_round_trip_and_mcp_isolation(tmp_path) -> None:
     indexed = metadata_repository.list_for_documents([saved.document_id])
     assert indexed[saved.document_id] == metadata
 
-    # Provenance remains in the local Library database and does not alter the
-    # physically isolated protected copy used by MCP.
-    mcp_document = repository.get_mcp_document(saved.document_id)
-    assert mcp_document.document_id == saved.document_id
-    assert mcp_document.protected_text == saved.protected_text
+    # Provenance remains in the local Library database and is not copied into
+    # the physically isolated protected store consumed by MCP.
+    protected_document = repository.protected_library.get_mcp_document(saved.document_id)
+    assert protected_document.document_id == saved.document_id
+    assert protected_document.protected_text == saved.protected_text
+    assert not hasattr(protected_document, "account_id")
+    assert not hasattr(protected_document, "account_label")
 
 
 def test_source_metadata_survives_backup_and_cascades_on_delete(tmp_path) -> None:
@@ -102,3 +104,29 @@ def test_source_metadata_survives_backup_and_cascades_on_delete(tmp_path) -> Non
 
     repository.delete_permanently(saved.document_id)
     assert metadata_repository.get(saved.document_id) is None
+
+
+def test_source_metadata_recreates_table_after_legacy_backup_restore(tmp_path) -> None:
+    repository = LibraryRepository(tmp_path / "data")
+    saved = _save_document(repository)
+
+    # This snapshot represents a Library backup created before structured
+    # connector/account provenance existed.
+    legacy_backup = repository.create_backup(tmp_path / "legacy.pgbackup")
+
+    metadata_repository = DocumentSourceMetadataRepository(repository.db_path)
+    metadata_repository.upsert(
+        document_id=saved.document_id,
+        provider="google_drive",
+        provider_label="Google Drive",
+        account_id="new-account",
+        account_label="new@example.com",
+        item_id="new-file",
+        item_title="New file",
+        item_kind="docx",
+    )
+
+    repository.restore_backup(legacy_backup)
+    recreated = DocumentSourceMetadataRepository(repository.db_path)
+    assert recreated.get(saved.document_id) is None
+    assert repository.get(saved.document_id).document_id == saved.document_id
