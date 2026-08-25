@@ -15,6 +15,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from ai_pm_lab_privacy_gate.ui.apps_hub import APPS
 from ai_pm_lab_privacy_gate.ui.connected_apps_browse_polish import _open_source_browser
 from ai_pm_lab_privacy_gate.ui.iconography import icon
 
@@ -22,23 +23,14 @@ from ai_pm_lab_privacy_gate.ui.iconography import icon
 NAVY = "#062B4F"
 NAVY_SOFT = "#17384E"
 PETROL = "#0B7180"
-TEAL = "#1595A3"
-BORDER = "#D7E2EA"
 MUTED = "#607789"
-GOLD = "#D3A13B"
 
 
-# provider key, label, description, icon key, availability
-_PROVIDER_CATALOG = (
-    ("google_drive", "Google Drive", "Files, Docs, Sheets and folders", "cloud", "live"),
-    ("gmail", "Gmail", "Email threads and attachments", "contact", "next"),
-    ("clickup", "ClickUp", "Workspaces, projects and tasks", "workflow", "live"),
-    ("asana", "Asana", "Projects, tasks and workspaces", "workflow", "live"),
-    ("trello", "Trello", "Boards, lists and cards", "workflow", "live"),
-    ("onedrive", "OneDrive / SharePoint", "Microsoft files and team libraries", "cloud", "next"),
-    ("notion", "Notion", "Pages and databases", "document", "next"),
-    ("dropbox", "Dropbox", "Files and folders", "cloud", "next"),
-    ("slack", "Slack", "Channels, messages and files", "contact", "next"),
+# Compact picker catalog is generated from the full Apps directory so the two
+# surfaces never drift apart. key, title, description, fallback icon, availability.
+_PROVIDER_CATALOG = tuple(
+    (key, title, description, icon_key, "live" if supported else "ready")
+    for key, title, description, icon_key, _category, supported, _path in APPS
 )
 
 
@@ -60,17 +52,17 @@ def _button_style(primary: bool = False) -> str:
 
 def _provider_status(service, key: str, availability: str) -> tuple[str, str, str]:
     if availability != "live":
-        return "COMING NEXT", "#FFF6DF", "#8B641C"
+        return "READY", "#FFF6DF", "#8B641C"
     try:
         connected = bool(service and service.is_connected(key))
     except Exception:
         connected = False
     if connected:
         return "CONNECTED", "#E8F6F6", PETROL
-    return "NOT CONNECTED", "#F2F5F7", "#6C7E8C"
+    return "AVAILABLE", "#EAF2FA", "#355F87"
 
 
-def _provider_row(main_window, service, key: str, title: str, description: str, icon_key: str, availability: str):
+def _provider_row(service, key: str, title: str, description: str, icon_key: str, availability: str):
     row = QPushButton()
     row.setObjectName("SourceProviderRow")
     row.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -97,7 +89,8 @@ def _provider_row(main_window, service, key: str, title: str, description: str, 
     name = QLabel(title)
     name.setStyleSheet(f"color:{NAVY};font-size:12px;font-weight:850;")
     sub = QLabel(description)
-    sub.setStyleSheet(f"color:{MUTED};font-size:10px;")
+    sub.setWordWrap(True)
+    sub.setStyleSheet(f"color:{MUTED};font-size:9px;")
     copy.addWidget(name)
     copy.addWidget(sub)
     shell.addLayout(copy, 1)
@@ -111,7 +104,6 @@ def _provider_row(main_window, service, key: str, title: str, description: str, 
     )
     shell.addWidget(status)
 
-    # Child labels are presentation only. Let every click reach the provider button.
     for child in (mark, name, sub, status):
         child.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
 
@@ -121,14 +113,18 @@ def _provider_row(main_window, service, key: str, title: str, description: str, 
     return row
 
 
+def _apps_page(main_window) -> int:
+    return int(getattr(main_window, "apps_page_index", 4))
+
+
 def _open_picker(main_window) -> None:
     cloud_page = getattr(main_window, "cloud_automation_page", None)
     service = getattr(cloud_page, "_connected_apps_service", None) if cloud_page else None
 
     dialog = QDialog(main_window)
     dialog.setWindowTitle("Connected sources")
-    dialog.resize(680, 610)
-    dialog.setMinimumSize(600, 500)
+    dialog.resize(760, 650)
+    dialog.setMinimumSize(660, 520)
     root = QVBoxLayout(dialog)
     root.setContentsMargins(20, 18, 20, 18)
     root.setSpacing(11)
@@ -137,7 +133,9 @@ def _open_picker(main_window) -> None:
     titles = QVBoxLayout()
     title = QLabel("Connected sources")
     title.setStyleSheet(f"color:{NAVY};font-size:22px;font-weight:900;")
-    subtitle = QLabel("Choose where PrivacyGate should load the next document from. Data is brought into the local protection flow first.")
+    subtitle = QLabel(
+        "Choose a connected source, or open Apps to activate another provider. PrivacyGate brings selected data into the local protection flow first."
+    )
     subtitle.setWordWrap(True)
     subtitle.setStyleSheet(f"color:{MUTED};font-size:11px;")
     titles.addWidget(title)
@@ -152,7 +150,7 @@ def _open_picker(main_window) -> None:
     root.addLayout(head)
 
     search = QLineEdit()
-    search.setPlaceholderText("Search sources")
+    search.setPlaceholderText("Search all sources")
     search.setClearButtonEnabled(True)
     search.setMinimumHeight(38)
     search.setStyleSheet(
@@ -173,7 +171,7 @@ def _open_picker(main_window) -> None:
     rows = []
 
     for index, provider in enumerate(_PROVIDER_CATALOG):
-        row = _provider_row(main_window, service, *provider)
+        row = _provider_row(service, *provider)
         rows.append(row)
         grid.addWidget(row, index // 2, index % 2)
 
@@ -181,14 +179,9 @@ def _open_picker(main_window) -> None:
 
         def choose(_checked=False, p=key, t=provider_title, available=availability):
             if available != "live":
-                QMessageBox.information(
-                    dialog,
-                    f"{t} connector",
-                    f"{t} is included in the PrivacyGate source catalog and is the next connector layer to enable. "
-                    "The current build keeps it disabled rather than requesting credentials before its OAuth flow is ready.",
-                )
+                dialog.accept()
+                main_window._show_page(_apps_page(main_window))
                 return
-            connected = False
             try:
                 connected = bool(service and service.is_connected(p))
             except Exception:
@@ -197,13 +190,13 @@ def _open_picker(main_window) -> None:
                 answer = QMessageBox.question(
                     dialog,
                     f"Connect {t}",
-                    f"{t} is not connected yet. Open Connected Apps to configure it?",
+                    f"{t} is available but not connected yet. Open Apps to connect it?",
                     QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel,
                     QMessageBox.StandardButton.Yes,
                 )
                 if answer == QMessageBox.StandardButton.Yes:
                     dialog.accept()
-                    main_window._show_page(4)
+                    main_window._show_page(_apps_page(main_window))
                 return
             dialog.accept()
             _open_source_browser(main_window, p, t)
@@ -223,9 +216,9 @@ def _open_picker(main_window) -> None:
     search.textChanged.connect(filter_rows)
 
     footer = QHBoxLayout()
-    note = QLabel("Connected Apps remains the place to connect, test and disconnect accounts.")
+    note = QLabel("Apps is the central place to connect and review provider integrations.")
     note.setStyleSheet(f"color:{MUTED};font-size:10px;")
-    manage = QPushButton("Manage connections")
+    manage = QPushButton("Open Apps")
     manage.setIcon(icon("settings", color=NAVY_SOFT, size=17))
     manage.setIconSize(QSize(17, 17))
     manage.setStyleSheet(_button_style(False))
@@ -236,7 +229,7 @@ def _open_picker(main_window) -> None:
     footer.addWidget(close)
     root.addLayout(footer)
 
-    manage.clicked.connect(lambda: (dialog.accept(), main_window._show_page(4)))
+    manage.clicked.connect(lambda: (dialog.accept(), main_window._show_page(_apps_page(main_window))))
     close.clicked.connect(dialog.reject)
     dialog.exec()
 
@@ -257,9 +250,7 @@ def apply_protect_source_picker(main_window) -> None:
     layout = QHBoxLayout(bar)
     layout.setContentsMargins(10, 8, 10, 8)
     layout.setSpacing(7)
-    bar.setStyleSheet(
-        "QFrame#ProtectSourceQuickBar{background:#FFFFFF;border:1px solid #D7E2EA;border-radius:10px;}"
-    )
+    bar.setStyleSheet("QFrame#ProtectSourceQuickBar{background:#FFFFFF;border:1px solid #D7E2EA;border-radius:10px;}")
 
     upload = QPushButton("Upload")
     sources = QPushButton("Connected sources")
@@ -314,19 +305,16 @@ def apply_protect_source_picker(main_window) -> None:
     else:
         protect.setEnabled(False)
 
-    # Keep duplicate quick actions honest: their enabled state mirrors the real
-    # controls below, which remain the single source of application behavior.
     timer = QTimer(bar)
-    timer.setInterval(180)
+    timer.setInterval(250)
 
     def sync_state() -> None:
         scan.setEnabled(page.scan_button.isEnabled())
         if original_protect is not None:
             protect.setEnabled(original_protect.isEnabled())
-        service = getattr(getattr(main_window, "cloud_automation_page", None), "_connected_apps_service", None)
         connected_count = 0
-        if service is not None:
-            for provider in ("google_drive", "clickup", "asana", "trello"):
+        if service := getattr(getattr(main_window, "cloud_automation_page", None), "_connected_apps_service", None):
+            for provider in ("google_drive", "gmail", "clickup", "asana", "trello"):
                 try:
                     connected_count += int(service.is_connected(provider))
                 except Exception:
