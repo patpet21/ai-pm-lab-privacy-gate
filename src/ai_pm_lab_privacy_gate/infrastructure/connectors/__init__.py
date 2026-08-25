@@ -6,6 +6,7 @@ from .clickup_adapter import install_clickup_adapter
 from .project_platform_adapter import install_project_platform_adapter
 from .asana_auto_oauth import install_asana_auto_oauth
 from .notion_auto_oauth import install_notion_auto_oauth
+from .jira_adf_fix import install_jira_adf_fix
 
 install_google_oauth_adapter()
 install_multi_oauth_adapter()
@@ -14,5 +15,6 @@ install_clickup_adapter()
 install_project_platform_adapter()
 install_asana_auto_oauth()
 install_notion_auto_oauth()
+install_jira_adf_fix()
 
 __all__ = ["ConnectedAppsService", "ConnectionTestResult", "RemoteItem"]
