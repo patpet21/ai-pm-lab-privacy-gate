@@ -10,6 +10,7 @@ from .connected_apps_browse_polish import apply_connected_apps_browse_polish
 from .protect_source_picker import apply_protect_source_picker
 from .source_catalog_activation import activate_oauth_ready_sources
 from .gmail_browser_route import install_gmail_browser_route
+from .clickup_browser_route import install_clickup_browser_route
 from .source_metadata import install_source_metadata
 from .library_source_folders import install_library_source_folders
 from .page_split import apply_apps_mcp_split
@@ -23,6 +24,7 @@ install_connected_apps_ui()
 install_google_oauth_ui()
 activate_oauth_ready_sources()
 install_gmail_browser_route()
+install_clickup_browser_route()
 install_source_metadata()
 install_library_source_folders()
 
