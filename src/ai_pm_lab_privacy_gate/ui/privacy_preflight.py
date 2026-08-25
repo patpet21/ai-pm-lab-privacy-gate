@@ -589,15 +589,15 @@ def install_privacy_preflight() -> None:
 
         chatgpt = menu.addAction(icon("external", color=_TEAL, size=17), "ChatGPT / GPT")
         chatgpt.setToolTip("Privacy Preflight → save locally → copy protected text → open ChatGPT")
-        chatgpt.triggered.connect(copy_and_open_chatgpt.__get__(self, ProtectionPage))
+        chatgpt.triggered.connect(lambda _checked=False: copy_and_open_chatgpt(self))
 
         claude = menu.addAction(icon("external", color=_TEAL, size=17), "Claude")
         claude.setToolTip("Privacy Preflight → save locally → copy protected text → open Claude")
-        claude.triggered.connect(copy_and_open_claude.__get__(self, ProtectionPage))
+        claude.triggered.connect(lambda _checked=False: copy_and_open_claude(self))
 
         other = menu.addAction(icon("copy", color=_TEAL, size=17), "Other AI tool")
         other.setToolTip("Privacy Preflight → save locally → copy protected text")
-        other.triggered.connect(copy_for_other_ai.__get__(self, ProtectionPage))
+        other.triggered.connect(lambda _checked=False: copy_for_other_ai(self))
 
         menu.addSeparator()
         connections = menu.addAction("Configure AI connections…")
