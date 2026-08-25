@@ -6,7 +6,10 @@ from pathlib import Path
 
 import httpx
 
-from ai_pm_lab_privacy_gate.infrastructure.security.temporary_workspace import new_working_path
+from ai_pm_lab_privacy_gate.infrastructure.security.temporary_workspace import (
+    as_read_once_path,
+    new_working_path,
+)
 
 from .service import ConnectedAppsService, RemoteItem
 
@@ -81,4 +84,6 @@ def materialize_gmail_message(service: ConnectedAppsService, item: RemoteItem) -
 
     target = new_working_path("gmail", _safe_filename(item.title))
     target.write_text("\n".join(lines), encoding="utf-8")
-    return target
+    # The Gmail UI consumes this transport file immediately with read_text().
+    # That first read removes the managed copy automatically.
+    return as_read_once_path(target)
