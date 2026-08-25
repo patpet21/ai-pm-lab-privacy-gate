@@ -82,15 +82,14 @@ def _source_details(page: ProtectionPage) -> tuple[str, str, str]:
             if not source:
                 parts = [part.strip() for part in canonical.split(" • ") if part.strip()]
                 source = parts[0] if parts else "Connected source"
-            if not item:
-                item = canonical
-            return source, account, item
+            return source, account, item or canonical
         except Exception:
             parts = [part.strip() for part in external.split(" • ") if part.strip()]
-            source = parts[0] if parts else "Connected source"
-            account = parts[1] if len(parts) >= 3 else ""
-            item = " • ".join(parts[2:] if len(parts) >= 3 else parts[1:])
-            return source, account, item
+            return (
+                parts[0] if parts else "Connected source",
+                parts[1] if len(parts) >= 3 else "",
+                " • ".join(parts[2:] if len(parts) >= 3 else parts[1:]),
+            )
 
     document = getattr(page, "current_document", None)
     source_path = getattr(document, "source_path", None) if document is not None else None
@@ -119,11 +118,9 @@ def build_preflight_snapshot(
         for finding in applied
         if str(getattr(finding, "finding_id", "") or "")
     }
-
     detected = len(findings)
     protected = len(finding_ids & applied_ids) if finding_ids else len(applied)
     protected = min(protected, detected)
-    allowed = max(0, detected - protected)
     residual = tuple(
         residual_findings
         if residual_findings is not None
@@ -138,12 +135,26 @@ def build_preflight_snapshot(
         item=item,
         detected=detected,
         protected=protected,
-        allowed=allowed,
+        allowed=max(0, detected - protected),
         residual=len(residual),
         profile=_combo_text(page, "profile_combo"),
         scope=_combo_text(page, "scope_combo"),
         mode=_combo_text(page, "mode_combo"),
     )
+
+
+def _run_second_scan(page: ProtectionPage):
+    residual = tuple(page.service.verify_protected(page.current_result, page._current_profile()))
+    page._last_residual = residual
+    if residual:
+        page.verification_metric.setText(f"Warning: {len(residual)} possible PII remain")
+        page.verification_metric.setProperty("warning", True)
+    else:
+        page.verification_metric.setText("Verified: no remaining PII")
+        page.verification_metric.setProperty("warning", False)
+    page.verification_metric.style().unpolish(page.verification_metric)
+    page.verification_metric.style().polish(page.verification_metric)
+    return residual
 
 
 def _metric_card(title: str, value: int, note: str, accent: str) -> QFrame:
@@ -154,17 +165,16 @@ def _metric_card(title: str, value: int, note: str, accent: str) -> QFrame:
     layout = QVBoxLayout(card)
     layout.setContentsMargins(12, 10, 12, 10)
     layout.setSpacing(3)
-
-    value_label = QLabel(str(value))
-    value_label.setStyleSheet(f"color:{accent};font-size:22px;font-weight:950;")
-    title_label = QLabel(title)
-    title_label.setStyleSheet(f"color:{_INK};font-size:10px;font-weight:850;")
-    note_label = QLabel(note)
-    note_label.setWordWrap(True)
-    note_label.setStyleSheet(f"color:{_MUTED};font-size:8px;")
-    layout.addWidget(value_label)
-    layout.addWidget(title_label)
-    layout.addWidget(note_label)
+    number = QLabel(str(value))
+    number.setStyleSheet(f"color:{accent};font-size:22px;font-weight:950;")
+    heading = QLabel(title)
+    heading.setStyleSheet(f"color:{_INK};font-size:10px;font-weight:850;")
+    detail = QLabel(note)
+    detail.setWordWrap(True)
+    detail.setStyleSheet(f"color:{_MUTED};font-size:8px;")
+    layout.addWidget(number)
+    layout.addWidget(heading)
+    layout.addWidget(detail)
     return card
 
 
@@ -175,7 +185,6 @@ def _value_row(label: str, value: str, *, strong: bool = False) -> QFrame:
     )
     row = QHBoxLayout(frame)
     row.setContentsMargins(10, 8, 10, 8)
-    row.setSpacing(12)
     left = QLabel(label)
     left.setStyleSheet(f"color:{_MUTED};font-size:9px;font-weight:800;")
     right = QLabel(value)
@@ -208,9 +217,7 @@ class PrivacyPreflightDialog(QDialog):
         shield.setFixedSize(46, 46)
         shield.setAlignment(Qt.AlignmentFlag.AlignCenter)
         shield.setPixmap(icon("protect", color=_TEAL, size=28).pixmap(28, 28))
-        shield.setStyleSheet(
-            "background:#EAF6F6;border:1px solid #BFE0E2;border-radius:11px;"
-        )
+        shield.setStyleSheet("background:#EAF6F6;border:1px solid #BFE0E2;border-radius:11px;")
         titles = QVBoxLayout()
         title = QLabel("Privacy Preflight")
         title.setStyleSheet(f"color:{_NAVY};font-size:23px;font-weight:950;")
@@ -229,29 +236,26 @@ class PrivacyPreflightDialog(QDialog):
         root.addLayout(header)
 
         safe = snapshot.ready
-        status_bg = "#EAF7EF" if safe else "#FFF5E5"
-        status_border = "#BFE4CD" if safe else "#F0D3A0"
         status_color = _GREEN if safe else _AMBER
         status = QFrame(objectName="PreflightStatus")
         status.setStyleSheet(
-            f"QFrame#PreflightStatus{{background:{status_bg};border:1px solid {status_border};border-radius:11px;}}"
+            "QFrame#PreflightStatus{"
+            f"background:{'#EAF7EF' if safe else '#FFF5E5'};"
+            f"border:1px solid {'#BFE4CD' if safe else '#F0D3A0'};border-radius:11px;}}"
         )
         status_layout = QHBoxLayout(status)
         status_layout.setContentsMargins(13, 11, 13, 11)
-        status_layout.setSpacing(10)
         status_icon = QLabel()
-        status_icon.setPixmap(icon("check" if safe else "protect", color=status_color, size=22).pixmap(22, 22))
+        status_icon.setPixmap(
+            icon("check" if safe else "protect", color=status_color, size=22).pixmap(22, 22)
+        )
         status_text = QVBoxLayout()
         status_title = QLabel("READY TO OPEN SAFELY" if safe else "REVIEW BEFORE OPENING")
         status_title.setStyleSheet(f"color:{status_color};font-size:12px;font-weight:950;")
         if safe:
-            message = (
-                "All selected findings are protected and the second scan found no remaining detected sensitive data."
-            )
+            message = "All selected findings are protected and the second scan found no remaining detected sensitive data."
         elif snapshot.allowed and snapshot.residual:
-            message = (
-                "Some detected items are intentionally left visible, and the second scan still found possible sensitive data."
-            )
+            message = "Some detected items are left visible, and the second scan still found possible sensitive data."
         elif snapshot.allowed:
             message = "Some detected items are intentionally left visible in the content that will be copied."
         else:
@@ -266,12 +270,10 @@ class PrivacyPreflightDialog(QDialog):
         root.addWidget(status)
 
         path = QFrame(objectName="PreflightPath")
-        path.setStyleSheet(
-            "QFrame#PreflightPath{background:#FFFFFF;border:1px solid #D7E2EA;border-radius:11px;}"
-        )
+        path.setStyleSheet("QFrame#PreflightPath{background:#FFFFFF;border:1px solid #D7E2EA;border-radius:11px;}")
         path_layout = QVBoxLayout(path)
         path_layout.setContentsMargins(13, 11, 13, 11)
-        path_layout.setSpacing(7)
+        path_layout.setSpacing(6)
         path_title = QLabel("DATA PATH")
         path_title.setStyleSheet(f"color:{_TEAL};font-size:8px;font-weight:950;")
         source = QLabel(snapshot.source_line)
@@ -291,25 +293,14 @@ class PrivacyPreflightDialog(QDialog):
 
         metrics = QGridLayout()
         metrics.setHorizontalSpacing(9)
-        metrics.setVerticalSpacing(9)
         metrics.addWidget(_metric_card("Detected", snapshot.detected, "Sensitive items found in the source.", _NAVY), 0, 0)
-        metrics.addWidget(_metric_card("Protected", snapshot.protected, "Items replaced by the selected protection mode.", _TEAL), 0, 1)
+        metrics.addWidget(_metric_card("Protected", snapshot.protected, "Items replaced by the selected mode.", _TEAL), 0, 1)
         metrics.addWidget(_metric_card("Allowed by you", snapshot.allowed, "Detected values intentionally left visible.", _AMBER if snapshot.allowed else _GREEN), 0, 2)
         metrics.addWidget(_metric_card("Second-scan residual", snapshot.residual, "Possible sensitive items still detected after protection.", _AMBER if snapshot.residual else _GREEN), 0, 3)
         root.addLayout(metrics)
 
-        exposure_value = (
-            "YES — review current choices"
-            if snapshot.detected_original_data_leaving
-            else "NO detected original values"
-        )
-        root.addWidget(
-            _value_row(
-                "Detected sensitive data leaving this PC",
-                exposure_value,
-                strong=True,
-            )
-        )
+        exposure = "YES — review current choices" if snapshot.detected_original_data_leaving else "NO detected original values"
+        root.addWidget(_value_row("Detected sensitive data leaving this PC", exposure, strong=True))
         root.addWidget(_value_row("Protection policy", snapshot.policy_line or "Current PrivacyGate settings"))
         root.addWidget(
             _value_row(
@@ -319,18 +310,13 @@ class PrivacyPreflightDialog(QDialog):
         )
 
         actions = QHBoxLayout()
-        actions.setSpacing(8)
         review = QPushButton("Back to review")
         review.setMinimumHeight(38)
         review.setStyleSheet(
             "QPushButton{background:#FFFFFF;color:#17384E;border:1px solid #C8D7E0;border-radius:9px;"
             "padding:7px 14px;font-weight:850;}QPushButton:hover{background:#F1F7F9;}"
         )
-        proceed = QPushButton(
-            "Copy protected text & open ChatGPT"
-            if safe
-            else "Continue with current choices"
-        )
+        proceed = QPushButton("Copy protected text & open ChatGPT" if safe else "Continue with current choices")
         proceed.setMinimumHeight(38)
         proceed.setIcon(icon("external", color="#FFFFFF", size=18))
         proceed.setStyleSheet(
@@ -348,7 +334,6 @@ class PrivacyPreflightDialog(QDialog):
         actions.addWidget(review)
         actions.addWidget(proceed)
         root.addLayout(actions)
-
         review.clicked.connect(self.reject)
         proceed.clicked.connect(self.accept)
 
@@ -363,23 +348,20 @@ def install_privacy_preflight() -> None:
         if not self.current_result:
             return
 
-        # Reuse the existing second-scan gate. If it finds residual data, the
-        # existing warning remains authoritative and the user must explicitly
-        # choose Ignore before the Preflight can continue.
-        if not self._confirm_residual_risk("opening an AI service"):
-            return
-
+        # The same local second-scan engine used by copy/download is run here,
+        # but its result is presented inside one consolidated Preflight dialog.
+        residual = _run_second_scan(self)
         snapshot = build_preflight_snapshot(
             self,
             destination="ChatGPT",
-            residual_findings=getattr(self, "_last_residual", ()),
+            residual_findings=residual,
         )
         dialog = PrivacyPreflightDialog(snapshot, self)
         if dialog.exec() != QDialog.DialogCode.Accepted:
             return
 
-        # Preserve the existing manual ChatGPT behavior exactly: protected text
-        # goes to the clipboard, the browser opens, and nothing is auto-submitted.
+        # Preserve the existing manual handoff exactly: clipboard + browser;
+        # PrivacyGate never auto-submits the content to ChatGPT.
         QApplication.clipboard().setText(self.current_result.combined_text)
         QDesktopServices.openUrl(QUrl("https://chatgpt.com/"))
         try:
