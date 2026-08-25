@@ -13,6 +13,17 @@ _ROOT = Path(tempfile.gettempdir()) / "AI_PM_LAB_Privacy_Gate" / "managed"
 _SESSION_ID = f"session-{os.getpid()}-{uuid.uuid4().hex[:10]}"
 _SESSION_DIR = _ROOT / _SESSION_ID
 _PENDING: set[Path] = set()
+_PathBase = type(Path())
+
+
+class ManagedReadOncePath(_PathBase):
+    """Path that deletes itself after its text payload is consumed once."""
+
+    def read_text(self, *args, **kwargs):  # type: ignore[override]
+        try:
+            return super().read_text(*args, **kwargs)
+        finally:
+            delete_managed_path(self)
 
 
 def managed_root() -> Path:
@@ -40,6 +51,13 @@ def new_working_path(provider: str, filename: str) -> Path:
     provider_dir.mkdir(parents=True, exist_ok=True)
     safe_name = _safe_component(filename)
     return provider_dir / f"{uuid.uuid4().hex[:10]}-{safe_name}"
+
+
+def as_read_once_path(path: str | Path) -> Path:
+    """Wrap a managed text file so the first successful/failed read removes it."""
+    if not is_managed_path(path):
+        return Path(path)
+    return ManagedReadOncePath(str(path))
 
 
 def is_managed_path(path: str | Path | None) -> bool:
