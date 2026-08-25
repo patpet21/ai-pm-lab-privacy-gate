@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import base64
 import re
-import tempfile
 from pathlib import Path
 
 import httpx
+
+from ai_pm_lab_privacy_gate.infrastructure.security.temporary_workspace import new_working_path
 
 from .service import ConnectedAppsService, RemoteItem
 
@@ -78,8 +79,6 @@ def materialize_gmail_message(service: ConnectedAppsService, item: RemoteItem) -
         lines.append(f"Date: {headers['date']}")
     lines.extend(["", body])
 
-    target_dir = Path(tempfile.gettempdir()) / "AI_PM_LAB_Privacy_Gate" / "connected-sources" / "gmail"
-    target_dir.mkdir(parents=True, exist_ok=True)
-    target = target_dir / _safe_filename(item.title)
+    target = new_working_path("gmail", _safe_filename(item.title))
     target.write_text("\n".join(lines), encoding="utf-8")
     return target
