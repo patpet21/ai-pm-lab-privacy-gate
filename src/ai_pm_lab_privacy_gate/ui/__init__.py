@@ -16,6 +16,7 @@ from .apps_catalog_upgrade import install_apps_catalog_upgrade
 from .apps_disconnect_layout import install_apps_disconnect_layout
 from .apps_multi_account import install_apps_multi_account
 from .account_aware_routing import install_account_aware_routing
+from .automatic_temp_cleanup import install_automatic_temp_cleanup
 from .source_metadata import install_source_metadata
 from .library_source_folders import install_library_source_folders
 from .page_split import apply_apps_mcp_split
@@ -37,6 +38,9 @@ install_project_platform_routes()
 # Install after every provider-specific browser route so all final entry points
 # consistently ask which connected account should supply the data.
 install_account_aware_routing()
+# Privacy-only working-file lifecycle. This does not change MCP state, sharing,
+# remote connections, Library contents, Restore mappings or connector tokens.
+install_automatic_temp_cleanup()
 install_source_metadata()
 install_library_source_folders()
 
