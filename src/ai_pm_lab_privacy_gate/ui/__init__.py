@@ -9,6 +9,7 @@ from .brand_icons import apply_brand_icons
 from .connected_apps_browse_polish import apply_connected_apps_browse_polish
 from .protect_source_picker import apply_protect_source_picker
 from .source_catalog_activation import activate_oauth_ready_sources
+from .gmail_browser_route import install_gmail_browser_route
 from .page_split import apply_apps_mcp_split
 from .runtime_fixes import apply_runtime_fixes
 
@@ -19,6 +20,7 @@ install_layout_polish()
 install_connected_apps_ui()
 install_google_oauth_ui()
 activate_oauth_ready_sources()
+install_gmail_browser_route()
 
 from .main_window import MainWindow
 
