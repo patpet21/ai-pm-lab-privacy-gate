@@ -92,8 +92,13 @@ _PLAN_CATALOG: dict[PlanCode, PlanDefinition] = {
 def normalize_plan(value: str | PlanCode | None) -> PlanCode:
     if isinstance(value, PlanCode):
         return value
+    raw = str(value or "").strip().lower()
+    # Backward compatibility with the existing Supabase entitlement schema,
+    # which historically stored the free tier as "free".
+    if raw == "free":
+        raw = PlanCode.BASIC.value
     try:
-        return PlanCode(str(value or "").strip().lower())
+        return PlanCode(raw)
     except ValueError:
         return PlanCode.BASIC
 

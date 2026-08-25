@@ -134,10 +134,9 @@ class SupabaseTeamClient:
             "privacy_gate_entitlements",
             session,
             {
-                "subject_type": "eq.user",
-                "subject_id": f"eq.{session.user_id}",
-                "status": "in.(trial,active)",
-                "select": "plan_code,status,seat_limit,device_limit_per_member",
+                "user_id": f"eq.{session.user_id}",
+                "status": "in.(trialing,active)",
+                "select": "plan_code,status,valid_until",
             },
         )
         return TeamState(
@@ -196,12 +195,11 @@ class SupabaseTeamClient:
             raise TeamServiceError("The organization attached to this account is unavailable.")
 
         entitlement = self._first(
-            "privacy_gate_entitlements",
+            "privacy_gate_org_entitlements",
             session,
             {
-                "subject_type": "eq.organization",
-                "subject_id": f"eq.{organization_id}",
-                "status": "in.(trial,active)",
+                "organization_id": f"eq.{organization_id}",
+                "status": "in.(trialing,active)",
                 "select": "plan_code,status,seat_limit,device_limit_per_member",
             },
         )

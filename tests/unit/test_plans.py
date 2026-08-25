@@ -16,6 +16,7 @@ def test_plan_catalog_has_exact_four_canonical_tiers():
     ]
     assert PlanCode.BASIC.label == "Basic"
     assert normalize_plan("unknown") is PlanCode.BASIC
+    assert normalize_plan("free") is PlanCode.BASIC
 
 
 def test_basic_is_free_core_and_team_starts_at_business():

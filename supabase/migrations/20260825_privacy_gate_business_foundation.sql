@@ -32,23 +32,23 @@ create index if not exists privacy_gate_memberships_user_idx
 create index if not exists privacy_gate_memberships_org_idx
     on public.privacy_gate_memberships(organization_id, status);
 
-create table if not exists public.privacy_gate_entitlements (
-    id uuid primary key default gen_random_uuid(),
-    subject_type text not null
-        check (subject_type in ('user', 'organization')),
-    subject_id uuid not null,
-    plan_code text not null default 'basic'
-        check (plan_code in ('basic', 'pro', 'business', 'enterprise')),
-    status text not null default 'active'
-        check (status in ('trial', 'active', 'past_due', 'suspended', 'cancelled')),
-    seat_limit integer check (seat_limit is null or seat_limit between 1 and 100000),
+-- User-scoped privacy_gate_entitlements already exists in production and remains
+-- the source of Basic/Pro access. Team plans get a separate organization table.
+create table if not exists public.privacy_gate_org_entitlements (
+    organization_id uuid primary key
+        references public.privacy_gate_organizations(id) on delete cascade,
+    plan_code text not null default 'business'
+        check (plan_code in ('business', 'enterprise')),
+    status text not null default 'trialing'
+        check (status in ('trialing', 'active', 'past_due', 'canceled', 'suspended')),
+    seat_limit integer not null default 5
+        check (seat_limit between 1 and 100000),
     device_limit_per_member integer
         check (device_limit_per_member is null or device_limit_per_member between 1 and 100),
     feature_overrides jsonb not null default '{}'::jsonb,
-    starts_at timestamptz not null default now(),
-    expires_at timestamptz,
-    updated_at timestamptz not null default now(),
-    unique (subject_type, subject_id)
+    valid_until timestamptz,
+    created_at timestamptz not null default now(),
+    updated_at timestamptz not null default now()
 );
 
 create table if not exists public.privacy_gate_policies (
@@ -125,6 +125,14 @@ alter table public.privacy_gate_devices
 alter table public.privacy_gate_devices
     add column if not exists last_policy_sync_at timestamptz;
 
+-- Existing production schema initially allowed only active/revoked. Business
+-- adds a reversible disabled state without invalidating either existing value.
+alter table public.privacy_gate_devices
+    drop constraint if exists privacy_gate_devices_status_check;
+alter table public.privacy_gate_devices
+    add constraint privacy_gate_devices_status_check
+    check (status in ('active', 'disabled', 'revoked'));
+
 create index if not exists privacy_gate_devices_org_idx
     on public.privacy_gate_devices(organization_id, status);
 
@@ -166,7 +174,7 @@ $$;
 
 alter table public.privacy_gate_organizations enable row level security;
 alter table public.privacy_gate_memberships enable row level security;
-alter table public.privacy_gate_entitlements enable row level security;
+alter table public.privacy_gate_org_entitlements enable row level security;
 alter table public.privacy_gate_policies enable row level security;
 alter table public.privacy_gate_policy_versions enable row level security;
 alter table public.privacy_gate_invitations enable row level security;
@@ -189,17 +197,13 @@ using (
     )
 );
 
-drop policy if exists "privacy_gate_entitlement_select" on public.privacy_gate_entitlements;
-create policy "privacy_gate_entitlement_select"
-on public.privacy_gate_entitlements for select
+-- Keep the existing user-scoped privacy_gate_entitlements table and its
+-- current RLS policy untouched. It remains the source of Basic/Pro entitlement.
+drop policy if exists "privacy_gate_org_entitlement_select" on public.privacy_gate_org_entitlements;
+create policy "privacy_gate_org_entitlement_select"
+on public.privacy_gate_org_entitlements for select
 to authenticated
-using (
-    (subject_type = 'user' and subject_id = auth.uid())
-    or (
-        subject_type = 'organization'
-        and public.privacy_gate_is_org_member(subject_id)
-    )
-);
+using (public.privacy_gate_is_org_member(organization_id));
 
 drop policy if exists "privacy_gate_policy_select" on public.privacy_gate_policies;
 create policy "privacy_gate_policy_select"
@@ -237,8 +241,8 @@ using (
     )
 );
 
--- Existing account sign-in upserts the user's own device. Direct writes stay
--- restricted to that user's row; organization assignment is done by RPC.
+-- Preserve the current per-user device registration behavior used by account
+-- sign-in while the team RPCs attach organization metadata.
 drop policy if exists "privacy_gate_device_insert_own" on public.privacy_gate_devices;
 create policy "privacy_gate_device_insert_own"
 on public.privacy_gate_devices for insert
@@ -293,12 +297,12 @@ begin
 
     -- Self-service Business is a trial until the future billing control plane
     -- promotes it to active. Enterprise is intentionally never self-provisioned.
-    insert into public.privacy_gate_entitlements(
-        subject_type, subject_id, plan_code, status, seat_limit,
+    insert into public.privacy_gate_org_entitlements(
+        organization_id, plan_code, status, seat_limit,
         device_limit_per_member
     )
     values (
-        'organization', v_org, 'business', 'trial', v_seats, 2
+        v_org, 'business', 'trialing', v_seats, 2
     );
 
     insert into public.privacy_gate_policies(
@@ -454,11 +458,10 @@ begin
 
     select seat_limit
     into v_seat_limit
-    from public.privacy_gate_entitlements
-    where subject_type = 'organization'
-      and subject_id = v_inv.organization_id
+    from public.privacy_gate_org_entitlements
+    where organization_id = v_inv.organization_id
       and plan_code in ('business', 'enterprise')
-      and status in ('trial', 'active');
+      and status in ('trialing', 'active');
 
     if v_seat_limit is null then
         raise exception 'Organization entitlement is not active';
@@ -856,7 +859,7 @@ grant execute on function public.privacy_gate_set_device_status(uuid, text, text
 
 grant select on public.privacy_gate_organizations to authenticated;
 grant select on public.privacy_gate_memberships to authenticated;
-grant select on public.privacy_gate_entitlements to authenticated;
+grant select on public.privacy_gate_org_entitlements to authenticated;
 grant select on public.privacy_gate_policies to authenticated;
 grant select on public.privacy_gate_policy_versions to authenticated;
 grant select on public.privacy_gate_invitations to authenticated;
