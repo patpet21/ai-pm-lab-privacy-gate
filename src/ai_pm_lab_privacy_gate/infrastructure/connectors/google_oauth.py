@@ -116,7 +116,9 @@ def authorize_desktop(
         "response_type": "code",
         "scope": " ".join(requested_scopes),
         "access_type": "offline",
-        "prompt": "consent",
+        # Multi-account UX: always show the account chooser instead of silently
+        # reusing the browser's currently signed-in Google account.
+        "prompt": "select_account consent",
         "state": state,
         "code_challenge": challenge,
         "code_challenge_method": "S256",
