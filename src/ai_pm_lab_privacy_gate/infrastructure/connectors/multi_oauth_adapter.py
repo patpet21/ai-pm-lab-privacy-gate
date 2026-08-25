@@ -119,21 +119,23 @@ def _header(headers: list[dict], name: str) -> str:
     return ""
 
 
-def _list_root_items(self: ConnectedAppsService, provider: str, limit: int = 30) -> tuple[RemoteItem, ...]:
-    if provider != "gmail":
-        return _PREV_LIST(self, provider, limit)
+def _list_gmail_page(self: ConnectedAppsService, page_token: str = "", limit: int = 30) -> tuple[tuple[RemoteItem, ...], str]:
     token = self._token("gmail")
-    limit = max(1, min(int(limit), 40))
+    limit = max(1, min(int(limit), 50))
     headers = {"Authorization": f"Bearer {token}"}
+    params = {"maxResults": str(limit)}
+    if page_token:
+        params["pageToken"] = page_token
     response = httpx.get(
         "https://gmail.googleapis.com/gmail/v1/users/me/messages",
         headers=headers,
-        params={"maxResults": str(limit)},
+        params=params,
         timeout=self.timeout,
     )
     response.raise_for_status()
+    payload = response.json()
     rows: list[RemoteItem] = []
-    for entry in response.json().get("messages", [])[:limit]:
+    for entry in payload.get("messages", [])[:limit]:
         message_id = str(entry.get("id") or "")
         if not message_id:
             continue
@@ -144,14 +146,21 @@ def _list_root_items(self: ConnectedAppsService, provider: str, limit: int = 30)
             timeout=self.timeout,
         )
         detail.raise_for_status()
-        payload = detail.json()
-        msg_headers = payload.get("payload", {}).get("headers", [])
+        message = detail.json()
+        msg_headers = message.get("payload", {}).get("headers", [])
         subject = _header(msg_headers, "Subject") or "(No subject)"
         sender = _header(msg_headers, "From")
         date = _header(msg_headers, "Date")
         subtitle = " • ".join(part for part in (sender, date) if part)
         rows.append(RemoteItem("gmail", message_id, subject, subtitle, "email", ""))
-    return tuple(rows)
+    return tuple(rows), str(payload.get("nextPageToken") or "")
+
+
+def _list_root_items(self: ConnectedAppsService, provider: str, limit: int = 30) -> tuple[RemoteItem, ...]:
+    if provider != "gmail":
+        return _PREV_LIST(self, provider, limit)
+    rows, _next_page = _list_gmail_page(self, "", min(limit, 30))
+    return rows
 
 
 def install_multi_oauth_adapter() -> None:
@@ -162,6 +171,7 @@ def install_multi_oauth_adapter() -> None:
     ConnectedAppsService.connect_clickup_oauth = _connect_clickup_oauth  # type: ignore[attr-defined]
     ConnectedAppsService.connect_asana_oauth = _connect_asana_oauth  # type: ignore[attr-defined]
     ConnectedAppsService.connect_trello_oauth = _connect_trello_oauth  # type: ignore[attr-defined]
+    ConnectedAppsService.list_gmail_page = _list_gmail_page  # type: ignore[attr-defined]
     ConnectedAppsService._token = _oauth_token  # type: ignore[method-assign]
     ConnectedAppsService.disconnect = _disconnect  # type: ignore[method-assign]
     ConnectedAppsService.test_connection = _test_connection  # type: ignore[method-assign]
