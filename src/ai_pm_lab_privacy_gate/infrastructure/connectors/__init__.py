@@ -11,6 +11,7 @@ from .jira_refresh_adapter import install_jira_refresh_adapter
 from .multi_account_registry import install_multi_account_registry
 from .multi_account_label_refresh import install_multi_account_label_refresh
 from .multi_account_safety import install_multi_account_safety
+from .connector_composition_safety import install_connector_composition_safety
 
 install_google_oauth_adapter()
 install_multi_oauth_adapter()
@@ -31,5 +32,8 @@ install_multi_account_label_refresh()
 # Final safety wrapper: isolate legacy compatibility aliases while adding an
 # account and guarantee proactive Google Drive refresh for the selected account.
 install_multi_account_safety()
+# Provider adapters are imported before their installers run. Preserve Gmail's
+# dedicated test/list handlers after the full connector chain is composed.
+install_connector_composition_safety()
 
 __all__ = ["ConnectedAppsService", "ConnectionTestResult", "RemoteItem"]
