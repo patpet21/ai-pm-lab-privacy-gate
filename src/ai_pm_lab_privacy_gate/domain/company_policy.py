@@ -167,7 +167,12 @@ class PolicyEngine:
         if not self.policy:
             return True
         key = str(connector).strip().lower()
-        return bool(self.policy.allowed_connectors.get(key, False))
+        if key in self.policy.allowed_connectors:
+            return bool(self.policy.allowed_connectors[key])
+        # Enterprise/admin policies may deliberately use a wildcard so newly
+        # added catalog integrations are not accidentally disabled. Specific
+        # connector entries always override the wildcard.
+        return bool(self.policy.allowed_connectors.get("*", False))
 
     @staticmethod
     def _finding_id(finding: object) -> str:
