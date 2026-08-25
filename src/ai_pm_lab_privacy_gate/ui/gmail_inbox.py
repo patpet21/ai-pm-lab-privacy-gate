@@ -61,6 +61,27 @@ def _retry(operation, attempts: int = 3):
     raise RuntimeError("Gmail did not return a result.")
 
 
+def _active_account_details(service) -> tuple[str, str]:
+    if service is None or not hasattr(service, "list_connected_accounts"):
+        return "", ""
+    try:
+        accounts = tuple(service.list_connected_accounts("gmail"))
+    except Exception:
+        return "", ""
+    active = next((account for account in accounts if account.is_active), None)
+    if active is None and len(accounts) == 1:
+        active = accounts[0]
+    if active is None:
+        active = next((account for account in accounts if account.is_default), None)
+    if active is None:
+        return "", ""
+    account_id = str(getattr(active, "account_id", "") or "").strip()
+    account_label = str(
+        getattr(active, "label", "") or getattr(active, "subtitle", "") or ""
+    ).strip()
+    return account_id, account_label
+
+
 def _message_widget(remote) -> QWidget:
     box = QWidget()
     layout = QVBoxLayout(box)
@@ -249,7 +270,21 @@ def open_gmail_inbox(main_window) -> None:
             paste_button.click()
         protect.input_tabs.setCurrentIndex(0)
         protect.text_input.setPlainText(email_text)
-        protect._external_source_name = f"Gmail • {remote.title}"
+        account_id, account_label = _active_account_details(service)
+        source_parts = ["Gmail"]
+        if account_label:
+            source_parts.append(account_label)
+        source_parts.append(remote.title)
+        protect._external_source_name = " • ".join(source_parts)
+        protect._external_source_metadata = {
+            "provider": "gmail",
+            "provider_label": "Gmail",
+            "account_id": account_id,
+            "account_label": account_label,
+            "item_id": str(remote.item_id or ""),
+            "item_title": str(remote.title or ""),
+            "item_kind": str(remote.kind or "email"),
+        }
         main_window._show_page(0)
         dialog.accept()
         main_window.statusBar().showMessage(
