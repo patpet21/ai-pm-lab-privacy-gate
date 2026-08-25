@@ -16,6 +16,28 @@ _PREV_TEST = ConnectedAppsService.test_connection
 _PREV_LIST = ConnectedAppsService.list_root_items
 
 
+def _google_client_id(self: ConnectedAppsService, preferred_provider: str = "gmail") -> str:
+    configured = configured_client_id()
+    if configured:
+        self.secret_store.set("oauth.google.client_id", configured)
+        return configured
+
+    cached = self.secret_store.get("oauth.google.client_id") or ""
+    if cached:
+        return cached
+
+    for key in (
+        f"connected.{preferred_provider}.client_id",
+        "connected.gmail.client_id",
+        "connected.google_drive.client_id",
+    ):
+        value = (self.secret_store.get(key) or "").strip()
+        if value:
+            self.secret_store.set("oauth.google.client_id", value)
+            return value
+    return ""
+
+
 def _store_token_payload(self: ConnectedAppsService, provider: str, payload: dict, *, client_id: str = "") -> None:
     token = str(payload.get("access_token") or "")
     if not token:
@@ -23,6 +45,8 @@ def _store_token_payload(self: ConnectedAppsService, provider: str, payload: dic
     self.secret_store.set(f"connected.{provider}.token", token)
     if client_id:
         self.secret_store.set(f"connected.{provider}.client_id", client_id)
+        if provider == "gmail":
+            self.secret_store.set("oauth.google.client_id", client_id)
     expires_in = int(payload.get("expires_in") or 0)
     if expires_in:
         obtained = int(payload.get("obtained_at") or time.time())
@@ -33,7 +57,7 @@ def _store_token_payload(self: ConnectedAppsService, provider: str, payload: dic
 
 
 def _connect_gmail_oauth(self: ConnectedAppsService) -> None:
-    client_id = configured_client_id()
+    client_id = _google_client_id(self, "gmail")
     payload = authorize_desktop(client_id, scopes=GMAIL_SCOPES)
     _store_token_payload(self, "gmail", payload, client_id=client_id)
 
@@ -71,7 +95,7 @@ def _oauth_token(self: ConnectedAppsService, provider: str) -> str:
     if not refresh_token:
         return token
     if provider == "gmail":
-        client_id = self.secret_store.get("connected.gmail.client_id") or configured_client_id()
+        client_id = self.secret_store.get("connected.gmail.client_id") or _google_client_id(self, "gmail")
         payload = refresh_access_token(client_id, refresh_token)
     else:
         payload = refresh_asana(refresh_token)
@@ -92,6 +116,8 @@ def _disconnect(self: ConnectedAppsService, provider: str) -> None:
     if provider in {"gmail", "clickup", "asana", "trello"}:
         for suffix in ("refresh_token", "client_id", "expires_at"):
             self.secret_store.delete(f"connected.{provider}.{suffix}")
+        # oauth.google.client_id is application configuration, not an account
+        # credential, so it intentionally survives Gmail account removal.
 
 
 def _test_connection(self: ConnectedAppsService, provider: str) -> ConnectionTestResult:
