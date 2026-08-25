@@ -18,6 +18,7 @@ from .apps_multi_account import install_apps_multi_account
 from .account_aware_routing import install_account_aware_routing
 from .automatic_temp_cleanup import install_automatic_temp_cleanup
 from .source_metadata import install_source_metadata
+from .privacy_preflight import install_privacy_preflight
 from .library_source_folders import install_library_source_folders
 from .library_visual_upgrade import install_library_visual_upgrade
 from .page_split import apply_apps_mcp_split
@@ -43,6 +44,9 @@ install_account_aware_routing()
 # remote connections, Library contents, Restore mappings or connector tokens.
 install_automatic_temp_cleanup()
 install_source_metadata()
+# Manual AI handoff gate. It reuses the existing residual scan and only wraps
+# Copy & Open ChatGPT; MCP, Restore and connector behavior remain untouched.
+install_privacy_preflight()
 install_library_source_folders()
 # Visual-only Library upgrade. It wraps the existing table/actions instead of
 # replacing their storage, Restore, MCP or connector behavior.
