@@ -15,6 +15,7 @@ from .project_platform_routes import install_project_platform_routes
 from .apps_catalog_upgrade import install_apps_catalog_upgrade
 from .apps_disconnect_layout import install_apps_disconnect_layout
 from .apps_multi_account import install_apps_multi_account
+from .account_aware_routing import install_account_aware_routing
 from .source_metadata import install_source_metadata
 from .library_source_folders import install_library_source_folders
 from .page_split import apply_apps_mcp_split
@@ -33,6 +34,9 @@ install_apps_multi_account()
 install_gmail_browser_route()
 install_clickup_browser_route()
 install_project_platform_routes()
+# Install after every provider-specific browser route so all final entry points
+# consistently ask which connected account should supply the data.
+install_account_aware_routing()
 install_source_metadata()
 install_library_source_folders()
 
