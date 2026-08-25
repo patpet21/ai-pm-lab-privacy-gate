@@ -10,6 +10,7 @@ from .connected_apps_browse_polish import apply_connected_apps_browse_polish
 from .protect_source_picker import apply_protect_source_picker
 from .source_catalog_activation import activate_oauth_ready_sources
 from .page_split import apply_apps_mcp_split
+from .runtime_fixes import apply_runtime_fixes
 
 install_mcp_log_guard()
 install_redesign()
@@ -31,6 +32,7 @@ def _main_window_init_with_brand(self, *args, **kwargs) -> None:
     apply_connected_apps_browse_polish(self)
     apply_protect_source_picker(self)
     apply_apps_mcp_split(self)
+    apply_runtime_fixes(self)
 
 
 MainWindow.__init__ = _main_window_init_with_brand
