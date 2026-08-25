@@ -99,14 +99,24 @@ def connect_notion() -> dict:
 
 
 def connect_jira() -> dict:
+    """Connect Jira Cloud using Atlassian OAuth 2.0 (3LO).
+
+    Atlassian redirects to the registered HTTPS PrivacyGate callback. The static
+    Netlify relay forwards the short-lived authorization response to a local
+    loopback listener on this device, while token exchange and storage stay in
+    the desktop app.
+    """
     client_id = os.environ.get("PRIVACY_GATE_JIRA_CLIENT_ID", "").strip()
     client_secret = os.environ.get("PRIVACY_GATE_JIRA_CLIENT_SECRET", "").strip()
-    redirect_uri = os.environ.get("PRIVACY_GATE_JIRA_REDIRECT_URI", "http://127.0.0.1:8772/jira").strip()
+    redirect_uri = os.environ.get(
+        "PRIVACY_GATE_JIRA_REDIRECT_URI",
+        "https://privacygate.propertydex.xyz/oauth/jira/callback",
+    ).strip()
     if not client_id or not client_secret:
         raise ProviderOAuthError("OAuth client ID/secret is not configured for this provider.")
-    parsed = urlparse(redirect_uri)
-    if parsed.hostname not in {"127.0.0.1", "localhost"} or not parsed.port:
-        raise ProviderOAuthError("For desktop testing, the OAuth redirect must be a localhost URL with a fixed port.")
+    parsed_redirect = urlparse(redirect_uri)
+    if parsed_redirect.scheme != "https" or not parsed_redirect.netloc:
+        raise ProviderOAuthError("Jira redirect URI must be the registered HTTPS PrivacyGate callback URL.")
 
     state = secrets.token_urlsafe(28)
     result: dict[str, str] = {}
@@ -114,11 +124,16 @@ def connect_jira() -> dict:
 
     class Handler(BaseHTTPRequestHandler):
         def do_GET(self):  # noqa: N802
-            query = parse_qs(urlparse(self.path).query)
+            parsed = urlparse(self.path)
+            if parsed.path != "/jira":
+                self.send_response(404)
+                self.end_headers()
+                return
+            query = parse_qs(parsed.query)
             result["code"] = query.get("code", [""])[0]
             result["state"] = query.get("state", [""])[0]
             result["error"] = query.get("error", [""])[0]
-            body = _callback_page("Connection received" if result.get("code") else "Connection not completed")
+            body = _callback_page("Jira connection received")
             self.send_response(200)
             self.send_header("Content-Type", "text/html; charset=utf-8")
             self.send_header("Cache-Control", "no-store")
@@ -130,9 +145,18 @@ def connect_jira() -> dict:
         def log_message(self, _format, *_args):
             return
 
-    server = HTTPServer((parsed.hostname or "127.0.0.1", parsed.port), Handler)
+    try:
+        server = HTTPServer(("127.0.0.1", 8772), Handler)
+    except OSError as exc:
+        raise ProviderOAuthError(
+            "PrivacyGate could not open its local Jira callback on port 8772. Close any other PrivacyGate test window and try again."
+        ) from exc
     server.timeout = 0.5
-    scopes = "read:jira-work read:jira-user offline_access"
+
+    scopes = os.environ.get(
+        "PRIVACY_GATE_JIRA_SCOPES",
+        "read:jira-work read:jira-user offline_access",
+    ).strip()
     params = {
         "audience": "api.atlassian.com",
         "client_id": client_id,
@@ -143,6 +167,7 @@ def connect_jira() -> dict:
         "prompt": "consent",
     }
     webbrowser.open(f"https://auth.atlassian.com/authorize?{urlencode(params)}")
+
     deadline = time.monotonic() + 180
     try:
         while time.monotonic() < deadline and not ready.is_set():
@@ -150,14 +175,16 @@ def connect_jira() -> dict:
     finally:
         server.server_close()
     if not ready.is_set():
-        raise ProviderOAuthError("Sign-in timed out. Try Connect again.")
+        raise ProviderOAuthError(
+            "Jira sign-in timed out. Keep PrivacyGate open while approving access in the browser and try Connect again."
+        )
     if result.get("state") != state:
         raise ProviderOAuthError("OAuth security check failed (state mismatch).")
     if result.get("error"):
         raise ProviderOAuthError(f"Authorization was not completed: {result['error']}")
     code = result.get("code", "")
     if not code:
-        raise ProviderOAuthError("Jira did not return an authorization code.")
+        raise ProviderOAuthError("Jira did not return an authorization code to PrivacyGate.")
 
     response = httpx.post(
         "https://auth.atlassian.com/oauth/token",
@@ -172,7 +199,15 @@ def connect_jira() -> dict:
         timeout=25.0,
     )
     if response.status_code >= 400:
-        raise ProviderOAuthError(f"Jira token exchange failed (HTTP {response.status_code}).")
+        detail = ""
+        try:
+            error_payload = response.json()
+            detail = str(error_payload.get("error_description") or error_payload.get("error") or "")
+        except Exception:
+            pass
+        raise ProviderOAuthError(
+            f"Jira token exchange failed (HTTP {response.status_code})" + (f" — {detail}" if detail else "")
+        )
     payload = response.json()
     if not payload.get("access_token"):
         raise ProviderOAuthError("Jira did not return an access token.")
