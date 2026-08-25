@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QApplication,
     QFileDialog,
@@ -10,6 +11,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QMenu,
     QPushButton,
+    QSizePolicy,
     QToolButton,
     QVBoxLayout,
 )
@@ -220,9 +222,12 @@ def _apply_quick_actions(page: ProtectionPage) -> None:
 
     open_ai = QToolButton()
     open_ai.setText("Save + Copy for AI")
+    open_ai.setIcon(icon("copy", color="#17384E", size=18))
+    open_ai.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
     open_ai.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
     open_ai.setMenu(_ai_menu(page))
-    open_ai.setMinimumWidth(205)
+    open_ai.setMinimumWidth(245)
+    open_ai.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
     open_ai.setToolTip(
         "Choose ChatGPT / GPT, Claude or another AI tool. PrivacyGate runs Preflight, "
         "asks how to name the protected copy, saves it locally, then copies it for AI."
@@ -240,10 +245,10 @@ def _apply_quick_actions(page: ProtectionPage) -> None:
     )
     open_ai.setStyleSheet(
         "QToolButton{background:white;color:#17384e;border:1px solid #8fc3c9;"
-        "border-radius:8px;padding:9px 18px;font-weight:850;text-align:center;}"
+        "border-radius:8px;padding:9px 22px 9px 14px;font-weight:850;text-align:left;}"
         "QToolButton:hover{background:#eef8f9;border-color:#63aeb6;}"
         "QToolButton::menu-indicator{subcontrol-origin:padding;subcontrol-position:right center;"
-        "right:7px;width:12px;}"
+        "right:8px;width:12px;}"
     )
     save_library.setStyleSheet(
         "QPushButton{background:white;color:#087d72;border:1px solid #8fcfc9;"
@@ -259,7 +264,7 @@ def _apply_quick_actions(page: ProtectionPage) -> None:
     button_row.addWidget(save_library, 1)
     button_row.addWidget(save_copy, 1)
     button_row.addWidget(save_download, 1)
-    button_row.addWidget(open_ai, 1)
+    button_row.addWidget(open_ai, 2)
     bar_layout.addLayout(button_row)
     bar.setStyleSheet(
         "QFrame#ProtectQuickActions{background:#f8fbfc;border:1px solid #d9e4eb;"
