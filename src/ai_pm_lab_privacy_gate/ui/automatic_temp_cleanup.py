@@ -29,6 +29,26 @@ def _source_path(page: ProtectionPage) -> Path | None:
     return None
 
 
+def prepare_managed_save(page: ProtectionPage) -> None:
+    """Record the managed connector source before a durable Library save."""
+    page._managed_temp_saved_ok = False
+    page._managed_temp_saved_path = _source_path(page)
+
+
+def cleanup_after_completed_save(page: ProtectionPage) -> None:
+    """Release a managed connector source after a successful durable save."""
+    if not getattr(page, "_managed_temp_saved_ok", False):
+        return
+    path = getattr(page, "_managed_temp_saved_path", None)
+    if path and is_managed_path(path):
+        # Qt may still hold the original PDF open for the comparison preview.
+        # Try now; if Windows refuses, queue it for Clear/Quit instead of
+        # breaking the live preview or touching an unrelated user file.
+        if not delete_managed_path(path):
+            mark_for_cleanup(path)
+    retry_pending_cleanup()
+
+
 def install_automatic_temp_cleanup() -> None:
     """Attach automatic cleanup only to PrivacyGate-owned temporary sources.
 
@@ -52,36 +72,21 @@ def install_automatic_temp_cleanup() -> None:
     def save_to_library(self: ProtectionPage):
         # Record success, but do not delete yet: Save+Download still needs the
         # source file to generate the protected output after the Library commit.
-        self._managed_temp_saved_ok = False
-        self._managed_temp_saved_path = _source_path(self)
+        prepare_managed_save(self)
         document = previous_save(self)
         if document is not None:
             self._managed_temp_saved_ok = True
         return document
 
-    def _cleanup_after_completed_save(self: ProtectionPage) -> None:
-        if not getattr(self, "_managed_temp_saved_ok", False):
-            return
-        path = getattr(self, "_managed_temp_saved_path", None)
-        if path and is_managed_path(path):
-            # Qt may still hold the original PDF open for the comparison preview.
-            # Try now; if Windows refuses, queue it for Clear/Quit instead of
-            # breaking the live preview or touching an unrelated user file.
-            if not delete_managed_path(path):
-                mark_for_cleanup(path)
-        retry_pending_cleanup()
-
     def save_and_copy(self: ProtectionPage) -> None:
-        self._managed_temp_saved_ok = False
-        self._managed_temp_saved_path = _source_path(self)
+        prepare_managed_save(self)
         previous_save_copy(self)
-        _cleanup_after_completed_save(self)
+        cleanup_after_completed_save(self)
 
     def save_and_download(self: ProtectionPage) -> None:
-        self._managed_temp_saved_ok = False
-        self._managed_temp_saved_path = _source_path(self)
+        prepare_managed_save(self)
         previous_save_download(self)
-        _cleanup_after_completed_save(self)
+        cleanup_after_completed_save(self)
 
     def clear(self: ProtectionPage) -> None:
         path = _source_path(self)
