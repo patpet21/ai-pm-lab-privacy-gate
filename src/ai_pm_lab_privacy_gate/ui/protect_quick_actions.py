@@ -14,6 +14,10 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
 )
 
+from ai_pm_lab_privacy_gate.ui.automatic_temp_cleanup import (
+    cleanup_after_completed_save,
+    prepare_managed_save,
+)
 from ai_pm_lab_privacy_gate.ui.iconography import icon
 from ai_pm_lab_privacy_gate.ui.protection_page import ProtectionPage
 
@@ -35,6 +39,7 @@ def _status(page: ProtectionPage, message: str) -> None:
 def _save_and_copy(page: ProtectionPage) -> None:
     if page.current_result is None:
         return
+    prepare_managed_save(page)
     page._redesign_begin_operation("verify", "Final privacy check before saving and copying…")
     try:
         if not page._confirm_residual_risk("saving and copying"):
@@ -45,12 +50,14 @@ def _save_and_copy(page: ProtectionPage) -> None:
         QApplication.clipboard().setText(page.current_result.combined_text)
         _status(page, "Saved to Library + copied")
     finally:
+        cleanup_after_completed_save(page)
         page._redesign_end_operation("verify")
 
 
 def _save_and_download(page: ProtectionPage) -> None:
     if page.current_result is None or page.current_document is None:
         return
+    prepare_managed_save(page)
     page._redesign_begin_operation("verify", "Final privacy check before saving and downloading…")
     try:
         if not page._confirm_residual_risk("saving and downloading"):
@@ -137,6 +144,7 @@ def _save_and_download(page: ProtectionPage) -> None:
         page.service.save_protected_text(result, destination)
         _status(page, "Saved + downloaded")
     finally:
+        cleanup_after_completed_save(page)
         page._redesign_end_operation("verify")
 
 
