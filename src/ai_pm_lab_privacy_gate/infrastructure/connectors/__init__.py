@@ -10,6 +10,7 @@ from .jira_adf_fix import install_jira_adf_fix
 from .jira_refresh_adapter import install_jira_refresh_adapter
 from .multi_account_registry import install_multi_account_registry
 from .multi_account_label_refresh import install_multi_account_label_refresh
+from .multi_account_safety import install_multi_account_safety
 
 install_google_oauth_adapter()
 install_multi_oauth_adapter()
@@ -27,5 +28,8 @@ install_multi_account_registry()
 # Post-registry display polish: refresh migrated access tokens before resolving
 # provider-side account labels in the Manage accounts dialog.
 install_multi_account_label_refresh()
+# Final safety wrapper: isolate legacy compatibility aliases while adding an
+# account and guarantee proactive Google Drive refresh for the selected account.
+install_multi_account_safety()
 
 __all__ = ["ConnectedAppsService", "ConnectionTestResult", "RemoteItem"]
