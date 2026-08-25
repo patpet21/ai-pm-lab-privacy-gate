@@ -5,7 +5,13 @@ import time
 
 import httpx
 
-from .google_oauth import GMAIL_SCOPES, authorize_desktop, configured_client_id, refresh_access_token
+from .google_oauth import (
+    GMAIL_SCOPES,
+    authorize_desktop,
+    configured_client_id,
+    configured_client_secret,
+    refresh_access_token,
+)
 from .provider_oauth import connect_asana, connect_clickup, connect_trello, refresh_asana
 from .service import ConnectedAppsService, ConnectionTestResult, RemoteItem
 
@@ -38,6 +44,14 @@ def _google_client_id(self: ConnectedAppsService, preferred_provider: str = "gma
     return ""
 
 
+def _google_client_secret(self: ConnectedAppsService) -> str:
+    configured = configured_client_secret()
+    if configured:
+        self.secret_store.set("oauth.google.client_secret", configured)
+        return configured
+    return (self.secret_store.get("oauth.google.client_secret") or "").strip()
+
+
 def _store_token_payload(self: ConnectedAppsService, provider: str, payload: dict, *, client_id: str = "") -> None:
     token = str(payload.get("access_token") or "")
     if not token:
@@ -58,7 +72,10 @@ def _store_token_payload(self: ConnectedAppsService, provider: str, payload: dic
 
 def _connect_gmail_oauth(self: ConnectedAppsService) -> None:
     client_id = _google_client_id(self, "gmail")
-    payload = authorize_desktop(client_id, scopes=GMAIL_SCOPES)
+    client_secret = _google_client_secret(self)
+    payload = authorize_desktop(client_id, scopes=GMAIL_SCOPES, client_secret=client_secret)
+    if client_secret:
+        self.secret_store.set("oauth.google.client_secret", client_secret)
     _store_token_payload(self, "gmail", payload, client_id=client_id)
 
 
@@ -96,7 +113,16 @@ def _oauth_token(self: ConnectedAppsService, provider: str) -> str:
         return token
     if provider == "gmail":
         client_id = self.secret_store.get("connected.gmail.client_id") or _google_client_id(self, "gmail")
-        payload = refresh_access_token(client_id, refresh_token)
+        client_secret = _google_client_secret(self)
+        try:
+            payload = refresh_access_token(client_id, refresh_token, client_secret=client_secret)
+        except Exception as exc:
+            if "client_secret is missing" in str(exc).lower():
+                raise RuntimeError(
+                    "Google needs the developer OAuth client secret for this existing Gmail connection. "
+                    "Configure it once on this device, then retry; PrivacyGate will keep it encrypted locally for all Google accounts."
+                ) from exc
+            raise
     else:
         payload = refresh_asana(refresh_token)
     refreshed = str(payload.get("access_token") or "")
@@ -116,8 +142,8 @@ def _disconnect(self: ConnectedAppsService, provider: str) -> None:
     if provider in {"gmail", "clickup", "asana", "trello"}:
         for suffix in ("refresh_token", "client_id", "expires_at"):
             self.secret_store.delete(f"connected.{provider}.{suffix}")
-        # oauth.google.client_id is application configuration, not an account
-        # credential, so it intentionally survives Gmail account removal.
+        # oauth.google.* is application configuration, not one account's token,
+        # so it intentionally survives Google account removal.
 
 
 def _test_connection(self: ConnectedAppsService, provider: str) -> ConnectionTestResult:
