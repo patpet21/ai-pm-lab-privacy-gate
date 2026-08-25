@@ -142,7 +142,9 @@ class SupabaseAccountClient:
                 "display_name": identity.display_name,
                 "platform": platform.system().lower(),
                 "app_version": __version__,
-                "status": "active",
+                # Status is intentionally omitted. New rows use the DB default
+                # "active", while an admin-disabled/revoked device cannot be
+                # silently reactivated just because the account refreshes.
             },
         )
         self._payload(response, allow_empty=True)

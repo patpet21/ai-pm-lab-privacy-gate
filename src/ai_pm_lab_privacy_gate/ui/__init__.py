@@ -20,6 +20,7 @@ from .automatic_temp_cleanup import install_automatic_temp_cleanup
 from .source_metadata import install_source_metadata
 from .library_save_dialog import install_library_save_dialog
 from .privacy_preflight import install_privacy_preflight
+from .business_foundation import install_business_foundation, apply_business_main_window
 from .library_source_folders import install_library_source_folders
 from .library_visual_upgrade import install_library_visual_upgrade
 from .page_split import apply_apps_mcp_split
@@ -53,6 +54,10 @@ install_library_save_dialog()
 # runs the local second scan, saves to Library, copies only protected content and
 # never auto-submits anything to an AI service.
 install_privacy_preflight()
+# Business/Enterprise is layered on top of the existing Protect, Preflight and
+# Apps flows. Basic remains today's behavior; managed policy enforcement is
+# centralized in PolicyEngine instead of being scattered through screens.
+install_business_foundation()
 install_library_source_folders()
 # Visual-only Library upgrade. It wraps the existing table/actions instead of
 # replacing their storage, Restore, MCP or connector behavior.
@@ -70,6 +75,9 @@ def _main_window_init_with_brand(self, *args, **kwargs) -> None:
     apply_connected_apps_browse_polish(self)
     apply_protect_source_picker(self)
     apply_apps_mcp_split(self)
+    # Apply after Apps/MCP page splitting so Team & Plans can wrap the final
+    # navigation router and refresh the final AppsHubPage implementation.
+    apply_business_main_window(self)
     apply_runtime_fixes(self)
 
 
