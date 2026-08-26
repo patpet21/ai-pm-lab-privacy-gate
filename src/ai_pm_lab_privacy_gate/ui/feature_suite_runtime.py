@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from types import MethodType
 
 from PySide6.QtWidgets import QMessageBox, QPushButton
 
@@ -173,6 +174,55 @@ def _install_advanced_profile_scan_guard(main_window, controller) -> None:
     protect._privacygate_profile_scan_guard = True
 
 
+def _install_activity_hooks(main_window, controller) -> None:
+    """Capture ordinary Protect activity without persisting content or file names."""
+    protect = getattr(main_window, "protection_page", None)
+    if protect is None or bool(getattr(protect, "_privacygate_activity_hooks", False)):
+        return
+
+    original_analysis_ready = protect._analysis_ready
+
+    def analysis_ready(self, payload: object) -> None:
+        original_analysis_ready(payload)
+        document = getattr(self, "current_document", None)
+        findings = tuple(getattr(self, "current_findings", ()) or ())
+        source = getattr(document, "source_path", None) if document is not None else None
+        source_kind = str(getattr(document, "source_kind", "text") or "text")
+        controller.activity.record(
+            "document_scanned",
+            workspace_key=controller.active_workspace_key(),
+            source=source,
+            source_kind=source_kind,
+            findings_count=len(findings),
+            detail="Local privacy scan completed",
+        )
+
+    protect._analysis_ready = MethodType(analysis_ready, protect)
+
+    original_save_to_library = protect._save_to_library
+
+    def save_to_library(self):
+        document = original_save_to_library()
+        if document is not None:
+            result = getattr(self, "current_result", None)
+            applied = tuple(getattr(result, "applied_findings", ()) or ())
+            source_document = getattr(self, "current_document", None)
+            source = getattr(source_document, "source_path", None) if source_document is not None else None
+            source_kind = str(getattr(source_document, "source_kind", "text") or "text")
+            controller.activity.record(
+                "document_protected",
+                workspace_key=controller.active_workspace_key(),
+                source=source,
+                source_kind=source_kind,
+                findings_count=len(applied),
+                detail="Protected result saved to encrypted local Library",
+            )
+        return document
+
+    protect._save_to_library = MethodType(save_to_library, protect)
+    protect._privacygate_activity_hooks = True
+
+
 def _bind_connector_entitlement(main_window, controller) -> None:
     """Give the connector service a live plan resolver for service-level gating."""
     apps = getattr(main_window, "apps_hub_page", None)
@@ -225,6 +275,7 @@ def apply_feature_suite_runtime(main_window) -> None:
     _patch_watched_folder_dialog()
     _install_live_preflight(main_window, controller)
     _install_advanced_profile_scan_guard(main_window, controller)
+    _install_activity_hooks(main_window, controller)
     _bind_connector_entitlement(main_window, controller)
     _gate_existing_file_controls(main_window, controller)
     main_window._privacygate_feature_suite_runtime = True
