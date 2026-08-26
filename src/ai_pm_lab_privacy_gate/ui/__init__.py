@@ -59,6 +59,8 @@ from .workspace_management_ui import apply_workspace_management_ui
 from .settings_executive_redesign import apply_settings_executive_redesign
 from .workspace_dropdown_cue import apply_workspace_dropdown_cue
 from .workspace_creation_experience import apply_workspace_creation_experience
+from .workspace_refresh_control import apply_workspace_refresh_control
+from .workspace_creation_feedback import apply_workspace_creation_feedback
 
 install_mcp_log_guard()
 install_redesign()
@@ -161,6 +163,12 @@ def _main_window_init_with_brand(self, *args, **kwargs) -> None:
     # Finish the workspace UX after the panel exists: one modern creation dialog,
     # clear seat semantics, friendly errors, and the existing backend actions.
     apply_workspace_creation_experience(self)
+    # Keep a small live refresh control directly under the workspace icon so a
+    # newly created/joined company can be fetched from the control plane on demand.
+    apply_workspace_refresh_control(self)
+    # Final creation pass: larger explanatory copy, visible indeterminate loading,
+    # post-create live refresh and a clear completion confirmation dialog.
+    apply_workspace_creation_feedback(self)
 
 
 MainWindow.__init__ = _main_window_init_with_brand
