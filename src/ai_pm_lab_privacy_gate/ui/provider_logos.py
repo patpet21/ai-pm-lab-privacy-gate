@@ -61,6 +61,21 @@ PROVIDER_DOMAINS: dict[str, str] = {
     "calendly": "calendly.com",
 }
 
+# Google favicon endpoints often resolve Drive/Gmail to the generic multicolor
+# Google "G". Use Google's public product artwork for these providers so the UI
+# consistently shows the actual app icon instead of a generic site favicon.
+PROVIDER_ICON_URLS: dict[str, str] = {
+    "google_drive": "https://ssl.gstatic.com/images/branding/product/2x/drive_2020q4_48dp.png",
+    "gmail": "https://ssl.gstatic.com/images/branding/product/2x/gmail_2020q4_48dp.png",
+}
+
+# Increment the provider-specific cache version when a source changes. This
+# deliberately replaces any old generic-G icons already cached on user devices.
+PROVIDER_ICON_CACHE_VERSION: dict[str, int] = {
+    "google_drive": 2,
+    "gmail": 2,
+}
+
 
 class ProviderLogoLoader(QObject):
     """Fetch provider public brand/site icons asynchronously and cache them locally."""
@@ -72,19 +87,27 @@ class ProviderLogoLoader(QObject):
         self.manager = QNetworkAccessManager(self)
         self._pending: dict[QNetworkReply, tuple[str, Callable[[QPixmap], None]]] = {}
 
+    def _cache_path(self, provider: str) -> Path:
+        version = PROVIDER_ICON_CACHE_VERSION.get(provider, 1)
+        return self.cache_dir / f"{provider}-v{version}.png"
+
     def load(self, provider: str, callback: Callable[[QPixmap], None]) -> None:
         domain = PROVIDER_DOMAINS.get(provider)
-        if not domain:
+        explicit_url = PROVIDER_ICON_URLS.get(provider)
+        if not domain and not explicit_url:
             return
-        cache = self.cache_dir / f"{provider}.png"
+        cache = self._cache_path(provider)
         if cache.exists():
             pixmap = QPixmap(str(cache))
             if not pixmap.isNull():
                 callback(pixmap)
                 return
-        url = QUrl(
-            f"https://www.google.com/s2/favicons?domain={quote(domain, safe='/:')}&sz=128"
-        )
+        if explicit_url:
+            url = QUrl(explicit_url)
+        else:
+            url = QUrl(
+                f"https://www.google.com/s2/favicons?domain={quote(domain or '', safe='/:')}&sz=128"
+            )
         request = QNetworkRequest(url)
         request.setRawHeader(b"User-Agent", b"AI-PM-LAB-PrivacyGate/0.4")
         reply = self.manager.get(request)
@@ -105,7 +128,7 @@ class ProviderLogoLoader(QObject):
             if image.isNull():
                 return
             pixmap = QPixmap.fromImage(image)
-            cache = self.cache_dir / f"{provider}.png"
+            cache = self._cache_path(provider)
             pixmap.save(str(cache), "PNG")
             callback(pixmap)
         finally:
