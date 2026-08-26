@@ -11,28 +11,34 @@ NAVY = "#062B4F"
 TEAL = "#0B7F89"
 MUTED = "#61798A"
 BORDER = "#DCE5EA"
-GREEN = "#23824B"
 WHITE = "#FFFFFF"
 
 
 class PlanAccountPanel(QFrame):
+    """Compact plan overview for Settings.
+
+    Keep selectors object-name scoped. QLabel inherits QFrame in Qt, so a broad
+    `QFrame{...}` rule also paints borders around every label and bullet. That was
+    the source of the boxed/text-grid appearance visible in the previous Settings UI.
+    """
+
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
         self.setObjectName("PremiumPlanPanel")
         self.setStyleSheet(
-            "QFrame#PremiumPlanPanel{background:#FFFFFF;border:1px solid #DCE5EA;border-radius:16px;}"
+            "QFrame#PremiumPlanPanel{background:transparent;border:none;}"
         )
         root = QVBoxLayout(self)
-        root.setContentsMargins(18, 16, 18, 16)
-        root.setSpacing(14)
+        root.setContentsMargins(0, 0, 0, 0)
+        root.setSpacing(12)
 
         header = QHBoxLayout()
         title_box = QVBoxLayout()
         title_box.setSpacing(2)
         title = QLabel("Plan & Account")
-        title.setStyleSheet(f"color:{NAVY};font-size:16px;font-weight:900;")
-        note = QLabel("Review your current PrivacyGate entitlement and available product tiers.")
-        note.setStyleSheet(f"color:{MUTED};font-size:9px;")
+        title.setStyleSheet(f"color:{NAVY};font-size:16px;font-weight:900;border:none;background:transparent;")
+        note = QLabel("Your PrivacyGate plan, workspace entitlement and available tiers.")
+        note.setStyleSheet(f"color:{MUTED};font-size:9px;border:none;background:transparent;")
         title_box.addWidget(title)
         title_box.addWidget(note)
         header.addLayout(title_box, 1)
@@ -45,61 +51,79 @@ class PlanAccountPanel(QFrame):
         root.addLayout(header)
 
         grid = QGridLayout()
-        grid.setHorizontalSpacing(12)
-        grid.setVerticalSpacing(12)
+        grid.setHorizontalSpacing(10)
+        grid.setVerticalSpacing(10)
         self.cards: dict[PlanCode, QFrame] = {}
         self.markers: dict[PlanCode, QLabel] = {}
         self.buttons: dict[PlanCode, QPushButton] = {}
 
         plan_meta = {
-            PlanCode.BASIC: ("protect", "Individual privacy", ["Local protection", "Local Library & Restore", "Personal workspace"]),
-            PlanCode.PRO: ("document", "Advanced individual workflows", ["Everything in Basic", "Advanced personal controls", "Premium individual features"]),
-            PlanCode.BUSINESS: ("workflow", "Teams & company policy", ["Everything in Pro", "Members & seats", "Managed company policy"]),
-            PlanCode.ENTERPRISE: ("settings", "Advanced organization control", ["Everything in Business", "Advanced administration", "Enterprise-ready controls"]),
+            PlanCode.BASIC: (
+                "protect",
+                "Individual privacy",
+                ["Local protection", "Local Library & Restore", "Personal workspace"],
+            ),
+            PlanCode.PRO: (
+                "document",
+                "Advanced individual workflows",
+                ["Everything in Basic", "Advanced personal controls", "Premium individual features"],
+            ),
+            PlanCode.BUSINESS: (
+                "workflow",
+                "Teams & company policy",
+                ["Everything in Pro", "Members & seats", "Managed company policy"],
+            ),
+            PlanCode.ENTERPRISE: (
+                "settings",
+                "Advanced organization control",
+                ["Everything in Business", "Advanced administration", "Enterprise-ready controls"],
+            ),
         }
 
         for column, definition in enumerate(all_plans()):
-            card = QFrame()
-            card.setMinimumHeight(210)
+            object_name = f"PlanCard_{definition.code.value}"
+            card = QFrame(objectName=object_name)
+            card.setMinimumHeight(190)
             layout = QVBoxLayout(card)
-            layout.setContentsMargins(15, 14, 15, 14)
-            layout.setSpacing(8)
+            layout.setContentsMargins(14, 13, 14, 13)
+            layout.setSpacing(6)
             icon_name, subtitle, bullets = plan_meta[definition.code]
 
             top = QHBoxLayout()
             bubble = QLabel()
-            bubble.setFixedSize(40, 40)
+            bubble.setFixedSize(38, 38)
             bubble.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            bubble.setPixmap(icon(icon_name, color=TEAL, size=22).pixmap(22, 22))
-            bubble.setStyleSheet("background:#E8F7F7;border-radius:20px;")
+            bubble.setPixmap(icon(icon_name, color=TEAL, size=21).pixmap(21, 21))
+            bubble.setStyleSheet("background:#E8F7F7;border:none;border-radius:19px;")
             top.addWidget(bubble)
             top.addStretch(1)
             marker = QLabel()
             marker.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-            marker.setStyleSheet(f"color:{MUTED};font-size:8px;font-weight:900;")
+            marker.setStyleSheet(f"color:{MUTED};font-size:8px;font-weight:900;border:none;background:transparent;")
             top.addWidget(marker)
             layout.addLayout(top)
 
             name = QLabel(definition.label)
-            name.setStyleSheet(f"color:{NAVY};font-size:17px;font-weight:900;")
+            name.setStyleSheet(f"color:{NAVY};font-size:16px;font-weight:900;border:none;background:transparent;")
             sub = QLabel(subtitle)
             sub.setWordWrap(True)
-            sub.setStyleSheet(f"color:{MUTED};font-size:9px;")
+            sub.setStyleSheet(f"color:{MUTED};font-size:8px;border:none;background:transparent;")
             layout.addWidget(name)
             layout.addWidget(sub)
+            layout.addSpacing(3)
 
             for bullet in bullets:
                 item = QLabel(f"✓  {bullet}")
-                item.setStyleSheet(f"color:{NAVY};font-size:9px;")
+                item.setStyleSheet(f"color:{NAVY};font-size:8px;border:none;background:transparent;padding:1px 0;")
                 layout.addWidget(item)
 
             layout.addStretch(1)
-            button = QPushButton("Request access")
+            button = QPushButton("Available plan")
             button.setEnabled(False)
-            button.setCursor(Qt.CursorShape.PointingHandCursor)
+            button.setMinimumHeight(30)
             button.setStyleSheet(
-                "QPushButton{background:#F4F7F9;color:#7B8F9E;border:1px solid #DCE5EA;border-radius:9px;"
-                "padding:8px 10px;font-size:9px;font-weight:800;}"
+                "QPushButton{background:transparent;color:#78909E;border:none;border-top:1px solid #EDF2F5;"
+                "padding:6px 4px;font-size:8px;font-weight:800;text-align:left;}"
             )
             layout.addWidget(button)
             grid.addWidget(card, 0, column)
@@ -112,8 +136,8 @@ class PlanAccountPanel(QFrame):
         self.account_summary = QLabel()
         self.account_summary.setWordWrap(True)
         self.account_summary.setStyleSheet(
-            "background:#F8FBFC;border:1px solid #E3EAEE;border-radius:10px;padding:10px;"
-            f"color:{NAVY};font-size:9px;"
+            "background:#F3F8FA;border:none;border-radius:9px;padding:9px 11px;"
+            f"color:{NAVY};font-size:8px;"
         )
         root.addWidget(self.account_summary)
 
@@ -121,32 +145,31 @@ class PlanAccountPanel(QFrame):
         self.current_badge.setText(state.plan.label.upper())
         for code, card in self.cards.items():
             selected = code == state.plan
+            object_name = card.objectName()
             card.setStyleSheet(
                 (
-                    "QFrame{background:#F1FBFB;border:2px solid #0B7F89;border-radius:13px;}"
+                    f"QFrame#{object_name}{{background:#F1FBFB;border:2px solid #0B7F89;border-radius:13px;}}"
                 )
                 if selected
                 else
-                    "QFrame{background:#FFFFFF;border:1px solid #DCE5EA;border-radius:13px;}"
+                    f"QFrame#{object_name}{{background:#FFFFFF;border:1px solid #DCE5EA;border-radius:13px;}}"
             )
             marker = self.markers[code]
             button = self.buttons[code]
             if selected:
                 marker.setText("CURRENT PLAN")
-                marker.setStyleSheet("color:#0B7F89;font-size:8px;font-weight:950;")
+                marker.setStyleSheet("color:#0B7F89;font-size:8px;font-weight:950;border:none;background:transparent;")
                 button.setText("Current plan")
-                button.setEnabled(False)
                 button.setStyleSheet(
-                    "QPushButton{background:#E8F7F7;color:#0B7F89;border:1px solid #B8E1E4;border-radius:9px;"
-                    "padding:8px 10px;font-size:9px;font-weight:900;}"
+                    "QPushButton{background:transparent;color:#0B7F89;border:none;border-top:1px solid #CDE8E9;"
+                    "padding:6px 4px;font-size:8px;font-weight:900;text-align:left;}"
                 )
             else:
                 marker.setText("")
-                button.setText("Request access")
-                button.setEnabled(False)
+                button.setText("Available plan")
                 button.setStyleSheet(
-                    "QPushButton{background:#F4F7F9;color:#7B8F9E;border:1px solid #DCE5EA;border-radius:9px;"
-                    "padding:8px 10px;font-size:9px;font-weight:800;}"
+                    "QPushButton{background:transparent;color:#78909E;border:none;border-top:1px solid #EDF2F5;"
+                    "padding:6px 4px;font-size:8px;font-weight:800;text-align:left;}"
                 )
 
         if state.organization_id:
