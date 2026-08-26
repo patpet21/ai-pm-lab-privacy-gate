@@ -55,6 +55,7 @@ from .managed_protect_experience import install_managed_protect_experience
 from .workspace_sidebar import apply_workspace_sidebar
 from .account_menu import apply_account_menu
 from .account_sidebar_polish import apply_account_sidebar_polish
+from .workspace_management_ui import apply_workspace_management_ui
 
 install_mcp_log_guard()
 install_redesign()
@@ -142,9 +143,11 @@ def _main_window_init_with_brand(self, *args, **kwargs) -> None:
     # Run last: hide detached legacy/parking widgets that can otherwise paint
     # clipped labels/icons at the far-left edge on Windows.
     apply_protect_late_cleanup(self)
-    # Account replaces the old LOCAL-FIRST footer and must be the final sidebar
-    # pass so later layout cleanup cannot hide or displace it.
+    # Account replaces the old LOCAL-FIRST footer and must stay below navigation.
     apply_account_sidebar_polish(self)
+    # Final workspace pass: make the active work context visually explicit and
+    # expose + Workspace -> Settings for invitation-code enrollment / creation.
+    apply_workspace_management_ui(self)
 
 
 MainWindow.__init__ = _main_window_init_with_brand
