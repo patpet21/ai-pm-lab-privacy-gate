@@ -8,7 +8,6 @@ from PySide6.QtWidgets import (
     QDialog,
     QDialogButtonBox,
     QInputDialog,
-    QLabel,
     QLineEdit,
     QMessageBox,
     QPlainTextEdit,
@@ -22,253 +21,100 @@ from ai_pm_lab_privacy_gate.ui.iconography import icon
 NAVY = "#062B4F"
 INK = "#17384E"
 TEAL = "#0B7F89"
-MUTED = "#61798A"
 GREEN = "#23824B"
 RED = "#B54747"
 BORDER = "#DCE5EA"
 SOFT = "#F7FAFC"
-WHITE = "#FFFFFF"
 
 
 _DIALOG_QSS = f"""
-QDialog, QMessageBox {{
-    background: {SOFT};
-    color: {INK};
-}}
-QDialog QLabel, QMessageBox QLabel {{
-    color: {INK};
-    background: transparent;
-}}
+QDialog, QMessageBox {{ background:{SOFT}; color:{INK}; }}
+QDialog QLabel, QMessageBox QLabel {{ color:{INK}; background:transparent; }}
+
 QDialog QLineEdit,
 QDialog QPlainTextEdit,
 QDialog QTextEdit,
 QDialog QComboBox {{
-    background: {WHITE};
-    color: {INK};
-    border: 1px solid #C7D5DE;
-    border-radius: 9px;
-    padding: 8px 10px;
-    min-height: 22px;
-    selection-background-color: #DDF1F2;
-    selection-color: {NAVY};
+    background:#FFFFFF; color:{INK}; border:1px solid #C7D5DE;
+    border-radius:9px; padding:8px 10px; min-height:22px;
+    selection-background-color:#DDF1F2; selection-color:{NAVY};
 }}
 QDialog QLineEdit:focus,
 QDialog QPlainTextEdit:focus,
 QDialog QTextEdit:focus,
-QDialog QComboBox:focus {{
-    border: 1px solid {TEAL};
-    background: #FFFFFF;
-}}
-QDialog QComboBox::drop-down {{
-    border: none;
-    width: 26px;
-}}
+QDialog QComboBox:focus {{ border:1px solid {TEAL}; background:#FFFFFF; }}
+QDialog QComboBox::drop-down {{ border:none; width:26px; }}
 QDialog QComboBox QAbstractItemView {{
-    background: #FFFFFF;
-    color: {INK};
-    border: 1px solid {BORDER};
-    selection-background-color: #E7F5F5;
-    selection-color: {NAVY};
-    padding: 5px;
-    outline: 0;
+    background:#FFFFFF; color:{INK}; border:1px solid {BORDER};
+    selection-background-color:#E7F5F5; selection-color:{NAVY}; padding:5px; outline:0;
 }}
-QDialog QCheckBox {{
-    color: {INK};
-    spacing: 8px;
-    min-height: 24px;
-}}
-QDialog QCheckBox::indicator {{
-    width: 17px;
-    height: 17px;
-}}
+
+QDialog QCheckBox {{ color:{INK}; spacing:8px; min-height:24px; }}
+QDialog QCheckBox::indicator {{ width:17px; height:17px; }}
 QDialog QCheckBox::indicator:unchecked {{
-    background: #FFFFFF;
-    border: 1px solid #B7C8D2;
-    border-radius: 5px;
+    background:#FFFFFF; border:1px solid #B7C8D2; border-radius:5px;
 }}
 QDialog QCheckBox::indicator:checked {{
-    background: {TEAL};
-    border: 1px solid {TEAL};
-    border-radius: 5px;
+    background:{TEAL}; border:1px solid {TEAL}; border-radius:5px;
 }}
+
 QDialog QTableWidget {{
-    background: #FFFFFF;
-    color: {INK};
-    border: 1px solid {BORDER};
-    border-radius: 9px;
-    gridline-color: #E8EEF1;
-    font-size: 10px;
-    selection-background-color: #E7F5F5;
-    selection-color: {NAVY};
+    background:#FFFFFF; color:{INK}; border:1px solid {BORDER}; border-radius:9px;
+    gridline-color:#E8EEF1; font-size:10px;
+    selection-background-color:#E7F5F5; selection-color:{NAVY};
 }}
-QDialog QTableWidget::item {{
-    padding: 7px;
-}}
+QDialog QTableWidget::item {{ padding:7px; }}
 QDialog QHeaderView::section {{
-    background: #F5F8FA;
-    color: #425D70;
-    border: none;
-    border-bottom: 1px solid {BORDER};
-    padding: 8px;
-    font-size: 9px;
-    font-weight: 800;
+    background:#F5F8FA; color:#425D70; border:none;
+    border-bottom:1px solid {BORDER}; padding:8px; font-size:9px; font-weight:800;
 }}
+
 QDialog QPushButton#PrivacyGateDialogPrimary {{
-    background: {TEAL};
-    color: #FFFFFF;
-    border: 1px solid {TEAL};
-    border-radius: 9px;
-    min-height: 38px;
-    min-width: 92px;
-    padding: 8px 14px;
-    font-size: 10px;
-    font-weight: 850;
+    background:{TEAL}; color:#FFFFFF; border:1px solid {TEAL}; border-radius:9px;
+    min-height:38px; min-width:92px; padding:8px 14px; font-size:10px; font-weight:850;
 }}
-QDialog QPushButton#PrivacyGateDialogPrimary:hover {{
-    background: #096D76;
-    border-color: #096D76;
-}}
-QDialog QPushButton#PrivacyGateDialogPrimary:pressed {{
-    background: #075F67;
-    border-color: #075F67;
-}}
+QDialog QPushButton#PrivacyGateDialogPrimary:hover {{ background:#096D76; border-color:#096D76; }}
+QDialog QPushButton#PrivacyGateDialogPrimary:pressed {{ background:#075F67; border-color:#075F67; }}
+
 QDialog QPushButton#PrivacyGateDialogSecondary {{
-    background: #FFFFFF;
-    color: {INK};
-    border: 1px solid #C6D4DD;
-    border-radius: 9px;
-    min-height: 38px;
-    min-width: 88px;
-    padding: 8px 13px;
-    font-size: 10px;
-    font-weight: 800;
+    background:#FFFFFF; color:{INK}; border:1px solid #C6D4DD; border-radius:9px;
+    min-height:38px; min-width:88px; padding:8px 13px; font-size:10px; font-weight:800;
 }}
 QDialog QPushButton#PrivacyGateDialogSecondary:hover {{
-    background: #EAF7F7;
-    color: {TEAL};
-    border-color: #91C8CC;
+    background:#EAF7F7; color:{TEAL}; border-color:#91C8CC;
 }}
+
 QDialog QPushButton#PrivacyGateDialogDanger {{
-    background: #FFFFFF;
-    color: {RED};
-    border: 1px solid #E3B5B5;
-    border-radius: 9px;
-    min-height: 38px;
-    min-width: 92px;
-    padding: 8px 13px;
-    font-size: 10px;
-    font-weight: 850;
+    background:#FFFFFF; color:{RED}; border:1px solid #E3B5B5; border-radius:9px;
+    min-height:38px; min-width:92px; padding:8px 13px; font-size:10px; font-weight:850;
 }}
 QDialog QPushButton#PrivacyGateDialogDanger:hover {{
-    background: #FDEEEE;
-    color: #923737;
-    border-color: #D88F8F;
+    background:#FDEEEE; color:#923737; border-color:#D88F8F;
 }}
+
 QDialog QPushButton#PrivacyGateDialogSuccess {{
-    background: {GREEN};
-    color: #FFFFFF;
-    border: 1px solid {GREEN};
-    border-radius: 9px;
-    min-height: 38px;
-    min-width: 92px;
-    padding: 8px 14px;
-    font-size: 10px;
-    font-weight: 850;
+    background:{GREEN}; color:#FFFFFF; border:1px solid {GREEN}; border-radius:9px;
+    min-height:38px; min-width:92px; padding:8px 14px; font-size:10px; font-weight:850;
 }}
-QDialog QPushButton#PrivacyGateDialogSuccess:hover {{
-    background: #1B6D3E;
-    border-color: #1B6D3E;
-}}
-QDialog QPushButton:disabled {{
-    background: #E5ECEF;
-    color: #91A0AA;
-    border-color: #D9E2E7;
-}}
+QDialog QPushButton#PrivacyGateDialogSuccess:hover {{ background:#1B6D3E; border-color:#1B6D3E; }}
+QDialog QPushButton:disabled {{ background:#E5ECEF; color:#91A0AA; border-color:#D9E2E7; }}
 """
 
 _PRIMARY_WORDS = (
-    "save",
-    "ok",
-    "yes",
-    "apply",
-    "continue",
-    "create",
-    "add",
-    "invite",
-    "connect",
-    "authorize",
-    "allow",
-    "approve",
-    "update",
-    "install",
-    "open",
-    "browse",
-    "import",
-    "send",
-    "use in protect",
-    "keep running",
-    "edit policy",
-    "review policy",
-    "manage",
+    "save", "ok", "yes", "apply", "continue", "create", "add", "invite",
+    "connect", "authorize", "allow", "approve", "update", "install", "open",
+    "browse", "import", "send", "use in protect", "keep running", "edit policy",
+    "review policy", "manage",
 )
-
 _DANGER_WORDS = (
-    "delete",
-    "remove",
-    "revoke",
-    "disconnect",
-    "disable",
-    "quit",
-    "sign out",
-    "discard",
-    "clear all",
-    "reset",
+    "delete", "remove", "revoke", "disconnect", "disable", "quit", "sign out",
+    "discard", "clear all",
 )
-
 _SECONDARY_WORDS = (
-    "cancel",
-    "close",
-    "no",
-    "back",
-    "later",
-    "skip",
-    "not now",
-    "refresh",
+    "cancel", "close", "no", "back", "later", "skip", "not now", "refresh",
+    "retry", "ignore", "reset", "restore defaults",
 )
-
-_SUCCESS_WORDS = (
-    "done",
-    "finish",
-    "completed",
-)
-
-
-def _set_role(button: QPushButton, role: str) -> None:
-    object_name = {
-        "primary": "PrivacyGateDialogPrimary",
-        "secondary": "PrivacyGateDialogSecondary",
-        "danger": "PrivacyGateDialogDanger",
-        "success": "PrivacyGateDialogSuccess",
-    }[role]
-    button.setObjectName(object_name)
-    button.setCursor(Qt.CursorShape.PointingHandCursor)
-    button.setMinimumHeight(40)
-
-    text = button.text().strip().lower()
-    if role == "danger":
-        button.setIcon(icon("power" if "quit" in text or "sign out" in text else "clear", color=RED, size=17))
-    elif "save" in text:
-        button.setIcon(icon("save", color="#FFFFFF" if role in {"primary", "success"} else INK, size=17))
-    elif "open" in text or "browse" in text:
-        button.setIcon(icon("external", color="#FFFFFF" if role in {"primary", "success"} else INK, size=17))
-    elif "connect" in text or "authorize" in text:
-        button.setIcon(icon("cloud", color="#FFFFFF" if role in {"primary", "success"} else INK, size=17))
-    elif "policy" in text or "setting" in text:
-        button.setIcon(icon("settings", color="#FFFFFF" if role in {"primary", "success"} else INK, size=17))
-    elif "cancel" in text or "close" in text:
-        button.setIcon(icon("clear", color=INK, size=16))
-    elif role in {"primary", "success"}:
-        button.setIcon(icon("check", color="#FFFFFF", size=17))
+_SUCCESS_WORDS = ("done", "finish", "completed")
 
 
 def _role_from_text(text: str) -> str:
@@ -285,7 +131,7 @@ def _role_from_text(text: str) -> str:
 
 
 def _role_from_standard(standard) -> str | None:
-    if standard in {
+    primary = {
         QDialogButtonBox.StandardButton.Save,
         QDialogButtonBox.StandardButton.SaveAll,
         QDialogButtonBox.StandardButton.Ok,
@@ -293,14 +139,12 @@ def _role_from_standard(standard) -> str | None:
         QDialogButtonBox.StandardButton.YesToAll,
         QDialogButtonBox.StandardButton.Apply,
         QDialogButtonBox.StandardButton.Open,
-    }:
-        return "primary"
-    if standard in {
+    }
+    danger = {
         QDialogButtonBox.StandardButton.Discard,
         QDialogButtonBox.StandardButton.Abort,
-    }:
-        return "danger"
-    if standard in {
+    }
+    secondary = {
         QDialogButtonBox.StandardButton.Cancel,
         QDialogButtonBox.StandardButton.Close,
         QDialogButtonBox.StandardButton.No,
@@ -309,9 +153,42 @@ def _role_from_standard(standard) -> str | None:
         QDialogButtonBox.StandardButton.Retry,
         QDialogButtonBox.StandardButton.Reset,
         QDialogButtonBox.StandardButton.RestoreDefaults,
-    }:
+    }
+    if standard in primary:
+        return "primary"
+    if standard in danger:
+        return "danger"
+    if standard in secondary:
         return "secondary"
     return None
+
+
+def _set_role(button: QPushButton, role: str) -> None:
+    button.setObjectName({
+        "primary": "PrivacyGateDialogPrimary",
+        "secondary": "PrivacyGateDialogSecondary",
+        "danger": "PrivacyGateDialogDanger",
+        "success": "PrivacyGateDialogSuccess",
+    }[role])
+    button.setCursor(Qt.CursorShape.PointingHandCursor)
+    button.setMinimumHeight(40)
+
+    text = button.text().strip().lower()
+    icon_color = "#FFFFFF" if role in {"primary", "success"} else INK
+    if role == "danger":
+        button.setIcon(icon("power" if "quit" in text or "sign out" in text else "clear", color=RED, size=17))
+    elif "save" in text:
+        button.setIcon(icon("save", color=icon_color, size=17))
+    elif "open" in text or "browse" in text:
+        button.setIcon(icon("external", color=icon_color, size=17))
+    elif "connect" in text or "authorize" in text:
+        button.setIcon(icon("cloud", color=icon_color, size=17))
+    elif "policy" in text or "setting" in text:
+        button.setIcon(icon("settings", color=icon_color, size=17))
+    elif "cancel" in text or "close" in text:
+        button.setIcon(icon("clear", color=INK, size=16))
+    elif role in {"primary", "success"}:
+        button.setIcon(icon("check", color="#FFFFFF", size=17))
 
 
 def _rename_context_buttons(dialog: QDialog) -> None:
@@ -331,16 +208,32 @@ def _rename_context_buttons(dialog: QDialog) -> None:
 
 def _style_buttons(dialog: QDialog) -> None:
     handled: set[int] = set()
+    standards = (
+        QDialogButtonBox.StandardButton.Save,
+        QDialogButtonBox.StandardButton.SaveAll,
+        QDialogButtonBox.StandardButton.Ok,
+        QDialogButtonBox.StandardButton.Yes,
+        QDialogButtonBox.StandardButton.YesToAll,
+        QDialogButtonBox.StandardButton.Apply,
+        QDialogButtonBox.StandardButton.Open,
+        QDialogButtonBox.StandardButton.Discard,
+        QDialogButtonBox.StandardButton.Abort,
+        QDialogButtonBox.StandardButton.Cancel,
+        QDialogButtonBox.StandardButton.Close,
+        QDialogButtonBox.StandardButton.No,
+        QDialogButtonBox.StandardButton.NoToAll,
+        QDialogButtonBox.StandardButton.Ignore,
+        QDialogButtonBox.StandardButton.Retry,
+        QDialogButtonBox.StandardButton.Reset,
+        QDialogButtonBox.StandardButton.RestoreDefaults,
+    )
     for box in dialog.findChildren(QDialogButtonBox):
-        for standard in QDialogButtonBox.StandardButton:
-            if standard == QDialogButtonBox.StandardButton.NoButton:
-                continue
+        for standard in standards:
             button = box.button(standard)
             if button is None:
                 continue
             handled.add(id(button))
-            role = _role_from_standard(standard) or _role_from_text(button.text())
-            _set_role(button, role)
+            _set_role(button, _role_from_standard(standard) or _role_from_text(button.text()))
 
     if isinstance(dialog, QMessageBox):
         affirmative = {
@@ -367,9 +260,8 @@ def _style_buttons(dialog: QDialog) -> None:
             _set_role(button, role)
 
     for button in dialog.findChildren(QPushButton):
-        if id(button) in handled:
-            continue
-        _set_role(button, _role_from_text(button.text()))
+        if id(button) not in handled:
+            _set_role(button, _role_from_text(button.text()))
 
 
 def _polish_dialog(dialog: QDialog) -> None:
@@ -397,23 +289,24 @@ def _polish_dialog(dialog: QDialog) -> None:
             edit.setMinimumHeight(max(edit.minimumHeight(), 40))
         for combo in dialog.findChildren(QComboBox):
             combo.setMinimumHeight(max(combo.minimumHeight(), 40))
-        for text in dialog.findChildren((QPlainTextEdit, QTextEdit)):
+        for text in dialog.findChildren(QPlainTextEdit):
+            text.setMinimumHeight(max(text.minimumHeight(), 90))
+        for text in dialog.findChildren(QTextEdit):
             text.setMinimumHeight(max(text.minimumHeight(), 90))
         for table in dialog.findChildren(QTableWidget):
-            table.verticalHeader().setDefaultSectionSize(max(34, table.verticalHeader().defaultSectionSize()))
+            table.verticalHeader().setDefaultSectionSize(
+                max(34, table.verticalHeader().defaultSectionSize())
+            )
         for check in dialog.findChildren(QCheckBox):
             check.setMinimumHeight(max(check.minimumHeight(), 26))
-        for label in dialog.findChildren(QLabel):
-            if label.wordWrap():
-                label.setMinimumWidth(min(360, max(0, label.minimumWidth())))
-    except RuntimeError:
+    except (RuntimeError, TypeError):
         return
 
 
 class _PremiumDialogFilter(QObject):
     def eventFilter(self, watched, event):  # noqa: N802 - Qt API
         if event.type() == QEvent.Type.Show and isinstance(watched, QDialog):
-            # Run after existing dialog-specific setup and the older popup polish.
+            # Re-run after dialog-specific code and the older popup styling finish.
             QTimer.singleShot(0, lambda target=watched: _polish_dialog(target))
             QTimer.singleShot(90, lambda target=watched: _polish_dialog(target))
         return super().eventFilter(watched, event)
@@ -422,11 +315,10 @@ class _PremiumDialogFilter(QObject):
 def apply_dialog_visual_system(main_window) -> None:
     """Install one consistent premium visual system for every PrivacyGate dialog.
 
-    This affects presentation only: QMessageBox, QInputDialog, policy editors,
-    workspace-permission dialogs, connector dialogs and other QDialog subclasses
-    keep their existing actions and data flow.
+    Presentation only: QMessageBox, QInputDialog, policy editors, workspace
+    permissions, connector dialogs and other QDialog subclasses keep their
+    existing actions and data flow.
     """
-
     app = QApplication.instance()
     if app is None or getattr(app, "_privacygate_premium_dialog_filter", None) is not None:
         return
