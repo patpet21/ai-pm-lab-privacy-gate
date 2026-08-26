@@ -25,6 +25,7 @@ from .team_action_recovery import install_team_action_recovery
 from .organization_polish import apply_organization_polish
 from .organization_visual_upgrade import apply_organization_visual_upgrade
 from .premium_organization_rebuild import apply_premium_organization_rebuild
+from . import premium_organization_rebuild as _premium_organization_rebuild_module
 from .library_source_folders import install_library_source_folders
 from .library_visual_upgrade import install_library_visual_upgrade
 from .page_split import apply_apps_mcp_split
@@ -83,6 +84,9 @@ def _main_window_init_with_brand(self, *args, **kwargs) -> None:
     apply_organization_visual_upgrade(self)
     # Full visual rebuild: the historic TeamPage remains the controller while
     # the new premium Organization view becomes the visible presentation.
+    # The rebuild's _build method resolves the active TeamPage through its module
+    # namespace, so explicitly provide the instance before constructing it.
+    _premium_organization_rebuild_module.team_page = getattr(self, "team_page", None)
     apply_premium_organization_rebuild(self)
     apply_account_menu(self)
     apply_runtime_fixes(self)
