@@ -29,6 +29,7 @@ from . import premium_organization_rebuild as _premium_organization_rebuild_modu
 from .mockup_fidelity import apply_mockup_fidelity
 from .approved_mockup_override import apply_approved_mockup_override
 from .final_visual_polish import apply_final_visual_polish
+from .contact_workflows_polish import apply_contact_workflows_polish, apply_popup_visual_polish
 from .library_source_folders import install_library_source_folders
 from .library_visual_upgrade import install_library_visual_upgrade
 from .page_split import apply_apps_mcp_split
@@ -94,6 +95,10 @@ def _main_window_init_with_brand(self, *args, **kwargs) -> None:
     # Final pass intentionally runs last so legacy controller refreshes cannot
     # reintroduce duplicate Organization chrome or collapse Protect to one pane.
     apply_final_visual_polish(self)
+    # Contact / Workflows follows the same premium visual language. Dialog polish
+    # is presentation-only and preserves each popup's existing actions/logic.
+    apply_contact_workflows_polish(self)
+    apply_popup_visual_polish(self)
 
 
 MainWindow.__init__ = _main_window_init_with_brand
