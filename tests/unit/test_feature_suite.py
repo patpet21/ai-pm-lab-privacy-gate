@@ -4,11 +4,13 @@ from pathlib import Path
 
 import pytest
 
-from ai_pm_lab_privacy_gate.application import portable_backup_runtime  # noqa: F401
+from ai_pm_lab_privacy_gate.application import feature_safety_runtime, portable_backup_runtime  # noqa: F401
 from ai_pm_lab_privacy_gate.application.feature_suite import (
     AdvancedFileService,
     FullEncryptedBackupService,
     LocalActivityStore,
+    WatchFolderConfig,
+    WatchedFolderService,
     WorkspaceRule,
     WorkspaceRuleStore,
 )
@@ -27,6 +29,7 @@ def test_advanced_capabilities_are_gated_by_plan() -> None:
     assert not supports(PlanCode.BASIC, Capability.LOCAL_OCR)
     assert supports(PlanCode.PRO, Capability.LOCAL_OCR)
     assert supports(PlanCode.PRO, Capability.BATCH_PROTECTION)
+    assert supports(PlanCode.PRO, Capability.MULTI_ACCOUNT)
     assert not supports(PlanCode.PRO, Capability.WORKSPACE_RULES)
     assert supports(PlanCode.BUSINESS, Capability.WORKSPACE_RULES)
     assert supports(PlanCode.ENTERPRISE, Capability.ENTERPRISE_AUDIT)
@@ -61,7 +64,11 @@ def test_advanced_file_service_is_workspace_scoped_and_safe_delete_is_reversible
     with pytest.raises(PermissionError):
         service.safe_delete(PlanCode.PRO, root, outside)
     with pytest.raises(PermissionError):
+        service.safe_delete(PlanCode.PRO, root, root)
+    with pytest.raises(PermissionError):
         service.create_folder(PlanCode.BASIC, root, "Locked")
+    with pytest.raises(ValueError):
+        service.create_folder(PlanCode.PRO, root, "..")
 
 
 def test_activity_store_keeps_metadata_not_source_name(tmp_path: Path) -> None:
@@ -97,6 +104,22 @@ def test_workspace_rules_require_business_and_enforce_destinations(tmp_path: Pat
     assert store.allows("company-a", "ChatGPT")
     assert not store.allows("company-a", "Gemini")
     assert store.allows("personal", "Gemini")
+
+
+def test_watched_folder_rejects_self_feeding_configuration(tmp_path: Path) -> None:
+    class DummyBatch:
+        pass
+
+    service = WatchedFolderService(tmp_path, DummyBatch(), LocalActivityStore(tmp_path))
+    same = tmp_path / "Inbox"
+    config = WatchFolderConfig(
+        watch_id="watch-1",
+        inbox=str(same),
+        protected=str(same),
+        workspace_key="personal",
+    )
+    with pytest.raises(ValueError):
+        service.scan_once(PlanCode.PRO, config)
 
 
 def test_portable_backup_uses_passphrase_container(tmp_path: Path) -> None:
