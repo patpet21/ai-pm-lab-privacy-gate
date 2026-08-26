@@ -36,8 +36,10 @@ def install_multi_account_entitlement() -> None:
     """Gate second+ connector accounts in the service layer, not only the UI.
 
     A Basic user can connect one account and can continue using/disconnecting it.
-    Pro/Business/Enterprise can add additional accounts. The plan is resolved at
-    call time so switching Personal/company workspace immediately changes access.
+    Pro/Business/Enterprise can add and switch between additional accounts. The
+    plan is resolved at call time so switching Personal/company workspace changes
+    access immediately. A downgrade never deletes accounts; it simply prevents
+    switching to another stored account until an eligible plan is active again.
     """
     if getattr(ConnectedAppsService, "_multi_account_entitlement_installed", False):
         return
@@ -46,6 +48,7 @@ def install_multi_account_entitlement() -> None:
         self._privacygate_plan_resolver = resolver
 
     previous_save = ConnectedAppsService.save_credentials
+    previous_activate = ConnectedAppsService.activate_account
 
     def save_credentials(self: ConnectedAppsService, provider: str, *, token: str = "", api_key: str = "") -> None:
         provider = provider.strip().lower()
@@ -65,14 +68,35 @@ def install_multi_account_entitlement() -> None:
                     pass
             if previous_active:
                 try:
-                    self.activate_account(provider, previous_active)
+                    previous_activate(self, provider, previous_active)
                 except Exception:
                     pass
             raise PermissionError(
                 f"Adding another {self.provider_name(provider)} account requires PrivacyGate Pro or a Business workspace."
             )
 
+    def activate_account(
+        self: ConnectedAppsService,
+        provider: str,
+        account_id: str,
+        *,
+        make_default: bool = False,
+    ) -> None:
+        provider = provider.strip().lower()
+        if provider in MULTI_ACCOUNT_PROVIDERS and not supports(_plan(self), Capability.MULTI_ACCOUNT):
+            try:
+                count = int(self.account_count(provider))
+                current = str(self.active_account_id(provider) or "")
+            except Exception:
+                count, current = 0, ""
+            if count > 1 and str(account_id) != current:
+                raise PermissionError(
+                    f"Switching between multiple {self.provider_name(provider)} accounts requires PrivacyGate Pro or a Business workspace."
+                )
+        previous_activate(self, provider, account_id, make_default=make_default)
+
     ConnectedAppsService.save_credentials = save_credentials  # type: ignore[method-assign]
+    ConnectedAppsService.activate_account = activate_account  # type: ignore[method-assign]
     ConnectedAppsService.set_entitlement_plan_resolver = set_plan_resolver  # type: ignore[attr-defined]
 
     for provider, method_name in (
