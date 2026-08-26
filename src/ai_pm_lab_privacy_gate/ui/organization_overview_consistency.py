@@ -72,7 +72,7 @@ def _style_icon_only_app(tile: QWidget, app_label: str) -> None:
     allowed = status_text in {"✓", "Allowed"}
     state = "Allowed" if allowed else "Blocked"
     tile.setToolTip(f"{app_label} • {state}\nClick to open in Apps")
-    tile.setMinimumHeight(64)
+    tile.setMinimumHeight(52)
     tile.setStyleSheet(
         f"QWidget#{tile.objectName()}{{background:#FBFDFE;border:1px solid #DCE5EA;border-radius:10px;}}"
         f"QWidget#{tile.objectName()}:hover{{background:#EAF7F7;border-color:#8FC8CD;}}"
@@ -80,12 +80,12 @@ def _style_icon_only_app(tile: QWidget, app_label: str) -> None:
 
     if logo is not None:
         logo.setVisible(True)
-        logo.setFixedSize(42, 42)
+        logo.setFixedSize(34, 34)
         logo.setAlignment(Qt.AlignmentFlag.AlignCenter)
         try:
             layout = tile.layout()
             if isinstance(layout, QBoxLayout):
-                layout.setContentsMargins(8, 8, 8, 8)
+                layout.setContentsMargins(6, 6, 6, 6)
                 layout.setSpacing(0)
                 layout.setAlignment(logo, Qt.AlignmentFlag.AlignCenter)
         except (RuntimeError, TypeError):
@@ -100,36 +100,38 @@ def _style_overview(dashboard) -> None:
     if overview is None:
         return
 
-    # Match the typography scale used by the polished Apps & AI page instead of
-    # accumulating font bumps from older visual passes.
+    # Fixed, non-accumulating typography. The Overview refreshes often; every
+    # semantic label is reset to the same compact executive scale each time.
     for label in overview.findChildren(QLabel):
         text = label.text().strip()
         if text in SECTION_TITLES:
             label.setStyleSheet(
-                f"color:{NAVY};font-size:13px;font-weight:900;border:none;background:transparent;"
+                f"color:{NAVY};font-size:12px;font-weight:900;border:none;background:transparent;"
             )
         elif text in METRIC_TITLES:
             label.setStyleSheet(
-                f"color:{NAVY};font-size:11px;font-weight:850;border:none;background:transparent;"
+                f"color:{NAVY};font-size:9px;font-weight:850;border:none;background:transparent;"
             )
         elif text in {"Allowed", "Blocked", "✓", "⊘"}:
             allowed = text in {"Allowed", "✓"}
             label.setStyleSheet(
-                f"color:{GREEN if allowed else RED};font-size:10px;font-weight:900;border:none;background:transparent;"
+                f"color:{GREEN if allowed else RED};font-size:9px;font-weight:900;border:none;background:transparent;"
             )
         elif label.pixmap() is None:
             style = label.styleSheet()
             match = re.search(r"font-size\s*:\s*(\d+)px", style)
-            if match and int(match.group(1)) < 10:
+            if match and int(match.group(1)) > 11:
                 _replace_font_size(label, 10)
+            elif match and int(match.group(1)) < 8:
+                _replace_font_size(label, 8)
 
     for value in getattr(dashboard, "metric_values", {}).values():
         value.setStyleSheet(
-            f"color:{NAVY};font-size:22px;font-weight:950;border:none;background:transparent;"
+            f"color:{NAVY};font-size:20px;font-weight:950;border:none;background:transparent;"
         )
     for detail in getattr(dashboard, "metric_details", {}).values():
         detail.setStyleSheet(
-            f"color:{MUTED};font-size:10px;border:none;background:transparent;"
+            f"color:{MUTED};font-size:9px;border:none;background:transparent;"
         )
 
     for button in (
@@ -138,16 +140,13 @@ def _style_overview(dashboard) -> None:
         getattr(dashboard, "quick_publish", None),
     ):
         if isinstance(button, QPushButton):
-            button.setMinimumHeight(68)
+            button.setMinimumHeight(52)
             button.setStyleSheet(
                 "QPushButton{background:#FFFFFF;color:#062B4F;border:1px solid #DCE5EA;"
-                "border-radius:10px;padding:9px 12px;text-align:left;font-size:11px;font-weight:750;}"
+                "border-radius:10px;padding:8px 11px;text-align:left;font-size:10px;font-weight:750;}"
                 "QPushButton:hover{background:#F2FAFA;border-color:#9CCFD2;}"
             )
 
-    # Overview app navigation is intentionally icon-only. The provider name and
-    # current policy state remain available in the tooltip and click behavior is
-    # kept by organization_overview_fix.
     for app_label in APP_LABELS:
         tile = _find_app_tile(overview, app_label)
         if tile is not None:
@@ -161,10 +160,10 @@ def _style_overview(dashboard) -> None:
             table = table_info[1]
             if isinstance(table, QTableWidget):
                 table.setStyleSheet(
-                    "QTableWidget{background:#FFFFFF;color:#17384E;border:none;gridline-color:#E7EDF1;font-size:10px;}"
-                    "QTableWidget::item{padding:7px;}"
+                    "QTableWidget{background:#FFFFFF;color:#17384E;border:none;gridline-color:#E7EDF1;font-size:9px;}"
+                    "QTableWidget::item{padding:6px;}"
                     "QHeaderView::section{background:#FFFFFF;color:#415C70;border:none;border-bottom:1px solid #E2E9EE;"
-                    "padding:9px;font-size:10px;font-weight:850;}"
+                    "padding:7px;font-size:9px;font-weight:850;}"
                 )
 
 
