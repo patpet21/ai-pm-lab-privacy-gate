@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import os
 import re
+import shutil
+import uuid
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -54,6 +56,7 @@ class DocumentRestoreService:
         if output.suffix.lower() != suffix:
             output = output.with_suffix(suffix)
         output.parent.mkdir(parents=True, exist_ok=True)
+        output = self._nonconflicting_output(output)
         replacements = {item.token: item.original_text for item in mappings}
         if suffix == ".txt":
             text = source_path.read_text(encoding="utf-8-sig")
@@ -71,6 +74,23 @@ class DocumentRestoreService:
             restored_tokens=tuple(sorted(present)),
             unknown_tokens=tuple(sorted(unknown)),
         )
+
+    @staticmethod
+    def _nonconflicting_output(output: Path) -> Path:
+        """Avoid overwriting a preview file that may still be open by Qt/Windows.
+
+        QPdfDocument can keep the currently displayed PDF locked on Windows. A
+        repeated restore therefore must not reuse the exact same temporary path.
+        The caller receives the actual path through RestoreReport.output_path.
+        """
+        if not output.exists():
+            return output
+        while True:
+            candidate = output.with_name(
+                f"{output.stem}-{uuid.uuid4().hex[:8]}{output.suffix}"
+            )
+            if not candidate.exists():
+                return candidate
 
     @staticmethod
     def extract_text(source: str | Path) -> str:
@@ -222,5 +242,16 @@ class DocumentRestoreService:
                 "Unable to safely locate these placeholders in the PDF: "
                 + ", ".join(sorted(set(unresolved))[:8])
             )
-        os.replace(temporary, output)
+        try:
+            os.replace(temporary, output)
+        except PermissionError:
+            # Windows can briefly deny a rename while antivirus/indexing or a
+            # PDF viewer still has a handle to the newly rendered temporary PDF.
+            # Copying does not require renaming the source and is safe because
+            # each restore output is already non-conflicting.
+            shutil.copy2(temporary, output)
+            try:
+                temporary.unlink()
+            except OSError:
+                pass
         return count, present.intersection(replacements), present.difference(replacements)
