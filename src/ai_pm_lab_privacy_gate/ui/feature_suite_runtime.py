@@ -4,11 +4,13 @@ from pathlib import Path
 
 from PySide6.QtWidgets import QMessageBox, QPushButton
 
+from ai_pm_lab_privacy_gate.application import feature_safety_runtime as _feature_safety_runtime
 from ai_pm_lab_privacy_gate.domain.plans import Capability, supports
-from ai_pm_lab_privacy_gate.ui.feature_suite_2026 import RulesDialog
+from ai_pm_lab_privacy_gate.ui.feature_suite_2026 import RulesDialog, WatchedFoldersDialog
 
 
 _RULES_PATCHED = False
+_WATCHED_PATCHED = False
 
 
 def _patch_rules_dialog() -> None:
@@ -46,6 +48,39 @@ def _patch_rules_dialog() -> None:
                 pass
 
     RulesDialog._add = add_with_live_binding
+
+
+def _patch_watched_folder_dialog() -> None:
+    """Reject self-feeding watches before they are persisted."""
+    global _WATCHED_PATCHED
+    if _WATCHED_PATCHED:
+        return
+    _WATCHED_PATCHED = True
+    original_add = WatchedFoldersDialog._add
+
+    def add_safely(self: WatchedFoldersDialog) -> None:
+        inbox_raw = self.inbox.text().strip()
+        protected_raw = self.protected.text().strip()
+        if inbox_raw and protected_raw:
+            inbox = Path(inbox_raw).expanduser().resolve()
+            protected = Path(protected_raw).expanduser().resolve()
+            if inbox == protected:
+                QMessageBox.warning(
+                    self,
+                    "Watched Folders",
+                    "Inbox and Protected output must be different folders so protected files are not re-processed.",
+                )
+                return
+            if protected in inbox.parents:
+                QMessageBox.warning(
+                    self,
+                    "Watched Folders",
+                    "Protected output cannot be a parent of the Inbox. Choose a separate output folder.",
+                )
+                return
+        original_add(self)
+
+    WatchedFoldersDialog._add = add_safely
 
 
 def _install_live_preflight(main_window, controller) -> None:
@@ -138,11 +173,23 @@ def _install_advanced_profile_scan_guard(main_window, controller) -> None:
     protect._privacygate_profile_scan_guard = True
 
 
+def _bind_connector_entitlement(main_window, controller) -> None:
+    """Give the connector service a live plan resolver for service-level gating."""
+    apps = getattr(main_window, "apps_hub_page", None)
+    service = getattr(apps, "service", None)
+    setter = getattr(service, "set_entitlement_plan_resolver", None)
+    if not callable(setter):
+        return
+    setter(lambda: controller.plan_for_workspace(controller.active_workspace_key()))
+
+
 def apply_feature_suite_runtime(main_window) -> None:
     controller = getattr(main_window, "privacygate_feature_suite", None)
     if controller is None or bool(getattr(main_window, "_privacygate_feature_suite_runtime", False)):
         return
     _patch_rules_dialog()
+    _patch_watched_folder_dialog()
     _install_live_preflight(main_window, controller)
     _install_advanced_profile_scan_guard(main_window, controller)
+    _bind_connector_entitlement(main_window, controller)
     main_window._privacygate_feature_suite_runtime = True
