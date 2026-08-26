@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from PySide6.QtCore import QEvent, QObject, QTimer, Qt
+from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import (
     QApplication,
     QCheckBox,
@@ -8,113 +9,190 @@ from PySide6.QtWidgets import (
     QDialog,
     QDialogButtonBox,
     QInputDialog,
+    QLabel,
     QLineEdit,
     QMessageBox,
     QPlainTextEdit,
     QPushButton,
+    QSizePolicy,
     QTableWidget,
     QTextEdit,
 )
 
-from ai_pm_lab_privacy_gate.ui.iconography import icon
-
-NAVY = "#062B4F"
+# Modern PrivacyGate modal language: light surfaces, soft borders, generous
+# spacing and a restrained teal accent. This deliberately avoids the heavy,
+# high-contrast "desktop utility" look while keeping every existing dialog's
+# behavior and data flow intact.
+NAVY = "#0B2D45"
 INK = "#17384E"
-TEAL = "#0B7F89"
-GREEN = "#23824B"
-RED = "#B54747"
-BORDER = "#DCE5EA"
-SOFT = "#F7FAFC"
+MUTED = "#6B7F8E"
+TEAL = "#0F9CA3"
+TEAL_DARK = "#0B7D86"
+TEAL_SOFT = "#E9F8F8"
+BORDER = "#DCE6EB"
+BORDER_SOFT = "#E8EEF2"
+SURFACE = "#FFFFFF"
+CANVAS = "#F8FAFC"
+FIELD = "#FBFCFD"
+GREEN = "#24865D"
+RED = "#C94F55"
+RED_SOFT = "#FFF1F1"
 
 
 _DIALOG_QSS = f"""
-QDialog, QMessageBox {{ background:{SOFT}; color:{INK}; }}
-QDialog QLabel, QMessageBox QLabel {{ color:{INK}; background:transparent; }}
-
+QDialog, QMessageBox {{
+    background: {CANVAS};
+    color: {INK};
+}}
+QDialog QLabel, QMessageBox QLabel {{
+    color: {INK};
+    background: transparent;
+    font-size: 10px;
+}}
+QMessageBox QLabel#qt_msgbox_label {{
+    color: {NAVY};
+    font-size: 13px;
+    font-weight: 800;
+}}
+QMessageBox QLabel#qt_msgbox_informativelabel {{
+    color: {MUTED};
+    font-size: 10px;
+    font-weight: 500;
+}}
+QInputDialog QLabel {{
+    color: {NAVY};
+    font-size: 11px;
+    font-weight: 700;
+}}
 QDialog QLineEdit,
 QDialog QPlainTextEdit,
 QDialog QTextEdit,
 QDialog QComboBox {{
-    background:#FFFFFF; color:{INK}; border:1px solid #C7D5DE;
-    border-radius:9px; padding:8px 10px; min-height:22px;
-    selection-background-color:#DDF1F2; selection-color:{NAVY};
+    background: {FIELD};
+    color: {INK};
+    border: 1px solid #D4E0E6;
+    border-radius: 11px;
+    padding: 9px 11px;
+    min-height: 24px;
+    font-size: 11px;
+    selection-background-color: #DDF3F3;
+    selection-color: {NAVY};
+}}
+QDialog QLineEdit:hover,
+QDialog QPlainTextEdit:hover,
+QDialog QTextEdit:hover,
+QDialog QComboBox:hover {{
+    border-color: #BDD0D9;
+    background: #FFFFFF;
 }}
 QDialog QLineEdit:focus,
 QDialog QPlainTextEdit:focus,
 QDialog QTextEdit:focus,
-QDialog QComboBox:focus {{ border:1px solid {TEAL}; background:#FFFFFF; }}
-QDialog QComboBox::drop-down {{ border:none; width:26px; }}
+QDialog QComboBox:focus {{
+    border: 1px solid {TEAL};
+    background: #FFFFFF;
+}}
+QDialog QComboBox::drop-down {{
+    border: none;
+    width: 28px;
+}}
 QDialog QComboBox QAbstractItemView {{
-    background:#FFFFFF; color:{INK}; border:1px solid {BORDER};
-    selection-background-color:#E7F5F5; selection-color:{NAVY}; padding:5px; outline:0;
+    background: #FFFFFF;
+    color: {INK};
+    border: 1px solid {BORDER};
+    border-radius: 9px;
+    selection-background-color: {TEAL_SOFT};
+    selection-color: {NAVY};
+    padding: 6px;
+    outline: 0;
 }}
-
-QDialog QCheckBox {{ color:{INK}; spacing:8px; min-height:24px; }}
-QDialog QCheckBox::indicator {{ width:17px; height:17px; }}
-QDialog QCheckBox::indicator:unchecked {{
-    background:#FFFFFF; border:1px solid #B7C8D2; border-radius:5px;
+QDialog QCheckBox {{
+    color: {INK};
+    spacing: 9px;
+    min-height: 26px;
+    font-size: 10px;
 }}
-QDialog QCheckBox::indicator:checked {{
-    background:{TEAL}; border:1px solid {TEAL}; border-radius:5px;
-}}
-
 QDialog QTableWidget {{
-    background:#FFFFFF; color:{INK}; border:1px solid {BORDER}; border-radius:9px;
-    gridline-color:#E8EEF1; font-size:10px;
-    selection-background-color:#E7F5F5; selection-color:{NAVY};
+    background: #FFFFFF;
+    color: {INK};
+    border: 1px solid {BORDER_SOFT};
+    border-radius: 11px;
+    gridline-color: #EDF2F4;
+    font-size: 10px;
+    selection-background-color: {TEAL_SOFT};
+    selection-color: {NAVY};
 }}
-QDialog QTableWidget::item {{ padding:7px; }}
+QDialog QTableWidget::item {{ padding: 8px; }}
 QDialog QHeaderView::section {{
-    background:#F5F8FA; color:#425D70; border:none;
-    border-bottom:1px solid {BORDER}; padding:8px; font-size:9px; font-weight:800;
+    background: #F5F8FA;
+    color: #466071;
+    border: none;
+    border-bottom: 1px solid {BORDER_SOFT};
+    padding: 9px;
+    font-size: 9px;
+    font-weight: 800;
 }}
-
-QDialog QPushButton#PrivacyGateDialogPrimary {{
-    background:{TEAL}; color:#FFFFFF; border:1px solid {TEAL}; border-radius:9px;
-    min-height:38px; min-width:92px; padding:8px 14px; font-size:10px; font-weight:850;
-}}
-QDialog QPushButton#PrivacyGateDialogPrimary:hover {{ background:#096D76; border-color:#096D76; }}
-QDialog QPushButton#PrivacyGateDialogPrimary:pressed {{ background:#075F67; border-color:#075F67; }}
-
-QDialog QPushButton#PrivacyGateDialogSecondary {{
-    background:#FFFFFF; color:{INK}; border:1px solid #C6D4DD; border-radius:9px;
-    min-height:38px; min-width:88px; padding:8px 13px; font-size:10px; font-weight:800;
-}}
-QDialog QPushButton#PrivacyGateDialogSecondary:hover {{
-    background:#EAF7F7; color:{TEAL}; border-color:#91C8CC;
-}}
-
-QDialog QPushButton#PrivacyGateDialogDanger {{
-    background:#FFFFFF; color:{RED}; border:1px solid #E3B5B5; border-radius:9px;
-    min-height:38px; min-width:92px; padding:8px 13px; font-size:10px; font-weight:850;
-}}
-QDialog QPushButton#PrivacyGateDialogDanger:hover {{
-    background:#FDEEEE; color:#923737; border-color:#D88F8F;
-}}
-
-QDialog QPushButton#PrivacyGateDialogSuccess {{
-    background:{GREEN}; color:#FFFFFF; border:1px solid {GREEN}; border-radius:9px;
-    min-height:38px; min-width:92px; padding:8px 14px; font-size:10px; font-weight:850;
-}}
-QDialog QPushButton#PrivacyGateDialogSuccess:hover {{ background:#1B6D3E; border-color:#1B6D3E; }}
-QDialog QPushButton:disabled {{ background:#E5ECEF; color:#91A0AA; border-color:#D9E2E7; }}
 """
+
 
 _PRIMARY_WORDS = (
     "save", "ok", "yes", "apply", "continue", "create", "add", "invite",
     "connect", "authorize", "allow", "approve", "update", "install", "open",
-    "browse", "import", "send", "use in protect", "keep running", "edit policy",
+    "browse", "import", "send", "use in protect", "background", "edit policy",
     "review policy", "manage",
 )
 _DANGER_WORDS = (
     "delete", "remove", "revoke", "disconnect", "disable", "quit", "sign out",
-    "discard", "clear all",
+    "discard", "clear all", "reset",
 )
 _SECONDARY_WORDS = (
     "cancel", "close", "no", "back", "later", "skip", "not now", "refresh",
-    "retry", "ignore", "reset", "restore defaults",
+    "retry", "ignore", "restore defaults",
 )
 _SUCCESS_WORDS = ("done", "finish", "completed")
+
+
+def _button_qss(role: str) -> str:
+    if role == "primary":
+        return f"""
+            QPushButton {{
+                background: qlineargradient(x1:0,y1:0,x2:1,y2:0, stop:0 {TEAL}, stop:1 {TEAL_DARK});
+                color: #FFFFFF; border: none; border-radius: 11px;
+                padding: 9px 16px; font-size: 11px; font-weight: 800;
+            }}
+            QPushButton:hover {{ background: {TEAL_DARK}; }}
+            QPushButton:pressed {{ background: #096B73; }}
+            QPushButton:disabled {{ background: #DCE6EA; color: #91A0AA; }}
+        """
+    if role == "danger":
+        return f"""
+            QPushButton {{
+                background: {RED_SOFT}; color: {RED}; border: 1px solid #F0D1D3;
+                border-radius: 11px; padding: 9px 15px; font-size: 11px; font-weight: 800;
+            }}
+            QPushButton:hover {{ background: #FDE5E6; border-color: #E6B6B9; }}
+            QPushButton:pressed {{ background: #F9DCDD; }}
+            QPushButton:disabled {{ background: #F5F6F7; color: #A8B1B8; border-color: #E6EAED; }}
+        """
+    if role == "success":
+        return f"""
+            QPushButton {{
+                background: {GREEN}; color: #FFFFFF; border: none; border-radius: 11px;
+                padding: 9px 16px; font-size: 11px; font-weight: 800;
+            }}
+            QPushButton:hover {{ background: #1D7550; }}
+            QPushButton:pressed {{ background: #176442; }}
+            QPushButton:disabled {{ background: #DCE6EA; color: #91A0AA; }}
+        """
+    return f"""
+        QPushButton {{
+            background: #F1F5F7; color: {INK}; border: 1px solid #E1E9ED;
+            border-radius: 11px; padding: 9px 15px; font-size: 11px; font-weight: 750;
+        }}
+        QPushButton:hover {{ background: #E9F3F4; color: {TEAL_DARK}; border-color: #C9DFE1; }}
+        QPushButton:pressed {{ background: #E1EDEE; }}
+        QPushButton:disabled {{ background: #F5F6F7; color: #A1ADB5; border-color: #E8ECEF; }}
+    """
 
 
 def _role_from_text(text: str) -> str:
@@ -171,28 +249,23 @@ def _set_role(button: QPushButton, role: str) -> None:
         "success": "PrivacyGateDialogSuccess",
     }[role])
     button.setCursor(Qt.CursorShape.PointingHandCursor)
-    button.setMinimumHeight(40)
-
-    text = button.text().strip().lower()
-    icon_color = "#FFFFFF" if role in {"primary", "success"} else INK
-    if role == "danger":
-        button.setIcon(icon("power" if "quit" in text or "sign out" in text else "clear", color=RED, size=17))
-    elif "save" in text:
-        button.setIcon(icon("save", color=icon_color, size=17))
-    elif "open" in text or "browse" in text:
-        button.setIcon(icon("external", color=icon_color, size=17))
-    elif "connect" in text or "authorize" in text:
-        button.setIcon(icon("cloud", color=icon_color, size=17))
-    elif "policy" in text or "setting" in text:
-        button.setIcon(icon("settings", color=icon_color, size=17))
-    elif "cancel" in text or "close" in text:
-        button.setIcon(icon("clear", color=INK, size=16))
-    elif role in {"primary", "success"}:
-        button.setIcon(icon("check", color="#FFFFFF", size=17))
+    button.setMinimumHeight(42)
+    button.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Fixed)
+    # Modern SaaS-style actions: text and color hierarchy, no busy outline icons.
+    button.setIcon(QIcon())
+    button.setStyleSheet(_button_qss(role))
+    button.ensurePolished()
+    # QPushButton labels do not wrap, so always reserve their real text width.
+    button.setMinimumWidth(max(96, button.sizeHint().width() + 16))
 
 
 def _rename_context_buttons(dialog: QDialog) -> None:
     title = dialog.windowTitle().lower()
+    if isinstance(dialog, QMessageBox) and "close privacygate" in title:
+        for button in dialog.buttons():
+            if isinstance(button, QPushButton) and "keep running in background" in button.text().lower():
+                button.setText("Run in background")
+
     for box in dialog.findChildren(QDialogButtonBox):
         save = box.button(QDialogButtonBox.StandardButton.Save)
         ok = box.button(QDialogButtonBox.StandardButton.Ok)
@@ -264,56 +337,80 @@ def _style_buttons(dialog: QDialog) -> None:
             _set_role(button, _role_from_text(button.text()))
 
 
+def _fit_dialog_to_buttons(dialog: QDialog) -> None:
+    buttons = [button for button in dialog.findChildren(QPushButton) if button.isVisible()]
+    if not buttons:
+        return
+    if isinstance(dialog, QMessageBox):
+        widths = [max(96, button.minimumWidth(), button.sizeHint().width() + 16) for button in buttons]
+        desired = min(760, 72 + sum(widths) + max(0, len(widths) - 1) * 10)
+        dialog.setMinimumWidth(max(dialog.minimumWidth(), 520, desired))
+
+
+def _polish_labels(dialog: QDialog) -> None:
+    for label in dialog.findChildren(QLabel):
+        text = label.text().strip()
+        if label.pixmap() is not None:
+            continue
+        if len(text) > 52:
+            label.setWordWrap(True)
+            label.setMinimumWidth(0)
+            label.setMaximumWidth(640)
+
+
 def _polish_dialog(dialog: QDialog) -> None:
     try:
-        if not bool(dialog.property("privacygatePremiumDialogStyled")):
-            dialog.setProperty("privacygatePremiumDialogStyled", True)
+        if not bool(dialog.property("privacygateModernDialogStyled")):
+            dialog.setProperty("privacygateModernDialogStyled", True)
             dialog.setStyleSheet(dialog.styleSheet() + _DIALOG_QSS)
 
         title = dialog.windowTitle().lower()
         if isinstance(dialog, QMessageBox):
-            dialog.setMinimumWidth(max(dialog.minimumWidth(), 500))
-        elif isinstance(dialog, QInputDialog):
             dialog.setMinimumWidth(max(dialog.minimumWidth(), 520))
-        elif "workspace permissions" in title:
+            # Remove the large native Windows glyph for a cleaner platform-neutral modal.
+            dialog.setIcon(QMessageBox.Icon.NoIcon)
+        elif isinstance(dialog, QInputDialog):
             dialog.setMinimumWidth(max(dialog.minimumWidth(), 560))
+        elif "workspace permissions" in title:
+            dialog.setMinimumWidth(max(dialog.minimumWidth(), 600))
         elif "policy" in title:
-            dialog.setMinimumWidth(max(dialog.minimumWidth(), 820))
-        elif dialog.width() < 460:
-            dialog.setMinimumWidth(max(dialog.minimumWidth(), 460))
+            dialog.setMinimumWidth(max(dialog.minimumWidth(), 860))
+        elif dialog.width() < 480:
+            dialog.setMinimumWidth(max(dialog.minimumWidth(), 480))
 
         _rename_context_buttons(dialog)
         _style_buttons(dialog)
+        _fit_dialog_to_buttons(dialog)
+        _polish_labels(dialog)
 
         for edit in dialog.findChildren(QLineEdit):
-            edit.setMinimumHeight(max(edit.minimumHeight(), 40))
+            edit.setMinimumHeight(max(edit.minimumHeight(), 44))
         for combo in dialog.findChildren(QComboBox):
-            combo.setMinimumHeight(max(combo.minimumHeight(), 40))
+            combo.setMinimumHeight(max(combo.minimumHeight(), 44))
         for text in dialog.findChildren(QPlainTextEdit):
-            text.setMinimumHeight(max(text.minimumHeight(), 90))
+            text.setMinimumHeight(max(text.minimumHeight(), 96))
         for text in dialog.findChildren(QTextEdit):
-            text.setMinimumHeight(max(text.minimumHeight(), 90))
+            text.setMinimumHeight(max(text.minimumHeight(), 96))
         for table in dialog.findChildren(QTableWidget):
             table.verticalHeader().setDefaultSectionSize(
-                max(34, table.verticalHeader().defaultSectionSize())
+                max(36, table.verticalHeader().defaultSectionSize())
             )
         for check in dialog.findChildren(QCheckBox):
-            check.setMinimumHeight(max(check.minimumHeight(), 26))
+            check.setMinimumHeight(max(check.minimumHeight(), 28))
     except (RuntimeError, TypeError):
         return
 
 
-class _PremiumDialogFilter(QObject):
+class _ModernDialogFilter(QObject):
     def eventFilter(self, watched, event):  # noqa: N802 - Qt API
         if event.type() == QEvent.Type.Show and isinstance(watched, QDialog):
-            # Re-run after dialog-specific code and the older popup styling finish.
             QTimer.singleShot(0, lambda target=watched: _polish_dialog(target))
-            QTimer.singleShot(90, lambda target=watched: _polish_dialog(target))
+            QTimer.singleShot(100, lambda target=watched: _polish_dialog(target))
         return super().eventFilter(watched, event)
 
 
 def apply_dialog_visual_system(main_window) -> None:
-    """Install one consistent premium visual system for every PrivacyGate dialog.
+    """Install the modern PrivacyGate visual language for every modal dialog.
 
     Presentation only: QMessageBox, QInputDialog, policy editors, workspace
     permissions, connector dialogs and other QDialog subclasses keep their
@@ -322,6 +419,6 @@ def apply_dialog_visual_system(main_window) -> None:
     app = QApplication.instance()
     if app is None or getattr(app, "_privacygate_premium_dialog_filter", None) is not None:
         return
-    event_filter = _PremiumDialogFilter(app)
+    event_filter = _ModernDialogFilter(app)
     app.installEventFilter(event_filter)
     app._privacygate_premium_dialog_filter = event_filter
