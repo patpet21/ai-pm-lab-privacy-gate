@@ -28,6 +28,7 @@ from .premium_organization_rebuild import apply_premium_organization_rebuild
 from . import premium_organization_rebuild as _premium_organization_rebuild_module
 from .mockup_fidelity import apply_mockup_fidelity
 from .approved_mockup_override import apply_approved_mockup_override
+from .final_visual_polish import apply_final_visual_polish
 from .library_source_folders import install_library_source_folders
 from .library_visual_upgrade import install_library_visual_upgrade
 from .page_split import apply_apps_mcp_split
@@ -90,6 +91,9 @@ def _main_window_init_with_brand(self, *args, **kwargs) -> None:
     apply_mockup_fidelity(self)
     apply_approved_mockup_override(self)
     apply_runtime_fixes(self)
+    # Final pass intentionally runs last so legacy controller refreshes cannot
+    # reintroduce duplicate Organization chrome or collapse Protect to one pane.
+    apply_final_visual_polish(self)
 
 
 MainWindow.__init__ = _main_window_init_with_brand
