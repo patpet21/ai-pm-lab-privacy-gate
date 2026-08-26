@@ -183,6 +183,40 @@ def _bind_connector_entitlement(main_window, controller) -> None:
     setter(lambda: controller.plan_for_workspace(controller.active_workspace_key()))
 
 
+def _gate_existing_file_controls(main_window, controller) -> None:
+    """Keep Files visible on Basic, but gate route-changing operations as Pro features."""
+    settings = getattr(main_window, "settings_page", None)
+    pages = getattr(settings, "settings_service_pages", {}) if settings is not None else {}
+    files_page = pages.get("files") if isinstance(pages, dict) else None
+    if files_page is None or bool(getattr(files_page, "_privacygate_file_route_controls_gated", False)):
+        return
+
+    for attribute, method_name in (
+        ("change_button", "_change_root"),
+        ("structure_button", "_ensure_structure"),
+        ("new_folder_button", "_new_folder"),
+        ("reset_button", "_reset_root"),
+    ):
+        button = getattr(files_page, attribute, None)
+        original = getattr(files_page, method_name, None)
+        if not isinstance(button, QPushButton) or not callable(original):
+            continue
+        try:
+            button.clicked.disconnect()
+        except (RuntimeError, TypeError):
+            pass
+
+        def guarded(_checked=False, action=original) -> None:
+            if not controller.allowed(Capability.ADVANCED_FILE_ROUTING, "Advanced Files"):
+                return
+            action()
+
+        button.clicked.connect(guarded)
+        button.setToolTip("PrivacyGate Pro · Advanced File Routing")
+
+    files_page._privacygate_file_route_controls_gated = True
+
+
 def apply_feature_suite_runtime(main_window) -> None:
     controller = getattr(main_window, "privacygate_feature_suite", None)
     if controller is None or bool(getattr(main_window, "_privacygate_feature_suite_runtime", False)):
@@ -192,4 +226,5 @@ def apply_feature_suite_runtime(main_window) -> None:
     _install_live_preflight(main_window, controller)
     _install_advanced_profile_scan_guard(main_window, controller)
     _bind_connector_entitlement(main_window, controller)
+    _gate_existing_file_controls(main_window, controller)
     main_window._privacygate_feature_suite_runtime = True
