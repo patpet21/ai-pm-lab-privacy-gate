@@ -40,6 +40,7 @@ from .organization_workspace_suite import (
 from .organization_workspace_suite_v2 import apply_organization_workspace_suite_v2
 from .organization_usability_polish import apply_organization_usability_polish
 from .organization_overview_fix import apply_organization_overview_fix
+from .organization_overview_consistency import apply_organization_overview_consistency
 from .contact_workflows_polish import apply_contact_workflows_polish, apply_popup_visual_polish
 from .library_source_folders import install_library_source_folders
 from .library_visual_upgrade import install_library_visual_upgrade
@@ -52,6 +53,7 @@ from .workspace_action_follow import install_workspace_action_follow
 from .managed_protect_experience import install_managed_protect_experience
 from .workspace_sidebar import apply_workspace_sidebar
 from .account_menu import apply_account_menu
+from .account_sidebar_polish import apply_account_sidebar_polish
 
 install_mcp_log_guard()
 install_redesign()
@@ -121,6 +123,9 @@ def _main_window_init_with_brand(self, *args, **kwargs) -> None:
     # premium dashboard, so re-apply size and click behavior to the visible stack
     # widget after every render rather than relying on stale child references.
     apply_organization_overview_fix(self)
+    # Normalize Overview to the same typography scale as Apps & AI and keep the
+    # provider navigation icon-only while preserving its click behavior.
+    apply_organization_overview_consistency(self)
     # The existing Protect UI stays the single document workspace. Business /
     # Enterprise members get a compact workspace + connected-account bar there.
     apply_managed_protect_context(self)
@@ -132,6 +137,9 @@ def _main_window_init_with_brand(self, *args, **kwargs) -> None:
     # Run last: hide detached legacy/parking widgets that can otherwise paint
     # clipped labels/icons at the far-left edge on Windows.
     apply_protect_late_cleanup(self)
+    # Account replaces the old LOCAL-FIRST footer and must be the final sidebar
+    # pass so later layout cleanup cannot hide or displace it.
+    apply_account_sidebar_polish(self)
 
 
 MainWindow.__init__ = _main_window_init_with_brand
