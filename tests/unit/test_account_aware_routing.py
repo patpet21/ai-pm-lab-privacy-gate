@@ -21,7 +21,7 @@ def test_single_account_is_activated_without_prompt(monkeypatch):
     def should_not_prompt(*_args, **_kwargs):
         raise AssertionError("single account should not show an account picker")
 
-    monkeypatch.setattr(account_aware_routing.QInputDialog, "getItem", should_not_prompt)
+    monkeypatch.setattr(account_aware_routing, "_choose_account_item", should_not_prompt)
 
     assert account_aware_routing.choose_provider_account(None, service, "gmail", "Gmail") is True
     assert registry.active_account_id("gmail") == ids[0]
@@ -38,7 +38,7 @@ def test_multiple_accounts_activate_exact_user_selection(monkeypatch):
         assert len(items) == 3
         return items[2], True
 
-    monkeypatch.setattr(account_aware_routing.QInputDialog, "getItem", choose_third)
+    monkeypatch.setattr(account_aware_routing, "_choose_account_item", choose_third)
 
     assert account_aware_routing.choose_provider_account(None, service, "gmail", "Gmail") is True
     assert registry.active_account_id("gmail") == ids[2]
@@ -50,8 +50,8 @@ def test_cancel_keeps_current_account(monkeypatch):
     registry.activate("asana", ids[0])
 
     monkeypatch.setattr(
-        account_aware_routing.QInputDialog,
-        "getItem",
+        account_aware_routing,
+        "_choose_account_item",
         lambda *_args, **_kwargs: ("", False),
     )
 
