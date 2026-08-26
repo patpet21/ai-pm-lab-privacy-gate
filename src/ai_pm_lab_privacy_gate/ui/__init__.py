@@ -58,6 +58,7 @@ from .account_sidebar_polish import apply_account_sidebar_polish
 from .workspace_management_ui import apply_workspace_management_ui
 from .settings_executive_redesign import apply_settings_executive_redesign
 from .workspace_dropdown_cue import apply_workspace_dropdown_cue
+from .workspace_creation_experience import apply_workspace_creation_experience
 
 install_mcp_log_guard()
 install_redesign()
@@ -157,6 +158,9 @@ def _main_window_init_with_brand(self, *args, **kwargs) -> None:
     # Keep the workspace switcher unmistakably interactive with a dedicated,
     # clickable chevron beside the selected workspace name.
     apply_workspace_dropdown_cue(self)
+    # Finish the workspace UX after the panel exists: one modern creation dialog,
+    # clear seat semantics, friendly errors, and the existing backend actions.
+    apply_workspace_creation_experience(self)
 
 
 MainWindow.__init__ = _main_window_init_with_brand
