@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import traceback
 from collections.abc import Callable
 
 from PySide6.QtCore import QObject, QRunnable, Signal, Slot
@@ -23,7 +22,11 @@ class FunctionWorker(QRunnable):
         try:
             self.signals.result.emit(self.function())
         except Exception as exc:
-            detail = "".join(traceback.format_exception_only(type(exc), exc)).strip()
+            # UI error surfaces should show the service message, not a Python
+            # module/class prefix such as ``...TeamServiceError:``. Keep the
+            # exception itself untouched for callers; only humanize the emitted
+            # presentation string.
+            detail = str(exc).strip() or type(exc).__name__
             try:
                 self.signals.error.emit(detail)
             except RuntimeError:
