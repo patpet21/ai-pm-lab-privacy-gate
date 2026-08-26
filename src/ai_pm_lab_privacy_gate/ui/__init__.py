@@ -27,6 +27,12 @@ from .library_source_folders import install_library_source_folders
 from .library_visual_upgrade import install_library_visual_upgrade
 from .page_split import apply_apps_mcp_split
 from .runtime_fixes import apply_runtime_fixes
+from ai_pm_lab_privacy_gate.infrastructure.policy.multi_workspace_runtime import (
+    install_multi_workspace_client,
+)
+from .multi_workspace_experience import install_multi_workspace_experience
+from .managed_protect_experience import install_managed_protect_experience
+from .workspace_sidebar import apply_workspace_sidebar
 
 install_mcp_log_guard()
 install_redesign()
@@ -41,31 +47,23 @@ install_apps_multi_account()
 install_gmail_browser_route()
 install_clickup_browser_route()
 install_project_platform_routes()
-# Install after every provider-specific browser route so all final entry points
-# consistently ask which connected account should supply the data.
 install_account_aware_routing()
-# Privacy-only working-file lifecycle. This does not change MCP state, sharing,
-# remote connections, Library contents, Restore mappings or connector tokens.
 install_automatic_temp_cleanup()
 install_source_metadata()
-# Replace only the generic title prompt with a branded local-first save dialog.
-# The underlying Library save, connector provenance and restore mapping behavior
-# remain unchanged.
 install_library_save_dialog()
-# Manual AI handoff gate for ChatGPT/GPT, Claude and other AI tools. The handoff
-# runs the local second scan, saves to Library, copies only protected content and
-# never auto-submits anything to an AI service.
 install_privacy_preflight()
-# Business/Enterprise is layered on top of the existing Protect, Preflight and
-# Apps flows. Basic remains today's behavior; managed policy enforcement is
-# centralized in PolicyEngine instead of being scattered through screens.
+# Business/Enterprise enforcement stays layered over the existing Protect flow.
+# Basic/Pro without an active organization policy keep today's Protect UI.
 install_business_foundation()
-# Organization actions recover from a stale local membership snapshot instead
-# of offering to create a duplicate workspace.
+# Multiple organization memberships are selected locally; connector tokens stay
+# in the same encrypted/local stores already used by the Apps page.
+install_multi_workspace_client()
 install_team_action_recovery()
+install_multi_workspace_experience()
+# Managed workspaces receive the premium Protect context and Original / Anonymized
+# file selector. Personal Protect is intentionally left visually unchanged.
+install_managed_protect_experience()
 install_library_source_folders()
-# Visual-only Library upgrade. It wraps the existing table/actions instead of
-# replacing their storage, Restore, MCP or connector behavior.
 install_library_visual_upgrade()
 
 from .main_window import MainWindow
@@ -80,12 +78,9 @@ def _main_window_init_with_brand(self, *args, **kwargs) -> None:
     apply_connected_apps_browse_polish(self)
     apply_protect_source_picker(self)
     apply_apps_mcp_split(self)
-    # Apply after Apps/MCP page splitting so company policy wraps the final
-    # navigation router and final AppsHubPage implementation.
     apply_business_main_window(self)
-    # Rename the Team foundation to the operational Organization workspace and
-    # surface the four plan tiers under Settings → Plan & Account.
     apply_organization_polish(self)
+    apply_workspace_sidebar(self)
     apply_runtime_fixes(self)
 
 

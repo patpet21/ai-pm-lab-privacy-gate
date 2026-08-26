@@ -9,11 +9,10 @@ from PySide6.QtGui import QImage, QPixmap
 from PySide6.QtNetwork import QNetworkAccessManager, QNetworkReply, QNetworkRequest
 
 
-# Provider domains are used only to fetch the provider's public site icon.
-# Icons are cached locally so the Apps page does not require a network request
-# on every launch. If a provider icon cannot be fetched, the UI keeps its
-# built-in PrivacyGate fallback icon.
 PROVIDER_DOMAINS: dict[str, str] = {
+    "chatgpt": "openai.com",
+    "claude": "claude.ai",
+    "gemini": "gemini.google.com",
     "google_drive": "drive.google.com",
     "gmail": "gmail.com",
     "google_calendar": "calendar.google.com",
@@ -83,9 +82,9 @@ class ProviderLogoLoader(QObject):
             if not pixmap.isNull():
                 callback(pixmap)
                 return
-        # Google's favicon endpoint resolves the current icon published by the
-        # provider site and returns a small image that Qt can decode reliably.
-        url = QUrl(f"https://www.google.com/s2/favicons?domain={quote(domain, safe='/:')}&sz=128")
+        url = QUrl(
+            f"https://www.google.com/s2/favicons?domain={quote(domain, safe='/:')}&sz=128"
+        )
         request = QNetworkRequest(url)
         request.setRawHeader(b"User-Agent", b"AI-PM-LAB-PrivacyGate/0.4")
         reply = self.manager.get(request)
