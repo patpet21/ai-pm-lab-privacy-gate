@@ -11,6 +11,16 @@ _INSTALLED = False
 _SPECIAL_APPS_ROUTES = {"gmail", "clickup", "asana", "trello", "notion", "monday", "jira"}
 
 
+def _choose_account_item(parent, title: str, label: str, items: list[str], current: int, editable: bool):
+    """Thin Python seam around the native Qt picker.
+
+    Keeping the native Qt method behind a Python function lets unit tests replace
+    the picker without monkeypatching a Shiboken-bound QWidget method before a
+    QApplication exists. Runtime behavior is unchanged.
+    """
+    return QInputDialog.getItem(parent, title, label, items, current, editable)
+
+
 def choose_provider_account(parent, service, provider: str, title: str) -> bool:
     """Activate the account the user wants before opening provider data.
 
@@ -66,7 +76,7 @@ def choose_provider_account(parent, service, provider: str, title: str) -> bool:
         if account.is_active:
             active_index = index
 
-    selected, ok = QInputDialog.getItem(
+    selected, ok = _choose_account_item(
         parent,
         f"Choose {title} account",
         f"Which {title} account do you want to use for this data?",
