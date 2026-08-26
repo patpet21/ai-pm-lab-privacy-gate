@@ -27,10 +27,10 @@ from .library_source_folders import install_library_source_folders
 from .library_visual_upgrade import install_library_visual_upgrade
 from .page_split import apply_apps_mcp_split
 from .runtime_fixes import apply_runtime_fixes
-from ai_pm_lab_privacy_gate.infrastructure.policy.multi_workspace_runtime import (
-    install_multi_workspace_client,
-)
+from ai_pm_lab_privacy_gate.infrastructure.policy.multi_workspace_runtime import install_multi_workspace_client
+from ai_pm_lab_privacy_gate.infrastructure.policy.multi_workspace_actions import install_multi_workspace_actions
 from .multi_workspace_experience import install_multi_workspace_experience
+from .workspace_action_follow import install_workspace_action_follow
 from .managed_protect_experience import install_managed_protect_experience
 from .workspace_sidebar import apply_workspace_sidebar
 
@@ -55,11 +55,15 @@ install_privacy_preflight()
 # Business/Enterprise enforcement stays layered over the existing Protect flow.
 # Basic/Pro without an active organization policy keep today's Protect UI.
 install_business_foundation()
-# Multiple organization memberships are selected locally; connector tokens stay
-# in the same encrypted/local stores already used by the Apps page.
+# Account -> Personal + multiple organization workspaces. Existing connector
+# token storage remains unchanged; only local workspace bindings are added.
 install_multi_workspace_client()
+install_multi_workspace_actions()
 install_team_action_recovery()
 install_multi_workspace_experience()
+# Joining/creating an organization activates that exact new workspace instead of
+# snapping back to a previously selected organization on refresh.
+install_workspace_action_follow()
 # Managed workspaces receive the premium Protect context and Original / Anonymized
 # file selector. Personal Protect is intentionally left visually unchanged.
 install_managed_protect_experience()
