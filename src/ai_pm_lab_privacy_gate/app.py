@@ -13,6 +13,22 @@ from PySide6.QtWidgets import QApplication, QSplashScreen
 INSTANCE_SERVER_NAME = "AI_PM_LAB_Privacy_Gate_0_4"
 
 
+def _single_instance_enabled() -> bool:
+    """Keep production single-instance behavior without hiding source test builds.
+
+    Packaged PrivacyGate builds should remain single-instance. During local branch
+    testing, however, an already-running Store/packaged instance must not swallow a
+    fresh ``python -m ai_pm_lab_privacy_gate.app`` launch and make the tester see an
+    older UI. Source runs therefore start their own process by default.
+
+    Set PRIVACY_GATE_SINGLE_INSTANCE=1 to restore single-instance behavior while
+    running from source when that is specifically desired.
+    """
+    if os.environ.get("PRIVACY_GATE_SINGLE_INSTANCE") == "1":
+        return True
+    return bool(getattr(sys, "frozen", False))
+
+
 def _notify_running_instance(*, show_window: bool) -> bool:
     socket = QLocalSocket()
     socket.connectToServer(INSTANCE_SERVER_NAME)
@@ -51,12 +67,18 @@ def main() -> int:
     app = QApplication(sys.argv)
     app.setApplicationName("AI PM LAB Privacy Gate")
     app.setOrganizationName("AI PM LAB")
-    if _notify_running_instance(show_window=not background_start):
+
+    single_instance = _single_instance_enabled()
+    if single_instance and _notify_running_instance(show_window=not background_start):
         return 0
-    instance_server = QLocalServer(app)
-    QLocalServer.removeServer(INSTANCE_SERVER_NAME)
-    if not instance_server.listen(INSTANCE_SERVER_NAME):
-        return 1
+
+    instance_server: QLocalServer | None = None
+    if single_instance:
+        instance_server = QLocalServer(app)
+        QLocalServer.removeServer(INSTANCE_SERVER_NAME)
+        if not instance_server.listen(INSTANCE_SERVER_NAME):
+            return 1
+
     from ai_pm_lab_privacy_gate.ui.fonts import install_app_font
     from ai_pm_lab_privacy_gate.ui.resources import resource_path
     from ai_pm_lab_privacy_gate.ui.styles import APP_STYLE
@@ -97,18 +119,20 @@ def main() -> int:
         if splash is not None:
             splash.finish(window)
 
-    def show_existing_window() -> None:
-        while instance_server.hasPendingConnections():
-            connection = instance_server.nextPendingConnection()
-            if connection is None:
-                continue
-            connection.waitForReadyRead(350)
-            message = bytes(connection.readAll())
-            if message == b"show":
-                window.show_from_background()
-            connection.disconnectFromServer()
+    if instance_server is not None:
+        def show_existing_window() -> None:
+            while instance_server.hasPendingConnections():
+                connection = instance_server.nextPendingConnection()
+                if connection is None:
+                    continue
+                connection.waitForReadyRead(350)
+                message = bytes(connection.readAll())
+                if message == b"show":
+                    window.show_from_background()
+                connection.disconnectFromServer()
 
-    instance_server.newConnection.connect(show_existing_window)
+        instance_server.newConnection.connect(show_existing_window)
+
     return app.exec()
 
 
