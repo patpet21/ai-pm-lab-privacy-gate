@@ -447,7 +447,7 @@ def _polish_organization(main_window) -> None:
             shell.hide()
             shell.setMaximumHeight(0)
         individual = getattr(team_page, "individual_card", None)
-        if individual is not None and team_page.state.organization_id:
+        if individual is not None:
             individual.hide()
             individual.setMaximumHeight(0)
 

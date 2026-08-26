@@ -11,7 +11,7 @@ os.environ.setdefault(
     str((Path(tempfile.gettempdir()) / "privacy-gate-ui-smoke" / uuid.uuid4().hex).resolve()),
 )
 
-from PySide6.QtWidgets import QApplication, QBoxLayout
+from PySide6.QtWidgets import QApplication, QBoxLayout, QFrame
 from PySide6.QtTest import QTest
 from docx import Document
 from openpyxl import Workbook
@@ -45,6 +45,10 @@ def main() -> int:
     collapsed_output = output_dir / "privacy_gate_collapsed.png"
     library_output = output_dir / "privacy_gate_library.png"
     contact_output = output_dir / "privacy_gate_contact.png"
+    settings_output = output_dir / "privacy_gate_settings.png"
+    plans_output = output_dir / "privacy_gate_plans.png"
+    organization_output = output_dir / "privacy_gate_organization_personal.png"
+    automation_output = output_dir / "privacy_gate_local_automation.png"
     mask_output = output_dir / "privacy_gate_mask_colors.png"
     pdf_output = output_dir / "privacy_gate_pdf_comparison.png"
     focus_output = output_dir / "privacy_gate_focus_preview.png"
@@ -266,17 +270,46 @@ def main() -> int:
         raise RuntimeError("Library backup action is unavailable")
     if not window.grab().save(str(library_output)):
         raise RuntimeError("Unable to save library UI screenshot")
-    window._show_page(5)
+    window._show_page(window.pages.indexOf(window.contact_page))
     app.processEvents()
-    if window.contact_page.message_input.height() > 96:
-        raise RuntimeError("Contact form is not using the compact layout")
+    message_height = window.contact_page.message_input.height()
+    if not 150 <= message_height <= 240:
+        raise RuntimeError("Contact form is outside the intended responsive height")
     if not window.grab().save(str(contact_output)):
         raise RuntimeError("Unable to save Contact screenshot")
+
+    window._show_page(window.pages.indexOf(window.settings_page))
+    app.processEvents()
+    account_panel = getattr(window.settings_page, "_privacygate_plan_account_panel", None)
+    if account_panel is None or account_panel.plan_badge.text() not in {
+        "BASIC", "PRO", "BUSINESS", "ENTERPRISE"
+    }:
+        raise RuntimeError("Settings current-account summary is unavailable")
+    if window.settings_page.findChildren(QFrame, "PlanCard_basic"):
+        raise RuntimeError("Plan comparison cards must not be embedded in Settings")
+    if not hasattr(window, "plans_page") or len(window.plans_page.cards) != 4:
+        raise RuntimeError("Dedicated plan comparison page is unavailable")
+    if not window.grab().save(str(settings_output)):
+        raise RuntimeError("Unable to save Settings screenshot")
+    window.pages.setCurrentWidget(window.plans_page)
+    app.processEvents()
+    if not window.grab().save(str(plans_output)):
+        raise RuntimeError("Unable to save Plans screenshot")
+    window._show_page(window.pages.indexOf(window.team_page))
+    app.processEvents()
+    if not window.grab().save(str(organization_output)):
+        raise RuntimeError("Unable to save personal Organization screenshot")
+    window._show_page(window.pages.indexOf(window.local_automation_page))
+    app.processEvents()
+    if not window.grab().save(str(automation_output)):
+        raise RuntimeError("Unable to save Local Automation screenshot")
     print(
         f"UI_OK {setup_output.resolve()} {output.resolve()} {mask_output.resolve()} {pdf_output.resolve()} "
         f"{focus_output.resolve()} {word_output.resolve()} {excel_output.resolve()} {restore_output.resolve()} "
         f"{compact_restore_output.resolve()} "
         f"{collapsed_output.resolve()} {library_output.resolve()} {contact_output.resolve()} "
+        f"{settings_output.resolve()} {plans_output.resolve()} {organization_output.resolve()} "
+        f"{automation_output.resolve()} "
         f"{len(findings)} findings sidebar={window.sidebar.width()}"
     )
     window.close()

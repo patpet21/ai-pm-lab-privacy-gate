@@ -9,6 +9,7 @@ from PySide6.QtWidgets import (
     QHeaderView,
     QLabel,
     QPushButton,
+    QSizePolicy,
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
@@ -69,7 +70,10 @@ class OrganizationDashboardView(QWidget):
         root.setContentsMargins(28, 22, 28, 18)
         root.setSpacing(14)
 
-        header = QHBoxLayout()
+        header_widget = QWidget()
+        header_widget.setMaximumHeight(72)
+        header = QHBoxLayout(header_widget)
+        header.setContentsMargins(0, 0, 0, 0)
         title_box = QVBoxLayout()
         title_box.setSpacing(3)
         title = QLabel("Organization")
@@ -92,9 +96,11 @@ class OrganizationDashboardView(QWidget):
         )
         header.addWidget(self.role_badge, alignment=Qt.AlignmentFlag.AlignTop)
         header.addWidget(self.plan_badge, alignment=Qt.AlignmentFlag.AlignTop)
-        root.addLayout(header)
+        root.addWidget(header_widget)
 
-        self.tabs = QHBoxLayout()
+        self.tabs_widget = QWidget()
+        self.tabs = QHBoxLayout(self.tabs_widget)
+        self.tabs.setContentsMargins(0, 0, 0, 0)
         self.tabs.setSpacing(4)
         self.tab_buttons: list[QPushButton] = []
         for index, label in enumerate(("Overview", "Members", "Policy", "Apps & AI", "Devices")):
@@ -106,12 +112,12 @@ class OrganizationDashboardView(QWidget):
             self.tab_buttons.append(button)
             self.tabs.addWidget(button)
         self.tabs.addStretch(1)
-        root.addLayout(self.tabs)
+        root.addWidget(self.tabs_widget)
 
-        line = QFrame()
-        line.setFixedHeight(1)
-        line.setStyleSheet("background:#DCE5EA;border:none;")
-        root.addWidget(line)
+        self.tabs_line = QFrame()
+        self.tabs_line.setFixedHeight(1)
+        self.tabs_line.setStyleSheet("background:#DCE5EA;border:none;")
+        root.addWidget(self.tabs_line)
 
         self.personal_panel = self._build_personal_panel()
         root.addWidget(self.personal_panel)
@@ -119,6 +125,11 @@ class OrganizationDashboardView(QWidget):
         self.stack = team_page.sections
         self.stack.setParent(self)
         root.addWidget(self.stack, 1)
+        self.personal_tail = QWidget()
+        self.personal_tail.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
+        )
+        root.addWidget(self.personal_tail, 1)
 
         old_overview = self.stack.widget(0)
         self.overview = QWidget()
@@ -132,6 +143,7 @@ class OrganizationDashboardView(QWidget):
 
         self.setStyleSheet(
             "QWidget#PremiumOrganizationDashboard{background:#F7FAFC;}"
+            "QWidget#PremiumOrganizationDashboard QLabel{background:transparent;border:none;}"
             "QTableWidget{background:#FFFFFF;border:none;gridline-color:#E7EDF1;color:#17384E;}"
             "QHeaderView::section{background:#FFFFFF;color:#415C70;border:none;border-bottom:1px solid #E2E9EE;"
             "padding:9px;font-size:9px;font-weight:800;}"
@@ -139,27 +151,32 @@ class OrganizationDashboardView(QWidget):
 
     def _build_personal_panel(self) -> QFrame:
         card = self._card()
-        layout = QHBoxLayout(card)
-        layout.setContentsMargins(18, 15, 18, 15)
+        card.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Maximum)
+        card.setMaximumHeight(350)
+        layout = QVBoxLayout(card)
+        layout.setContentsMargins(20, 18, 20, 18)
         layout.setSpacing(14)
+
+        hero = QHBoxLayout()
+        hero.setSpacing(14)
         bubble = QLabel()
         bubble.setFixedSize(46, 46)
         bubble.setAlignment(Qt.AlignmentFlag.AlignCenter)
         bubble.setPixmap(icon("protect", color=TEAL, size=24).pixmap(24, 24))
         bubble.setStyleSheet("background:#E8F7F7;border-radius:23px;")
-        layout.addWidget(bubble)
+        hero.addWidget(bubble)
         text = QVBoxLayout()
         heading = QLabel("Personal workspace")
-        heading.setStyleSheet(f"color:{NAVY};font-size:15px;font-weight:850;")
+        heading.setStyleSheet(f"color:{NAVY};font-size:18px;font-weight:900;")
         note = QLabel(
-            "No company policy is active. Your existing personal Protect experience remains unchanged. "
-            "Join a company or create a Business workspace when you need managed privacy controls."
+            "Your private workspace for protecting documents, managing local files and connecting approved apps. "
+            "No company policy is active and document content never appears in Organization."
         )
         note.setWordWrap(True)
         note.setStyleSheet(f"color:{MUTED};font-size:9px;")
         text.addWidget(heading)
         text.addWidget(note)
-        layout.addLayout(text, 1)
+        hero.addLayout(text, 1)
         refresh = QPushButton("Refresh")
         join = QPushButton("Join company")
         create = QPushButton("Create Business workspace")
@@ -176,9 +193,57 @@ class OrganizationDashboardView(QWidget):
         refresh.clicked.connect(self.team_page.refresh)
         join.clicked.connect(team_page_safe(self.team_page, "_join_company"))
         create.clicked.connect(team_page_safe(self.team_page, "_create_workspace"))
-        layout.addWidget(refresh)
-        layout.addWidget(join)
-        layout.addWidget(create)
+        hero.addWidget(refresh)
+        hero.addWidget(join)
+        hero.addWidget(create)
+        layout.addLayout(hero)
+
+        line = QFrame()
+        line.setFixedHeight(1)
+        line.setStyleSheet("background:#E6EDF1;border:none;")
+        layout.addWidget(line)
+
+        quick = QGridLayout()
+        quick.setHorizontalSpacing(12)
+        quick.setVerticalSpacing(12)
+        specs = (
+            ("protect", "Protect a document", "Detect sensitive data and compare original with protected output.", 0),
+            ("document", "Open local Library", "Review protected files saved on this device.", 1),
+            ("cloud", "Manage connected Apps", "Choose which external account is active for this workspace.", getattr(self.team_page.window(), "apps_page_index", 4)),
+        )
+        for column, (icon_name, title, detail, page_index) in enumerate(specs):
+            action = QPushButton(f"{title}\n{detail}")
+            action.setIcon(icon(icon_name, color=TEAL, size=23))
+            action.setIconSize(QSize(23, 23))
+            action.setMinimumHeight(86)
+            action.setCursor(Qt.CursorShape.PointingHandCursor)
+            action.setStyleSheet(
+                "QPushButton{background:#FBFDFE;color:#062B4F;border:1px solid #DCE5EA;"
+                "border-radius:11px;padding:11px 13px;text-align:left;font-size:9px;font-weight:700;}"
+                "QPushButton:hover{background:#F1FBFB;border-color:#9CCFD2;}"
+            )
+            action.clicked.connect(
+                lambda _checked=False, index=page_index: self.team_page.window()._show_page(index)
+            )
+            quick.addWidget(action, 0, column)
+        layout.addLayout(quick)
+
+        boundary = QFrame()
+        boundary.setMaximumHeight(70)
+        boundary.setStyleSheet("QFrame{background:#F2FAFA;border:1px solid #CDE7E9;border-radius:11px;}")
+        boundary_row = QHBoxLayout(boundary)
+        boundary_row.setContentsMargins(14, 11, 14, 11)
+        boundary_icon = QLabel()
+        boundary_icon.setFixedSize(24, 24)
+        boundary_icon.setPixmap(icon("protect", color=TEAL, size=21).pixmap(21, 21))
+        boundary_row.addWidget(boundary_icon)
+        boundary_text = QLabel(
+            "Personal privacy boundary: originals, protected files, restore mappings and connector tokens stay on this computer."
+        )
+        boundary_text.setWordWrap(True)
+        boundary_text.setStyleSheet(f"color:{NAVY};font-size:9px;font-weight:700;")
+        boundary_row.addWidget(boundary_text, 1)
+        layout.addWidget(boundary)
         return card
 
     def _build_overview(self, page: QWidget) -> None:
@@ -410,6 +475,9 @@ class OrganizationDashboardView(QWidget):
         has_org = bool(state.organization_id)
         self.personal_panel.setVisible(not has_org)
         self.stack.setVisible(has_org)
+        self.personal_tail.setVisible(not has_org)
+        self.tabs_widget.setVisible(has_org)
+        self.tabs_line.setVisible(has_org)
         for button in self.tab_buttons:
             button.setVisible(has_org)
 

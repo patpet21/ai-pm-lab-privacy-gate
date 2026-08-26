@@ -327,7 +327,9 @@ QDialog QLabel, QMessageBox QLabel {
     color: #17384E;
     background: transparent;
 }
-QDialog QPushButton, QMessageBox QPushButton {
+QMessageBox QPushButton#PrivacyGateDialogSecondary,
+QMessageBox QPushButton#PrivacyGateDialogPrimary,
+QMessageBox QPushButton#PrivacyGateDialogDanger {
     min-height: 34px;
     padding: 7px 13px;
     border-radius: 8px;
@@ -336,7 +338,7 @@ QDialog QPushButton, QMessageBox QPushButton {
     color: #17384E;
     font-weight: 700;
 }
-QDialog QPushButton:hover, QMessageBox QPushButton:hover {
+QMessageBox QPushButton#PrivacyGateDialogSecondary:hover {
     background: #EAF7F7;
     color: #0B7F89;
     border-color: #9AC9CD;
@@ -351,14 +353,24 @@ QDialog QLineEdit, QDialog QPlainTextEdit, QDialog QTextEdit, QDialog QComboBox 
 QDialog QLineEdit:focus, QDialog QPlainTextEdit:focus, QDialog QTextEdit:focus, QDialog QComboBox:focus {
     border: 1px solid #0B7F89;
 }
-QMessageBox QPushButton:default {
+QMessageBox QPushButton#PrivacyGateDialogPrimary {
     background: #0B7F89;
     color: #FFFFFF;
     border-color: #0B7F89;
 }
-QMessageBox QPushButton:default:hover {
+QMessageBox QPushButton#PrivacyGateDialogPrimary:hover {
     background: #096D76;
     border-color: #096D76;
+}
+QMessageBox QPushButton#PrivacyGateDialogDanger {
+    background: #FFFFFF;
+    color: #A23A3A;
+    border-color: #E7B8B8;
+}
+QMessageBox QPushButton#PrivacyGateDialogDanger:hover {
+    background: #FDECEC;
+    color: #8E2F2F;
+    border-color: #D99393;
 }
 """
 
@@ -371,6 +383,24 @@ class _DialogPolishFilter(QObject):
                 watched.setStyleSheet(watched.styleSheet() + _DIALOG_STYLE)
                 if isinstance(watched, QMessageBox):
                     watched.setMinimumWidth(460)
+                    destructive = {
+                        QMessageBox.StandardButton.Discard,
+                        QMessageBox.StandardButton.Abort,
+                    }
+                    affirmative = {
+                        QMessageBox.StandardButton.Ok,
+                        QMessageBox.StandardButton.Yes,
+                        QMessageBox.StandardButton.Save,
+                        QMessageBox.StandardButton.Apply,
+                    }
+                    for button in watched.buttons():
+                        standard = watched.standardButton(button)
+                        if standard in destructive:
+                            button.setObjectName("PrivacyGateDialogDanger")
+                        elif standard in affirmative or button is watched.defaultButton():
+                            button.setObjectName("PrivacyGateDialogPrimary")
+                        else:
+                            button.setObjectName("PrivacyGateDialogSecondary")
         return super().eventFilter(watched, event)
 
 

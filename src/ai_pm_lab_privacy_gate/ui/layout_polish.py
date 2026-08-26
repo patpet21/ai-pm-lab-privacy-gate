@@ -326,7 +326,7 @@ def _polish_restore(page: RestorePage) -> None:
     page.document_combo.setMinimumHeight(40)
 
     page.restore_button.setParent(bottom_bar)
-    page.restore_button.setText("Restore locally")
+    page.restore_button.setText("Restore your file")
     page.restore_button.setMinimumWidth(145)
     page.restore_button.setMaximumWidth(170)
     _style_action_button(page.restore_button, "primary")

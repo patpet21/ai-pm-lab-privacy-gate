@@ -23,8 +23,9 @@ def apply_organization_polish(main_window) -> None:
             break
 
     state = getattr(page, "state", TeamState())
-    panel = install_plan_account_panel(main_window.settings_page, state)
+    panel = install_plan_account_panel(main_window, state)
 
     state_changed = getattr(page, "state_changed", None)
     if state_changed is not None:
         state_changed.connect(panel.update_state)
+        state_changed.connect(main_window.plans_page.update_state)

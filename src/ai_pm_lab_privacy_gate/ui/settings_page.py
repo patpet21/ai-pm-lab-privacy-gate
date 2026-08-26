@@ -93,6 +93,7 @@ class SettingsPage(QWidget):
 
         self.setStyleSheet(
             "QWidget#PremiumSettingsPage{background:#F7FAFC;}"
+            "QWidget#PremiumSettingsPage QLabel{background:transparent;border:none;}"
             "QRadioButton{color:#17384E;font-size:10px;font-weight:700;padding:7px 4px;spacing:9px;}"
             "QRadioButton::indicator{width:18px;height:18px;border-radius:9px;border:2px solid #91A9B9;background:white;}"
             "QRadioButton::indicator:checked{border:6px solid #0B7F89;background:white;}"

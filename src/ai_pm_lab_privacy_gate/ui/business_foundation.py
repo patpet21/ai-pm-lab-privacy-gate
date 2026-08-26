@@ -338,6 +338,15 @@ def install_business_foundation() -> None:
         _apply_company_rules(self, initialize=True)
 
     def category_changed(self: ProtectionPage, item) -> None:
+        if getattr(self, "_privacygate_category_change_active", False):
+            return
+        self._privacygate_category_change_active = True
+        try:
+            _category_changed(self, item)
+        finally:
+            self._privacygate_category_change_active = False
+
+    def _category_changed(self: ProtectionPage, item) -> None:
         entity_type = str(item.data(Qt.ItemDataRole.UserRole) or "")
         engine = _engine_for_page(self)
         if engine.active and engine.must_protect(entity_type):
@@ -348,7 +357,10 @@ def install_business_foundation() -> None:
                 self._category_sync = False
             return
         original_category_changed(self, item)
-        if _apply_company_rules(self):
+        # A personal workspace has no policy to re-apply. Touching every item
+        # here emits another itemChanged signal on some Qt versions and used to
+        # cause an unbounded Protect preview refresh loop.
+        if engine.active and _apply_company_rules(self):
             self._refresh_preview()
 
     def set_all(self: ProtectionPage, protected: bool) -> None:
@@ -560,4 +572,6 @@ def apply_business_main_window(main_window) -> None:
             apps_page.refresh()
 
     team_page.policy_changed.connect(policy_changed)
-    team_page.open_account.connect(lambda: main_window._show_page(4))
+    team_page.open_account.connect(
+        lambda: main_window._show_page(main_window.pages.indexOf(main_window.settings_page))
+    )

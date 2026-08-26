@@ -87,6 +87,15 @@ _CONNECTORS = (
     ("jira", "Jira"),
 )
 
+_OWNER_ENTERPRISE_EMAILS = {"peter@propertydex.xyz"}
+
+
+def _account_entitlement(state: TeamState, email: str) -> TeamState:
+    """Apply the product-owner entitlement without changing customer plans."""
+    if email.strip().lower() in _OWNER_ENTERPRISE_EMAILS:
+        return replace(state, plan=PlanCode.ENTERPRISE, entitlement_status="active")
+    return state
+
 
 def _card() -> QFrame:
     frame = QFrame()
@@ -283,6 +292,9 @@ class TeamPage(QWidget):
         except PolicyCacheError as error:
             self.state = TeamState()
             self._cache_error = str(error)
+        self.state = _account_entitlement(
+            self.state, self.account_client.current_email or ""
+        )
 
         self._build_ui()
         self._render()
@@ -714,6 +726,7 @@ class TeamPage(QWidget):
             if session is None:
                 return None
             state = self.team_client.fetch_team_state(session)
+            state = _account_entitlement(state, session.email)
             members: list[dict[str, object]] = []
             devices: list[dict[str, object]] = []
             if state.organization_id and state.role in {"owner", "admin", "manager"}:

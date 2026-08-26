@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import os
 
-from PySide6.QtCore import QTimer, QUrl
+from PySide6.QtCore import QSize, QTimer, QUrl, Qt
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (
     QApplication,
@@ -31,6 +31,7 @@ from ai_pm_lab_privacy_gate.infrastructure.mcp.modes import ConnectionMode
 from ai_pm_lab_privacy_gate.infrastructure.mcp.provisioning_client import ProvisioningHttpClient
 from ai_pm_lab_privacy_gate.infrastructure.mcp.remote import RemoteMcpManager
 from ai_pm_lab_privacy_gate.infrastructure.storage.library_repository import LibraryRepository
+from ai_pm_lab_privacy_gate.ui.iconography import icon
 
 
 class ConnectionsPage(QWidget):
@@ -47,6 +48,9 @@ class ConnectionsPage(QWidget):
         root = QVBoxLayout(self)
         root.setContentsMargins(24, 22, 24, 18)
         root.setSpacing(14)
+        if section == "local":
+            self._build_local_automation(root)
+            return
         title = "Local Automation" if section == "local" else "Cloud, MCP & Email"
         subtitle = (
             "Free-ready architecture for n8n and a future opt-in localhost API. Nothing is running yet."
@@ -87,6 +91,115 @@ class ConnectionsPage(QWidget):
             grid.addWidget(self._card(*card), index // 2, index % 2)
         root.addLayout(grid)
         root.addStretch(1)
+
+    def _build_local_automation(self, root: QVBoxLayout) -> None:
+        self.setObjectName("LocalAutomationPage")
+        self.setStyleSheet(
+            "QWidget#LocalAutomationPage{background:#F7FAFC;}"
+            "QWidget#LocalAutomationPage QLabel{background:transparent;border:none;}"
+        )
+        header = QHBoxLayout()
+        title_box = QVBoxLayout()
+        title_box.setSpacing(3)
+        title = QLabel("Local Automation")
+        title.setStyleSheet("color:#062B4F;font-size:28px;font-weight:900;")
+        subtitle = QLabel(
+            "Turn repetitive business work into protected, reviewable workflows with n8n, local services and your existing apps."
+        )
+        subtitle.setWordWrap(True)
+        subtitle.setStyleSheet("color:#61798A;font-size:11px;")
+        title_box.addWidget(title)
+        title_box.addWidget(subtitle)
+        header.addLayout(title_box, 1)
+        badge = QLabel("LOCAL-FIRST  ·  CONSULTING READY")
+        badge.setStyleSheet("background:#E8F7F7;color:#0B7F89;border:1px solid #B8E1E4;border-radius:10px;padding:7px 11px;font-size:8px;font-weight:900;")
+        header.addWidget(badge, alignment=Qt.AlignmentFlag.AlignTop)
+        root.addLayout(header)
+
+        hero = QFrame(objectName="AutomationHero")
+        hero.setStyleSheet("QFrame#AutomationHero{background:#062B4F;border:none;border-radius:16px;}")
+        hero_row = QHBoxLayout(hero)
+        hero_row.setContentsMargins(20, 17, 20, 17)
+        hero_row.setSpacing(15)
+        hero_icon = QLabel()
+        hero_icon.setFixedSize(48, 48)
+        hero_icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        hero_icon.setPixmap(icon("workflow", color="#FFFFFF", size=26).pixmap(26, 26))
+        hero_icon.setStyleSheet("background:#0B7F89;border:none;border-radius:24px;")
+        hero_row.addWidget(hero_icon)
+        hero_text = QVBoxLayout()
+        hero_title = QLabel("Design an automation around your real business process")
+        hero_title.setStyleSheet("color:#FFFFFF;font-size:16px;font-weight:850;border:none;background:transparent;")
+        hero_note = QLabel(
+            "We can map the process, protect sensitive data, connect the tools and build the n8n workflow with human approval points."
+        )
+        hero_note.setWordWrap(True)
+        hero_note.setStyleSheet("color:#DCE7EF;font-size:9px;border:none;background:transparent;")
+        hero_text.addWidget(hero_title)
+        hero_text.addWidget(hero_note)
+        hero_row.addLayout(hero_text, 1)
+        consult = QPushButton("Discuss your workflow")
+        consult.setCursor(Qt.CursorShape.PointingHandCursor)
+        consult.setStyleSheet("QPushButton{background:#FFFFFF;color:#062B4F;border:none;border-radius:9px;padding:10px 15px;font-weight:850;}QPushButton:hover{background:#E8F7F7;}")
+        consult.clicked.connect(self._contact)
+        hero_row.addWidget(consult)
+        root.addWidget(hero)
+
+        section = QLabel("Workflow starters")
+        section.setStyleSheet("color:#062B4F;font-size:15px;font-weight:850;")
+        root.addWidget(section)
+        grid = QGridLayout()
+        grid.setHorizontalSpacing(12)
+        grid.setVerticalSpacing(12)
+        workflows = (
+            ("contact", "Email & document intake", "Email or folder > protect PII > classify > route to the right project.", "Popular"),
+            ("document", "Real-estate operations", "Lease or report > extract tasks > protect tenant data > update the team.", "Industry"),
+            ("contact", "Lead qualification", "New inquiry > validate fields > create CRM record > assign follow-up.", "Sales"),
+            ("workflow", "Project coordination", "Approved request > create ClickUp/Asana tasks > reminders > status summary.", "Operations"),
+            ("protect", "Watched folders", "New local file > PrivacyGate protection > approved archive > notification.", "Local"),
+            ("settings", "Custom n8n + local API", "Your systems > PrivacyGate boundary > custom rules > controlled delivery.", "Custom"),
+        )
+        for index, spec in enumerate(workflows):
+            grid.addWidget(self._workflow_card(*spec), index // 3, index % 3)
+        root.addLayout(grid)
+        root.addStretch(1)
+
+    def _workflow_card(self, icon_name: str, title: str, description: str, badge: str) -> QFrame:
+        card = QFrame()
+        card.setObjectName(f"WorkflowCard_{title.replace(' ', '_').replace('&', 'and')}")
+        card.setMinimumHeight(175)
+        card.setStyleSheet(f"QFrame#{card.objectName()}{{background:#FFFFFF;border:1px solid #DCE5EA;border-radius:14px;}}")
+        box = QVBoxLayout(card)
+        box.setContentsMargins(15, 14, 15, 14)
+        box.setSpacing(8)
+        top = QHBoxLayout()
+        bubble = QLabel()
+        bubble.setFixedSize(38, 38)
+        bubble.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        bubble.setPixmap(icon(icon_name, color="#0B7F89", size=21).pixmap(21, 21))
+        bubble.setStyleSheet("background:#E8F7F7;border:none;border-radius:19px;")
+        top.addWidget(bubble)
+        top.addStretch(1)
+        chip = QLabel(badge.upper())
+        chip.setStyleSheet("background:#F1F5F7;color:#61798A;border:none;border-radius:8px;padding:5px 7px;font-size:7px;font-weight:900;")
+        top.addWidget(chip)
+        box.addLayout(top)
+        heading = QLabel(title)
+        heading.setStyleSheet("color:#062B4F;font-size:12px;font-weight:850;border:none;")
+        note = QLabel(description)
+        note.setWordWrap(True)
+        note.setStyleSheet("color:#61798A;font-size:8px;border:none;")
+        box.addWidget(heading)
+        box.addWidget(note)
+        box.addStretch(1)
+        action = QPushButton("Explore this workflow")
+        action.setIcon(icon("external", color="#062B4F", size=15))
+        action.setIconSize(QSize(15, 15))
+        action.setCursor(Qt.CursorShape.PointingHandCursor)
+        action.setStyleSheet("QPushButton{background:#FFFFFF;color:#062B4F;border:1px solid #C9D7E0;border-radius:8px;padding:7px 9px;font-size:8px;font-weight:800;}QPushButton:hover{background:#F1FBFB;border-color:#95C8CC;}")
+        action.clicked.connect(self._contact)
+        box.addWidget(action)
+        return card
 
     def _card(self, title: str, status: str, description: str, button_text: str, callback):
         card = QFrame(objectName="ConnectionCard")

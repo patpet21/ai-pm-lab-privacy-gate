@@ -62,7 +62,24 @@ def _isolated_connect(provider: str, original: Callable[..., Any]) -> Callable[.
             raise
 
         current_active = registry.active_account_id(provider)
-        if previous_active and current_active == previous_active:
+        current_token = self.secret_store.get(f"connected.{provider}.token") or ""
+        captured_token = (
+            self.secret_store.get(
+                f"connected.{provider}.account.{current_active}.token"
+            )
+            or ""
+        )
+        # An unchanged active id is not sufficient proof that the provider
+        # re-authorized the same identity: before identity discovery it still
+        # points at the old account. Preserve omitted long-lived values only
+        # after the connector captured this exact access token into that account.
+        same_account_captured = bool(
+            previous_active
+            and current_active == previous_active
+            and current_token
+            and captured_token == current_token
+        )
+        if same_account_captured:
             for suffix in _SAME_ACCOUNT_PRESERVE_SUFFIXES:
                 current_key = f"connected.{provider}.{suffix}"
                 if not (self.secret_store.get(current_key) or ""):
