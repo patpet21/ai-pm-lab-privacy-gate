@@ -106,6 +106,11 @@ def install_account_aware_routing() -> None:
     # for every current multi-account provider, including Google Drive.
     previous_open = connected_apps_browse_polish._open_source_browser
 
+    # Organization's workspace-aware importer already contains an explicit account
+    # selector. Keep a reference to the composed browser before adding the generic
+    # picker so that flow does not ask the user to choose the same account twice.
+    connected_apps_browse_polish._privacygate_raw_open_source_browser = previous_open
+
     def account_aware_open(main_window, provider: str, title: str) -> None:
         service = _service_from_main_window(main_window)
         if not choose_provider_account(main_window, service, provider, title):
