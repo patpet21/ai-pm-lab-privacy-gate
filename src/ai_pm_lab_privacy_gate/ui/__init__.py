@@ -42,6 +42,7 @@ from .organization_usability_polish import apply_organization_usability_polish
 from .organization_overview_fix import apply_organization_overview_fix
 from .organization_overview_consistency import apply_organization_overview_consistency
 from .contact_workflows_polish import apply_contact_workflows_polish, apply_popup_visual_polish
+from .contact_executive_2026 import apply_contact_executive_2026
 from .dialog_visual_system import apply_dialog_visual_system
 from .library_source_folders import install_library_source_folders
 from .library_visual_upgrade import install_library_visual_upgrade
@@ -139,9 +140,10 @@ def _main_window_init_with_brand(self, *args, **kwargs) -> None:
     # Enterprise members get a compact workspace + connected-account bar there.
     apply_managed_protect_context(self)
     apply_managed_protect_branding(self)
-    # Contact / Workflows follows the same premium visual language. Dialog polish
-    # is presentation-only and preserves each popup's existing actions/logic.
+    # Contact / Workflows first preserves all existing actions, then gets the same
+    # 2026 executive visual language as the new Settings control center.
     apply_contact_workflows_polish(self)
+    apply_contact_executive_2026(self)
     apply_popup_visual_polish(self)
     # Apply one consistent premium visual system to all dialogs after the legacy
     # popup pass: account-name input, policy editor, workspace permissions,
