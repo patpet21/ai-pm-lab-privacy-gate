@@ -11,18 +11,28 @@ One PrivacyGate account can participate in several privacy contexts:
 Business and Enterprise are organization plans. They do not replace the user's
 Personal workspace and they do not require separate PrivacyGate logins.
 
-## One Protect engine
+## One Protect engine, two UI surfaces
 
-PrivacyGate does not create a second Protect implementation for organizations.
+PrivacyGate does not create a second protection implementation for organizations.
+The same `ProtectionPage` / privacy service behavior is reused in two independent UI
+surfaces:
 
-The active workspace selects the policy context used by the existing Protect /
-Privacy Preflight path:
+- standalone **Protect** for the normal personal/product navigation;
+- embedded **Workspace Protect** inside Organization → Apps & AI.
+
+The Organization instance has its own document state and preview, so working in a
+company workspace does not redirect the user to the standalone Protect page. Both
+surfaces use the same detection, protection, export, Library and policy-enforcement
+code.
+
+The active workspace selects the policy context:
 
 1. Select Personal or a company workspace.
-2. Open a local document or import from an approved connected account.
-3. Protect applies required/default/user-choice company directives locally.
-4. A second local scan is performed before AI handoff.
-5. Only AI/apps approved by the active company policy may be used.
+2. Upload/paste locally or import from an approved connected account.
+3. The document opens in the Workspace Protect preview inside Organization.
+4. Protect applies required/default/user-choice company directives locally.
+5. A second local scan is performed before AI handoff.
+6. Only AI/apps approved by the active company policy may be used.
 
 Personal keeps the normal individual behavior and has no company policy.
 
@@ -42,16 +52,25 @@ The binding stores only local availability (`provider + account + workspace`).
 It does not copy OAuth tokens or source contents into the Organization control
 plane.
 
-## Organization import flow
+## Organization Apps & AI flow
 
-Organization → Apps & AI provides the controlled bridge into the existing Protect
-experience:
+Organization → Apps & AI is a workspace suite, not a redirect page.
 
-`workspace → source → account → explicit workspace permission → connected-content picker → Protect`
+The left side lists connected accounts, including provider logos and the workspaces
+where each account is approved. Workspace permissions remain editable from that
+list; a separate Workspace bindings card is not part of the main working surface.
 
-Google Drive and Gmail currently support direct materialization into Protect.
-Other connected applications keep their existing browse/search routes and can be
-promoted to direct import as their connector materializers are implemented.
+The document workflow is:
+
+`active workspace → source → account → explicit workspace permission → connected-content picker → embedded Workspace Protect preview`
+
+Google Drive and Gmail currently support direct materialization into the embedded
+Workspace Protect instance. Other connected applications keep their existing
+browse/search routes and can be promoted to direct import as their connector
+materializers are implemented.
+
+Local upload and paste-text actions are also available directly inside the embedded
+Workspace Protect surface.
 
 ## Admin privacy boundary
 
@@ -61,9 +80,10 @@ Organization admins can manage:
 - members, roles and seats;
 - managed devices and policy sync;
 - protection policy;
-- approved AI and apps.
+- approved AI and apps;
+- whether a local connected account is approved for the workspace.
 
-Organization does not expose:
+Organization admins do not receive:
 
 - document contents;
 - document titles;
@@ -72,5 +92,6 @@ Organization does not expose:
 - connector OAuth tokens;
 - connector source item lists.
 
-Any future Enterprise audit feature should use metadata-minimization by default
-and must remain separate from document access.
+The embedded Workspace Protect document state remains local to the employee device.
+Any future Enterprise audit feature should use metadata-minimization by default and
+must remain separate from document access.
