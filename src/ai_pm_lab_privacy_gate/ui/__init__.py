@@ -26,6 +26,7 @@ from .organization_polish import apply_organization_polish
 from .organization_visual_upgrade import apply_organization_visual_upgrade
 from .premium_organization_rebuild import apply_premium_organization_rebuild
 from . import premium_organization_rebuild as _premium_organization_rebuild_module
+from .mockup_fidelity import apply_mockup_fidelity
 from .library_source_folders import install_library_source_folders
 from .library_visual_upgrade import install_library_visual_upgrade
 from .page_split import apply_apps_mcp_split
@@ -89,6 +90,9 @@ def _main_window_init_with_brand(self, *args, **kwargs) -> None:
     _premium_organization_rebuild_module.team_page = getattr(self, "team_page", None)
     apply_premium_organization_rebuild(self)
     apply_account_menu(self)
+    # The approved screenshots are the presentation source of truth. This layer
+    # reuses the existing controllers for policy, workspaces, imports and AI handoff.
+    apply_mockup_fidelity(self)
     apply_runtime_fixes(self)
 
 
