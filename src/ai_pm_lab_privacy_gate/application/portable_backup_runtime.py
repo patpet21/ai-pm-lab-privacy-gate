@@ -7,6 +7,7 @@ import shutil
 import sqlite3
 import tempfile
 import zipfile
+from contextlib import closing
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -51,10 +52,14 @@ def _decrypt(raw: bytes, passphrase: str) -> bytes:
 
 
 def _portable_snapshot(service: FullEncryptedBackupService, destination: Path) -> None:
-    with service.library._connect() as source, sqlite3.connect(destination) as output:
+    # sqlite3.Connection's context manager commits/rolls back but does not close
+    # the handle. Explicit closing is required on Windows before TemporaryDirectory
+    # can remove the snapshot file.
+    with closing(service.library._connect()) as source, closing(sqlite3.connect(destination)) as output:
         source.backup(output)
+        output.commit()
     protector = service.library._protector
-    with sqlite3.connect(destination) as connection:
+    with closing(sqlite3.connect(destination)) as connection:
         rows = connection.execute("SELECT rowid, protected_value FROM mappings").fetchall()
         for rowid, protected_value in rows:
             original = protector.unprotect(protected_value)
@@ -65,11 +70,12 @@ def _portable_snapshot(service: FullEncryptedBackupService, destination: Path) -
         connection.execute(
             "INSERT OR REPLACE INTO app_meta(key, value) VALUES('portable_mapping_format', 'utf8-inside-encrypted-container')"
         )
+        connection.commit()
 
 
 def _reprotect_snapshot(service: FullEncryptedBackupService, snapshot: Path) -> None:
     protector = LocalProtector()
-    with sqlite3.connect(snapshot) as connection:
+    with closing(sqlite3.connect(snapshot)) as connection:
         marker = connection.execute(
             "SELECT value FROM app_meta WHERE key = 'portable_mapping_format'"
         ).fetchone()
@@ -84,6 +90,7 @@ def _reprotect_snapshot(service: FullEncryptedBackupService, snapshot: Path) -> 
                 (protector.protect(original), rowid),
             )
         connection.execute("DELETE FROM app_meta WHERE key = 'portable_mapping_format'")
+        connection.commit()
 
 
 def _create(self: FullEncryptedBackupService, plan: PlanCode | str, destination: str | Path, passphrase: str) -> Path:
