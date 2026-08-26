@@ -12,6 +12,7 @@ from .multi_account_registry import install_multi_account_registry
 from .multi_account_label_refresh import install_multi_account_label_refresh
 from .multi_account_safety import install_multi_account_safety
 from .connector_composition_safety import install_connector_composition_safety
+from .multi_account_entitlement import install_multi_account_entitlement
 
 install_google_oauth_adapter()
 install_multi_oauth_adapter()
@@ -35,5 +36,9 @@ install_multi_account_safety()
 # Provider adapters are imported before their installers run. Preserve Gmail's
 # dedicated test/list handlers after the full connector chain is composed.
 install_connector_composition_safety()
+# Commercial entitlement is deliberately the final connector wrapper: one account
+# remains available on Basic, while a second account is blocked in the service
+# layer unless the active plan exposes MULTI_ACCOUNT.
+install_multi_account_entitlement()
 
 __all__ = ["ConnectedAppsService", "ConnectionTestResult", "RemoteItem"]
