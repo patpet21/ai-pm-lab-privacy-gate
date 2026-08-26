@@ -12,7 +12,6 @@ from PySide6.QtWidgets import (
     QPushButton,
     QSizePolicy,
     QVBoxLayout,
-    QWidget,
     QWidgetAction,
 )
 
@@ -27,12 +26,12 @@ from ai_pm_lab_privacy_gate.ui.workers import FunctionWorker
 
 NAVY = "#062B4F"
 TEAL = "#0B7180"
-MUTED = "#8EA6B8"
+MUTED = "#64788A"
 WHITE = "#FFFFFF"
 
 
 class AccountMenuController:
-    """Professional account card anchored at the bottom of the PrivacyGate sidebar."""
+    """Account launcher anchored at the bottom of the PrivacyGate sidebar."""
 
     def __init__(self, main_window) -> None:
         self.main_window = main_window
@@ -57,6 +56,7 @@ class AccountMenuController:
     def _build_button(self) -> None:
         self.button = QPushButton(objectName="AccountMenuButton")
         self.button.setToolTip("Your Account")
+        self.button.setCursor(Qt.CursorShape.PointingHandCursor)
         self.button.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         self.button.setMinimumHeight(58)
         icon_path = resource_path("resources", "branding", "nav-account.svg")
@@ -64,9 +64,10 @@ class AccountMenuController:
             self.button.setIcon(QIcon(str(icon_path)))
         self.button.setStyleSheet(
             "QPushButton#AccountMenuButton{"
-            "background:#FFFFFF;color:#062B4F;border:1px solid #D7E2E8;"
-            "border-radius:11px;text-align:left;padding:8px 11px;font-weight:800;}"
-            "QPushButton#AccountMenuButton:hover{background:#F2FAFA;border-color:#86C5CA;}"
+            "background:#103C5D;color:#FFFFFF;border:1px solid #315C78;"
+            "border-radius:11px;text-align:left;padding:9px 11px;font-weight:800;}"
+            "QPushButton#AccountMenuButton:hover{background:#164B6C;border-color:#4F829D;}"
+            "QPushButton#AccountMenuButton:pressed{background:#0B7180;border-color:#1595A3;}"
         )
         self.button.clicked.connect(self._show_menu)
 
@@ -98,6 +99,12 @@ class AccountMenuController:
         if self.profile and self.profile.display_name:
             return self.profile.display_name
         return "Your Account"
+
+    def _initials(self) -> str:
+        words = [part for part in self._display_name().replace("-", " ").split() if part]
+        if not words or self._display_name() == "Your Account":
+            return "PG"
+        return "".join(word[0].upper() for word in words[:2])
 
     def _plan_line(self) -> str:
         plan = self.state.plan.label
@@ -203,24 +210,37 @@ class AccountMenuController:
     def _header_action(self, menu: QMenu) -> QWidgetAction:
         action = QWidgetAction(menu)
         panel = QFrame()
-        panel.setMinimumWidth(290)
-        panel.setStyleSheet("QFrame{background:#F7FAFC;border:none;border-radius:8px;}")
-        layout = QVBoxLayout(panel)
-        layout.setContentsMargins(14, 12, 14, 12)
-        layout.setSpacing(3)
+        panel.setMinimumWidth(310)
+        panel.setStyleSheet("QFrame{background:#F8FAFC;border:none;border-radius:10px;}")
+        row = QHBoxLayout(panel)
+        row.setContentsMargins(13, 12, 13, 12)
+        row.setSpacing(11)
+
+        avatar = QLabel(self._initials())
+        avatar.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        avatar.setFixedSize(42, 42)
+        avatar.setStyleSheet(
+            "background:#0B7180;color:#FFFFFF;border:none;border-radius:21px;"
+            "font-size:11px;font-weight:900;"
+        )
+        row.addWidget(avatar, 0, Qt.AlignmentFlag.AlignTop)
+
+        text = QVBoxLayout()
+        text.setSpacing(2)
         name = QLabel(self._display_name())
-        name.setStyleSheet(f"color:{NAVY};font-size:14px;font-weight:900;")
+        name.setStyleSheet(f"color:{NAVY};font-size:14px;font-weight:900;border:none;background:transparent;")
         email = QLabel(self.email or "Not signed in")
-        email.setStyleSheet("color:#61798A;font-size:9px;")
+        email.setStyleSheet("color:#64788A;font-size:9px;border:none;background:transparent;")
         plan = QLabel(self._plan_line().upper())
-        plan.setStyleSheet(f"color:{TEAL};font-size:9px;font-weight:900;")
-        layout.addWidget(name)
-        layout.addWidget(email)
-        layout.addWidget(plan)
+        plan.setStyleSheet(f"color:{TEAL};font-size:8px;font-weight:900;border:none;background:transparent;")
+        text.addWidget(name)
+        text.addWidget(email)
+        text.addWidget(plan)
         if self.state.organization_name:
             org = QLabel(self.state.organization_name)
-            org.setStyleSheet("color:#61798A;font-size:9px;")
-            layout.addWidget(org)
+            org.setStyleSheet("color:#64788A;font-size:8px;border:none;background:transparent;")
+            text.addWidget(org)
+        row.addLayout(text, 1)
         action.setDefaultWidget(panel)
         return action
 
@@ -228,10 +248,10 @@ class AccountMenuController:
         menu = QMenu(self.main_window)
         menu.setStyleSheet(
             "QMenu{background:#FFFFFF;color:#062B4F;border:1px solid #D7E2E8;"
-            "border-radius:10px;padding:7px;}"
-            "QMenu::item{padding:9px 24px 9px 12px;border-radius:6px;}"
-            "QMenu::item:selected{background:#EAF6F6;color:#062B4F;}"
-            "QMenu::separator{height:1px;background:#E2E9ED;margin:6px 4px;}"
+            "border-radius:12px;padding:8px;}"
+            "QMenu::item{padding:10px 28px 10px 12px;border-radius:7px;}"
+            "QMenu::item:selected{background:#EAF7F7;color:#062B4F;}"
+            "QMenu::separator{height:1px;background:#E2E9ED;margin:7px 4px;}"
         )
         menu.addAction(self._header_action(menu))
         menu.addSeparator()

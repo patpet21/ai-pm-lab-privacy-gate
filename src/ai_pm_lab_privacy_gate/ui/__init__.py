@@ -23,6 +23,7 @@ from .privacy_preflight import install_privacy_preflight
 from .business_foundation import install_business_foundation, apply_business_main_window
 from .team_action_recovery import install_team_action_recovery
 from .organization_polish import apply_organization_polish
+from .organization_visual_upgrade import apply_organization_visual_upgrade
 from .library_source_folders import install_library_source_folders
 from .library_visual_upgrade import install_library_visual_upgrade
 from .page_split import apply_apps_mcp_split
@@ -86,6 +87,10 @@ def _main_window_init_with_brand(self, *args, **kwargs) -> None:
     apply_business_main_window(self)
     apply_organization_polish(self)
     apply_workspace_sidebar(self)
+    # Apply the premium organization skin after all team/workspace controls exist.
+    # This is visual-only: RPCs, policy enforcement and local privacy boundaries
+    # remain unchanged.
+    apply_organization_visual_upgrade(self)
     # Account is applied after workspace/organization navigation so its shortcuts
     # point to the final pages and its card always remains at the bottom.
     apply_account_menu(self)
