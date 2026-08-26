@@ -7,6 +7,10 @@ from ai_pm_lab_privacy_gate.ui import account_aware_routing
 def _service_with_accounts(provider: str, identities: tuple[str, ...]):
     store = MemorySecretStore()
     service = ConnectedAppsService(".", secret_store=store)
+    # These tests exercise account-picker routing, not commercial entitlement
+    # enforcement. Multi-account switching is a Pro capability, so keep the test
+    # service in an eligible plan and cover Basic gating in entitlement tests.
+    service._privacygate_entitlement_plan = "pro"
     registry = MultiAccountRegistry(store)
     ids = []
     for index, identity in enumerate(identities, start=1):
