@@ -10,6 +10,8 @@ from .brand_icons import apply_brand_icons
 from .connected_apps_browse_polish import apply_connected_apps_browse_polish
 from .protect_source_picker import apply_protect_source_picker
 from .protect_workspace_controls import apply_managed_protect_context
+from .protect_workspace_branding import apply_managed_protect_branding
+from .protect_late_cleanup import apply_protect_late_cleanup
 from .source_catalog_activation import activate_oauth_ready_sources
 from .gmail_browser_route import install_gmail_browser_route
 from .clickup_browser_route import install_clickup_browser_route
@@ -112,10 +114,14 @@ def _main_window_init_with_brand(self, *args, **kwargs) -> None:
     # The existing Protect UI stays the single document workspace. Business /
     # Enterprise members get a compact workspace + connected-account bar there.
     apply_managed_protect_context(self)
+    apply_managed_protect_branding(self)
     # Contact / Workflows follows the same premium visual language. Dialog polish
     # is presentation-only and preserves each popup's existing actions/logic.
     apply_contact_workflows_polish(self)
     apply_popup_visual_polish(self)
+    # Run last: hide detached legacy/parking widgets that can otherwise paint
+    # clipped labels/icons at the far-left edge on Windows.
+    apply_protect_late_cleanup(self)
 
 
 MainWindow.__init__ = _main_window_init_with_brand
