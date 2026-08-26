@@ -42,6 +42,7 @@ from .organization_usability_polish import apply_organization_usability_polish
 from .organization_overview_fix import apply_organization_overview_fix
 from .organization_overview_consistency import apply_organization_overview_consistency
 from .contact_workflows_polish import apply_contact_workflows_polish, apply_popup_visual_polish
+from .dialog_visual_system import apply_dialog_visual_system
 from .library_source_folders import install_library_source_folders
 from .library_visual_upgrade import install_library_visual_upgrade
 from .page_split import apply_apps_mcp_split
@@ -134,6 +135,10 @@ def _main_window_init_with_brand(self, *args, **kwargs) -> None:
     # is presentation-only and preserves each popup's existing actions/logic.
     apply_contact_workflows_polish(self)
     apply_popup_visual_polish(self)
+    # Apply one consistent premium visual system to all dialogs after the legacy
+    # popup pass: account-name input, policy editor, workspace permissions,
+    # connector dialogs, confirmations, warnings and destructive actions.
+    apply_dialog_visual_system(self)
     # Run last: hide detached legacy/parking widgets that can otherwise paint
     # clipped labels/icons at the far-left edge on Windows.
     apply_protect_late_cleanup(self)
