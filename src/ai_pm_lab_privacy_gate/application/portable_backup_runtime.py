@@ -52,10 +52,10 @@ def _decrypt(raw: bytes, passphrase: str) -> bytes:
 
 
 def _portable_snapshot(service: FullEncryptedBackupService, destination: Path) -> None:
-    # sqlite3.Connection's context manager commits/rolls back but does not close
-    # the handle. Explicit closing is required on Windows before TemporaryDirectory
-    # can remove the snapshot file.
-    with closing(service.library._connect()) as source, closing(sqlite3.connect(destination)) as output:
+    # LibraryRepository._connect() is already a context manager that commits or
+    # rolls back and always closes the SQLite handle. The destination connection
+    # still needs explicit closing on Windows before TemporaryDirectory cleanup.
+    with service.library._connect() as source, closing(sqlite3.connect(destination)) as output:
         source.backup(output)
         output.commit()
     protector = service.library._protector
