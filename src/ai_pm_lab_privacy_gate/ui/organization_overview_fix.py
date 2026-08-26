@@ -3,7 +3,7 @@ from __future__ import annotations
 import re
 
 from PySide6.QtCore import QEvent, QObject, QTimer, Qt
-from PySide6.QtWidgets import QLabel, QLineEdit, QPushButton, QTableWidget, QWidget
+from PySide6.QtWidgets import QLabel, QPushButton, QTableWidget, QWidget
 
 from ai_pm_lab_privacy_gate.ui.organization_usability_polish import _open_plugins
 
@@ -45,27 +45,6 @@ class _OverviewPluginFilter(QObject):
         return True
 
 
-def _bump_font(widget: QWidget, amount: int = 2, maximum: int = 32) -> None:
-    style = widget.styleSheet()
-    if not style:
-        return
-    match = re.search(r"font-size\s*:\s*(\d+)px", style)
-    if not match:
-        return
-    current = int(match.group(1))
-    target = min(maximum, current + amount)
-    if target == current:
-        return
-    widget.setStyleSheet(
-        re.sub(
-            r"font-size\s*:\s*\d+px",
-            f"font-size:{target}px",
-            style,
-            count=1,
-        )
-    )
-
-
 def _install_click_target(widget: QWidget, label: str, click_filter: _OverviewPluginFilter) -> None:
     widget.setProperty("privacygateOverviewPlugin", label)
     widget.installEventFilter(click_filter)
@@ -81,11 +60,8 @@ def _find_tile_for_label(overview: QWidget, app_label: str) -> QWidget | None:
         if label.text().strip() != app_label:
             continue
         candidate = label.parentWidget()
-        if candidate is None:
-            continue
-        # Premium Overview app rows are small dedicated widgets. Avoid walking up
-        # into the whole Approved Apps card so each provider remains independent.
-        return candidate
+        if candidate is not None:
+            return candidate
     return None
 
 
@@ -97,23 +73,20 @@ def _polish_overview(main_window, dashboard, click_filter: _OverviewPluginFilter
     if overview is None:
         return
 
-    # Make the whole Overview materially more readable, including labels that are
-    # created dynamically by render(). This intentionally runs after every render.
-    for label in overview.findChildren(QLabel):
-        _bump_font(label, 2)
+    # IMPORTANT: never increment font sizes here. Overview is rendered and refreshed
+    # repeatedly, so additive font bumps accumulate and eventually make the cards
+    # unusable. Typography is normalized to fixed values by
+    # organization_overview_consistency.
     for button in overview.findChildren(QPushButton):
-        _bump_font(button, 2)
-        button.setMinimumHeight(max(button.minimumHeight(), 40))
+        button.setMinimumHeight(max(button.minimumHeight(), 36))
 
-    # Force the primary metric values/details to a clearly larger size even when a
-    # previous visual pass has already set its own stylesheet.
     for value in getattr(dashboard, "metric_values", {}).values():
         value.setStyleSheet(
-            f"color:{NAVY};font-size:25px;font-weight:950;border:none;background:transparent;"
+            f"color:{NAVY};font-size:20px;font-weight:950;border:none;background:transparent;"
         )
     for detail in getattr(dashboard, "metric_details", {}).values():
         detail.setStyleSheet(
-            f"color:{MUTED};font-size:11px;border:none;background:transparent;"
+            f"color:{MUTED};font-size:9px;border:none;background:transparent;"
         )
 
     for button in (
@@ -122,21 +95,21 @@ def _polish_overview(main_window, dashboard, click_filter: _OverviewPluginFilter
         getattr(dashboard, "quick_publish", None),
     ):
         if isinstance(button, QPushButton):
-            button.setMinimumHeight(72)
+            button.setMinimumHeight(52)
             button.setStyleSheet(
                 "QPushButton{background:#FFFFFF;color:#062B4F;border:1px solid #DCE5EA;"
-                "border-radius:11px;padding:11px 13px;text-align:left;font-size:12px;font-weight:750;}"
+                "border-radius:10px;padding:8px 11px;text-align:left;font-size:10px;font-weight:750;}"
                 "QPushButton:hover{background:#F2FAFA;border-color:#9CCFD2;}"
             )
 
-    # Do not depend on dashboard.apps_grid: other visual passes may rebuild or
-    # replace it. Locate each provider from the actual visible Overview widget.
+    # Provider navigation remains clickable. The later consistency pass hides the
+    # provider text/status so the visible result stays icon-only.
     for app_label in APP_LABELS:
         tile = _find_tile_for_label(overview, app_label)
         if tile is None:
             continue
         tile.setObjectName("OverviewPluginCard_" + re.sub(r"[^A-Za-z0-9]", "", app_label))
-        tile.setMinimumHeight(62)
+        tile.setMinimumHeight(52)
         tile.setToolTip(f"Open {app_label} in Apps")
         tile.setAttribute(Qt.WidgetAttribute.WA_Hover, True)
         tile.setStyleSheet(
@@ -149,18 +122,18 @@ def _polish_overview(main_window, dashboard, click_filter: _OverviewPluginFilter
             text = child_label.text().strip()
             if text == app_label:
                 child_label.setStyleSheet(
-                    f"color:{NAVY};font-size:12px;font-weight:850;border:none;background:transparent;"
+                    f"color:{NAVY};font-size:10px;font-weight:850;border:none;background:transparent;"
                 )
             elif text in {"✓", "Allowed"}:
                 child_label.setStyleSheet(
-                    f"color:{GREEN};font-size:11px;font-weight:950;border:none;background:transparent;"
+                    f"color:{GREEN};font-size:9px;font-weight:950;border:none;background:transparent;"
                 )
             elif text in {"⊘", "Blocked"}:
                 child_label.setStyleSheet(
-                    f"color:{RED};font-size:11px;font-weight:950;border:none;background:transparent;"
+                    f"color:{RED};font-size:9px;font-weight:950;border:none;background:transparent;"
                 )
             if child_label.pixmap() is not None:
-                child_label.setMinimumSize(34, 34)
+                child_label.setMinimumSize(30, 30)
 
     for table_info in (
         getattr(dashboard, "members_preview", None),
@@ -170,10 +143,10 @@ def _polish_overview(main_window, dashboard, click_filter: _OverviewPluginFilter
             table = table_info[1]
             if isinstance(table, QTableWidget):
                 table.setStyleSheet(
-                    "QTableWidget{background:#FFFFFF;color:#17384E;border:none;gridline-color:#E7EDF1;font-size:11px;}"
-                    "QTableWidget::item{padding:7px;}"
+                    "QTableWidget{background:#FFFFFF;color:#17384E;border:none;gridline-color:#E7EDF1;font-size:9px;}"
+                    "QTableWidget::item{padding:6px;}"
                     "QHeaderView::section{background:#FFFFFF;color:#415C70;border:none;border-bottom:1px solid #E2E9EE;"
-                    "padding:9px;font-size:11px;font-weight:850;}"
+                    "padding:7px;font-size:9px;font-weight:850;}"
                 )
 
 
@@ -207,8 +180,6 @@ def apply_organization_overview_fix(main_window) -> None:
         dashboard.render = render_with_overview_fix
         dashboard._privacygate_overview_fix_wrapped = True
 
-    # Initial construction and async provider-logo updates can happen just after
-    # the main window is assembled, so run a short late pass as well.
     QTimer.singleShot(0, polish)
     QTimer.singleShot(200, polish)
     QTimer.singleShot(700, polish)
