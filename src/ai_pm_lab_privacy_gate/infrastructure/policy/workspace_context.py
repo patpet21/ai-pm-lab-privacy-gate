@@ -58,6 +58,10 @@ class WorkspaceDescriptor:
 @dataclass(slots=True)
 class WorkspaceContext:
     active_key: str = "personal"
+    # Older installs did not record whether Personal was deliberately selected.
+    # This flag lets us migrate those installs to their single managed workspace
+    # without taking away the user's ability to choose Personal afterwards.
+    active_selection_explicit: bool = False
     workspaces: dict[str, WorkspaceDescriptor] = field(default_factory=dict)
     connector_bindings: dict[str, dict[str, list[str]]] = field(default_factory=dict)
     workspace_states: dict[str, dict[str, object]] = field(default_factory=dict)
@@ -68,6 +72,7 @@ class WorkspaceContext:
     def to_dict(self) -> dict[str, object]:
         return {
             "active_key": self.active_key,
+            "active_selection_explicit": self.active_selection_explicit,
             "workspaces": {key: value.to_dict() for key, value in self.workspaces.items()},
             "connector_bindings": self.connector_bindings,
             "workspace_states": self.workspace_states,
@@ -107,13 +112,18 @@ class WorkspaceContext:
 
         context = cls(
             active_key=str(payload.get("active_key") or "personal"),
+            active_selection_explicit=bool(payload.get("active_selection_explicit", False)),
             workspaces=workspaces,
             connector_bindings=bindings,
             workspace_states=states,
         )
-        context.ensure_personal()
+        # Preserve the plan stored for Personal. A bare ensure_personal() here used
+        # to overwrite it with Basic every time the secure context was loaded.
+        personal = context.workspaces.get("personal")
+        context.ensure_personal(personal.plan if personal is not None else PlanCode.BASIC)
         if context.active_key not in context.workspaces:
             context.active_key = "personal"
+            context.active_selection_explicit = False
         return context
 
 
@@ -157,16 +167,32 @@ class WorkspaceContextStore:
         context = self.load()
         context.ensure_personal(personal_plan)
         live_keys = {"personal"}
+        managed_keys: list[str] = []
         for descriptor in descriptors:
             if not descriptor.key:
                 continue
             context.workspaces[descriptor.key] = descriptor
             live_keys.add(descriptor.key)
+            if not descriptor.personal:
+                managed_keys.append(descriptor.key)
         for key in tuple(context.workspaces):
             if key not in live_keys:
                 context.workspaces.pop(key, None)
         if context.active_key not in context.workspaces:
             context.active_key = "personal"
+            context.active_selection_explicit = False
+
+        # Migration/default rule: an existing company user with exactly one live
+        # organization opens in that managed workspace. Personal remains available
+        # in the switcher. Once the user explicitly switches workspace, we respect
+        # that choice on subsequent launches.
+        if (
+            not context.active_selection_explicit
+            and context.active_key == "personal"
+            and len(managed_keys) == 1
+        ):
+            context.active_key = managed_keys[0]
+
         self.save(context)
         return context
 
@@ -175,6 +201,7 @@ class WorkspaceContextStore:
         if workspace_key not in context.workspaces:
             raise KeyError(f"Unknown workspace: {workspace_key}")
         context.active_key = workspace_key
+        context.active_selection_explicit = True
         self.save(context)
         return context
 
