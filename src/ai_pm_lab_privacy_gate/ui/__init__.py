@@ -56,6 +56,7 @@ from .managed_protect_experience import install_managed_protect_experience
 from .workspace_sidebar import apply_workspace_sidebar
 from .account_menu import apply_account_menu
 from .account_sidebar_polish import apply_account_sidebar_polish
+from .account_menu_popup_2026 import apply_account_menu_popup_2026
 from .workspace_management_ui import apply_workspace_management_ui
 from .settings_executive_redesign import apply_settings_executive_redesign
 from .settings_service_hub_2026 import apply_settings_service_hub_2026
@@ -154,6 +155,9 @@ def _main_window_init_with_brand(self, *args, **kwargs) -> None:
     apply_protect_late_cleanup(self)
     # Account replaces the old LOCAL-FIRST footer and must stay below navigation.
     apply_account_sidebar_polish(self)
+    # Keep the Account card inside the sidebar and make the launcher a real toggle:
+    # Account opens it, Account again closes it, and clicking elsewhere dismisses it.
+    apply_account_menu_popup_2026(self)
     # Final workspace pass: make the active work context visually explicit and
     # expose + Workspace -> Settings for invitation-code enrollment / creation.
     apply_workspace_management_ui(self)
