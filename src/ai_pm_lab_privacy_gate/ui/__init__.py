@@ -33,6 +33,7 @@ from .organization_workspace_suite import (
     apply_organization_workspace_suite,
     install_workspace_connector_opt_in,
 )
+from .organization_workspace_suite_v2 import apply_organization_workspace_suite_v2
 from .contact_workflows_polish import apply_contact_workflows_polish, apply_popup_visual_polish
 from .library_source_folders import install_library_source_folders
 from .library_visual_upgrade import install_library_visual_upgrade
@@ -100,9 +101,12 @@ def _main_window_init_with_brand(self, *args, **kwargs) -> None:
     # Final pass intentionally runs last so legacy controller refreshes cannot
     # reintroduce duplicate Organization chrome or collapse Protect to one pane.
     apply_final_visual_polish(self)
-    # Organization workspace suite runs after final visual polish so it can replace
-    # only the Organization Policy/Apps views while leaving ProtectionPage untouched.
+    # Base Organization workspace/policy controller.
     apply_organization_workspace_suite(self)
+    # Final Apps & AI surface: keep the whole company Protect workflow inside
+    # Organization, replace Workspace bindings with a real document suite, and
+    # preserve the standalone Protect page unchanged.
+    apply_organization_workspace_suite_v2(self)
     # Contact / Workflows follows the same premium visual language. Dialog polish
     # is presentation-only and preserves each popup's existing actions/logic.
     apply_contact_workflows_polish(self)
