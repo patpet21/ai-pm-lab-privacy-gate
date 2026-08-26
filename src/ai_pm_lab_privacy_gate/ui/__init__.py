@@ -56,6 +56,8 @@ from .workspace_sidebar import apply_workspace_sidebar
 from .account_menu import apply_account_menu
 from .account_sidebar_polish import apply_account_sidebar_polish
 from .workspace_management_ui import apply_workspace_management_ui
+from .settings_executive_redesign import apply_settings_executive_redesign
+from .workspace_dropdown_cue import apply_workspace_dropdown_cue
 
 install_mcp_log_guard()
 install_redesign()
@@ -148,6 +150,13 @@ def _main_window_init_with_brand(self, *args, **kwargs) -> None:
     # Final workspace pass: make the active work context visually explicit and
     # expose + Workspace -> Settings for invitation-code enrollment / creation.
     apply_workspace_management_ui(self)
+    # Recompose Settings only after Account/Workspace controls exist, reusing the
+    # original functional widgets and preparing room for future local file/folder
+    # management without changing their behavior.
+    apply_settings_executive_redesign(self)
+    # Keep the workspace switcher unmistakably interactive with a dedicated,
+    # clickable chevron beside the selected workspace name.
+    apply_workspace_dropdown_cue(self)
 
 
 MainWindow.__init__ = _main_window_init_with_brand
