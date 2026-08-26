@@ -1,10 +1,9 @@
 from __future__ import annotations
 
-from PySide6.QtCore import QSize, Signal, Qt
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QButtonGroup,
     QFrame,
-    QGridLayout,
     QHBoxLayout,
     QLabel,
     QLineEdit,
@@ -23,60 +22,11 @@ from ai_pm_lab_privacy_gate.infrastructure.settings.preferences import (
 from ai_pm_lab_privacy_gate.ui.iconography import icon
 
 NAVY = "#062B4F"
-INK = "#17384E"
-TEAL = "#0B7180"
-MUTED = "#64788A"
+TEAL = "#0B7F89"
+MUTED = "#61798A"
 BORDER = "#DCE5EA"
-SOFT = "#F7FAFC"
-TEAL_SOFT = "#EAF7F7"
-
-
-def _card() -> QFrame:
-    card = QFrame(objectName="SettingsCard")
-    card.setStyleSheet(
-        "QFrame#SettingsCard{background:#FFFFFF;border:1px solid #DCE5EA;border-radius:14px;}"
-    )
-    return card
-
-
-def _section_header(title: str, subtitle: str, icon_name: str) -> QWidget:
-    widget = QWidget()
-    row = QHBoxLayout(widget)
-    row.setContentsMargins(0, 0, 0, 0)
-    row.setSpacing(12)
-
-    icon_box = QLabel()
-    icon_box.setFixedSize(42, 42)
-    icon_box.setPixmap(icon(icon_name, color=TEAL, size=23).pixmap(QSize(23, 23)))
-    icon_box.setAlignment(Qt.AlignmentFlag.AlignCenter)
-    icon_box.setStyleSheet(
-        "background:#EAF7F7;border:1px solid #CBE8E8;border-radius:12px;"
-    )
-
-    text = QVBoxLayout()
-    text.setSpacing(1)
-    heading = QLabel(title)
-    heading.setStyleSheet(f"color:{NAVY};font-size:15px;font-weight:900;border:none;background:transparent;")
-    note = QLabel(subtitle)
-    note.setWordWrap(True)
-    note.setStyleSheet(f"color:{MUTED};font-size:9px;border:none;background:transparent;")
-    text.addWidget(heading)
-    text.addWidget(note)
-
-    row.addWidget(icon_box, 0, Qt.AlignmentFlag.AlignTop)
-    row.addLayout(text, 1)
-    return widget
-
-
-def _radio_style() -> str:
-    return (
-        "QRadioButton{background:#F8FAFC;color:#17384E;border:1px solid transparent;"
-        "border-radius:10px;padding:11px 13px;spacing:10px;font-weight:700;}"
-        "QRadioButton:hover{background:#F1F8F8;border-color:#D7E9EA;}"
-        "QRadioButton:checked{background:#EAF7F7;color:#0B7180;border:1px solid #C5E5E6;font-weight:850;}"
-        "QRadioButton::indicator{width:18px;height:18px;border-radius:10px;border:2px solid #91A9B8;background:white;}"
-        "QRadioButton::indicator:checked{border:6px solid #0B7180;background:white;}"
-    )
+BG = "#F7FAFC"
+WHITE = "#FFFFFF"
 
 
 class SettingsPage(QWidget):
@@ -84,191 +34,235 @@ class SettingsPage(QWidget):
 
     def __init__(self, data_dir) -> None:
         super().__init__()
-        self.setObjectName("PremiumSettingsPage")
         self.store = PreferencesStore(data_dir)
         self.prefs = self.store.load()
+        self.setObjectName("PremiumSettingsPage")
 
         root = QVBoxLayout(self)
-        root.setContentsMargins(30, 24, 30, 22)
+        root.setContentsMargins(28, 22, 28, 20)
         root.setSpacing(16)
 
         header = QHBoxLayout()
         title_box = QVBoxLayout()
-        title_box.setSpacing(2)
+        title_box.setSpacing(3)
         title = QLabel("Settings")
-        title.setObjectName("PremiumSettingsTitle")
-        title.setStyleSheet(f"color:{NAVY};font-size:28px;font-weight:950;border:none;background:transparent;")
-        subtitle = QLabel("Manage your PrivacyGate account, desktop behavior and local services.")
-        subtitle.setStyleSheet(f"color:{MUTED};font-size:10px;border:none;background:transparent;")
+        title.setStyleSheet(f"color:{NAVY};font-size:28px;font-weight:900;")
+        subtitle = QLabel("Account, desktop behavior and local PrivacyGate services.")
+        subtitle.setStyleSheet(f"color:{MUTED};font-size:12px;")
         title_box.addWidget(title)
         title_box.addWidget(subtitle)
-        header.addLayout(title_box, 1)
-
-        local_badge = QLabel("LOCAL-FIRST")
-        local_badge.setStyleSheet(
-            "background:#EAF7F7;color:#0B7180;border:1px solid #C5E5E6;"
-            "border-radius:10px;padding:6px 11px;font-size:8px;font-weight:900;"
-        )
-        header.addWidget(local_badge, 0, Qt.AlignmentFlag.AlignTop)
+        header.addLayout(title_box)
+        header.addStretch(1)
         root.addLayout(header)
 
-        self.plan_mount = QVBoxLayout()
-        self.plan_mount.setContentsMargins(0, 0, 0, 0)
-        self.plan_mount.setSpacing(0)
-        root.addLayout(self.plan_mount)
+        # PlanAccountPanel is inserted here by organization_polish at index 1.
 
-        content = QGridLayout()
-        content.setHorizontalSpacing(14)
-        content.setVerticalSpacing(14)
-        content.setColumnStretch(0, 1)
-        content.setColumnStretch(1, 1)
+        body = QHBoxLayout()
+        body.setSpacing(16)
 
-        close_card = _card()
-        close_layout = QVBoxLayout(close_card)
-        close_layout.setContentsMargins(18, 17, 18, 17)
-        close_layout.setSpacing(10)
-        close_layout.addWidget(
-            _section_header(
+        left = QVBoxLayout()
+        left.setSpacing(16)
+        left.addWidget(self._build_close_card())
+        left.addWidget(self._build_privacy_card())
+        left.addStretch(1)
+        body.addLayout(left, 1)
+
+        right = QVBoxLayout()
+        right.setSpacing(16)
+        right.addWidget(self._build_mcp_card())
+        right.addWidget(self._build_updates_card())
+        right.addStretch(1)
+        body.addLayout(right, 1)
+        root.addLayout(body, 1)
+
+        actions = QHBoxLayout()
+        actions.addStretch(1)
+        save = QPushButton("Save settings")
+        save.setIcon(icon("save", color=WHITE, size=18))
+        save.setObjectName("SettingsPrimary")
+        save.setMinimumHeight(42)
+        save.setCursor(Qt.CursorShape.PointingHandCursor)
+        save.setStyleSheet(
+            "QPushButton#SettingsPrimary{background:#0B7F89;color:white;border:none;border-radius:10px;"
+            "padding:10px 18px;font-size:11px;font-weight:800;}"
+            "QPushButton#SettingsPrimary:hover{background:#096D76;}"
+        )
+        save.clicked.connect(self._save)
+        actions.addWidget(save)
+        root.addLayout(actions)
+
+        self.setStyleSheet(
+            "QWidget#PremiumSettingsPage{background:#F7FAFC;}"
+            "QRadioButton{color:#17384E;font-size:10px;font-weight:700;padding:7px 4px;spacing:9px;}"
+            "QRadioButton::indicator{width:18px;height:18px;border-radius:9px;border:2px solid #91A9B9;background:white;}"
+            "QRadioButton::indicator:checked{border:6px solid #0B7F89;background:white;}"
+            "QLineEdit{background:white;color:#17384E;border:1px solid #C9D7E0;border-radius:9px;padding:9px 10px;}"
+        )
+
+    def _card(self) -> QFrame:
+        frame = QFrame(objectName="SettingsPremiumCard")
+        frame.setStyleSheet(
+            "QFrame#SettingsPremiumCard{background:#FFFFFF;border:1px solid #DCE5EA;border-radius:16px;}"
+        )
+        return frame
+
+    def _card_header(self, title: str, subtitle: str, icon_name: str) -> QWidget:
+        header = QWidget()
+        layout = QHBoxLayout(header)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(11)
+        bubble = QLabel()
+        bubble.setFixedSize(42, 42)
+        bubble.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        bubble.setPixmap(icon(icon_name, color=TEAL, size=23).pixmap(23, 23))
+        bubble.setStyleSheet("background:#E8F7F7;border-radius:21px;")
+        layout.addWidget(bubble)
+        text = QVBoxLayout()
+        text.setSpacing(2)
+        heading = QLabel(title)
+        heading.setStyleSheet(f"color:{NAVY};font-size:15px;font-weight:850;")
+        note = QLabel(subtitle)
+        note.setWordWrap(True)
+        note.setStyleSheet(f"color:{MUTED};font-size:9px;")
+        text.addWidget(heading)
+        text.addWidget(note)
+        layout.addLayout(text, 1)
+        return header
+
+    def _build_close_card(self) -> QFrame:
+        card = self._card()
+        layout = QVBoxLayout(card)
+        layout.setContentsMargins(18, 16, 18, 16)
+        layout.setSpacing(10)
+        layout.addWidget(
+            self._card_header(
                 "Desktop behavior",
-                "Choose what PrivacyGate should do when you close the desktop window.",
-                "power",
+                "Choose what happens when the PrivacyGate window closes.",
+                "settings",
             )
         )
+        line = QFrame(); line.setFixedHeight(1); line.setStyleSheet("background:#EEF2F4;border:none;")
+        layout.addWidget(line)
+
         self.close_group = QButtonGroup(self)
         self.close_radios: dict[str, QRadioButton] = {}
         for value, label, detail in (
-            ("ask", "Ask me every time", "PrivacyGate will ask before closing or staying in background."),
-            ("background", "Keep running in background", "Keep MCP and permitted background connections available."),
-            ("quit", "Quit PrivacyGate", "Close the app and take local MCP connections offline."),
+            ("ask", "Ask me every time", "Choose background or quit whenever you close the app."),
+            ("background", "Keep running in background", "Useful when MCP connections should remain available."),
+            ("quit", "Quit PrivacyGate", "Stop the desktop app and local MCP services."),
         ):
-            item = QFrame()
-            item.setStyleSheet("QFrame{border:none;background:transparent;}")
-            item_layout = QVBoxLayout(item)
-            item_layout.setContentsMargins(0, 0, 0, 0)
-            item_layout.setSpacing(1)
+            row = QFrame()
+            row.setStyleSheet("QFrame{background:#FBFDFE;border:1px solid #EEF2F4;border-radius:10px;}")
+            row_layout = QVBoxLayout(row)
+            row_layout.setContentsMargins(12, 8, 12, 8)
             radio = QRadioButton(label)
-            radio.setStyleSheet(_radio_style())
             radio.setChecked(self.prefs.close_behavior == value)
+            detail_label = QLabel(detail)
+            detail_label.setStyleSheet(f"color:{MUTED};font-size:8px;margin-left:28px;")
             self.close_group.addButton(radio)
             self.close_radios[value] = radio
-            detail_label = QLabel(detail)
-            detail_label.setWordWrap(True)
-            detail_label.setStyleSheet(f"color:{MUTED};font-size:8px;margin-left:14px;border:none;background:transparent;")
-            item_layout.addWidget(radio)
-            item_layout.addWidget(detail_label)
-            close_layout.addWidget(item)
-        content.addWidget(close_card, 0, 0)
+            row_layout.addWidget(radio)
+            row_layout.addWidget(detail_label)
+            layout.addWidget(row)
+        return card
 
-        port_card = _card()
-        port_layout = QVBoxLayout(port_card)
-        port_layout.setContentsMargins(18, 17, 18, 17)
-        port_layout.setSpacing(10)
-        port_layout.addWidget(
-            _section_header(
+    def _build_mcp_card(self) -> QFrame:
+        card = self._card()
+        layout = QVBoxLayout(card)
+        layout.setContentsMargins(18, 16, 18, 16)
+        layout.setSpacing(10)
+        layout.addWidget(
+            self._card_header(
                 "Local MCP service",
-                "Automatic mode is recommended. Manual mode is only needed for integrations that require a fixed local port.",
+                "Automatic mode is recommended. Manual mode is only for integrations that require a fixed port.",
                 "workflow",
             )
         )
+        line = QFrame(); line.setFixedHeight(1); line.setStyleSheet("background:#EEF2F4;border:none;")
+        layout.addWidget(line)
 
-        self.auto_port = QRadioButton("Automatic  ·  Recommended")
-        self.manual_port = QRadioButton("Manual port")
-        self.auto_port.setStyleSheet(_radio_style())
-        self.manual_port.setStyleSheet(_radio_style())
+        self.auto_port = QRadioButton("Automatic (recommended)")
+        self.manual_port = QRadioButton("Manual")
         self.auto_port.setChecked(self.prefs.port_mode == "automatic")
         self.manual_port.setChecked(self.prefs.port_mode == "manual")
         self.port_group = QButtonGroup(self)
         self.port_group.addButton(self.auto_port)
         self.port_group.addButton(self.manual_port)
-        port_layout.addWidget(self.auto_port)
-        port_layout.addWidget(self.manual_port)
+        layout.addWidget(self.auto_port)
+        layout.addWidget(self.manual_port)
 
-        port_panel = QFrame(objectName="PortPanel")
-        port_panel.setStyleSheet(
-            "QFrame#PortPanel{background:#F8FAFC;border:1px solid #E1E8EC;border-radius:10px;}"
-        )
-        port_panel_layout = QVBoxLayout(port_panel)
-        port_panel_layout.setContentsMargins(13, 11, 13, 11)
-        port_panel_layout.setSpacing(8)
         port_row = QHBoxLayout()
-        port_label = QLabel("Port")
-        port_label.setStyleSheet(f"color:{INK};font-weight:800;border:none;background:transparent;")
+        port_row.setSpacing(8)
+        label = QLabel("Port")
+        label.setStyleSheet(f"color:{NAVY};font-size:10px;font-weight:700;")
         self.port_input = QLineEdit(str(self.prefs.manual_port))
         self.port_input.setPlaceholderText("8766")
-        self.port_input.setMaximumWidth(125)
-        self.port_input.setStyleSheet(
-            "QLineEdit{background:white;color:#17384E;border:1px solid #C7D5DE;border-radius:8px;padding:8px 10px;}"
-            "QLineEdit:focus{border:1px solid #0B7180;}"
+        self.port_input.setMaximumWidth(150)
+        self.check_button = QPushButton("Check availability")
+        self.check_button.setIcon(icon("check", color=NAVY, size=17))
+        self.check_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.check_button.setStyleSheet(
+            "QPushButton{background:white;color:#17384E;border:1px solid #C9D7E0;border-radius:9px;"
+            "padding:8px 12px;font-weight:750;}QPushButton:hover{background:#F2FAFA;border-color:#95C8CC;}"
         )
-        self.check_button = QPushButton("Check availability", objectName="Secondary")
-        self.check_button.setIcon(icon("check", color=INK, size=17))
-        self.check_button.setIconSize(QSize(17, 17))
         self.check_button.clicked.connect(self._check_port)
-        port_row.addWidget(port_label)
+        port_row.addWidget(label)
         port_row.addWidget(self.port_input)
         port_row.addWidget(self.check_button)
         port_row.addStretch(1)
-        port_panel_layout.addLayout(port_row)
-        self.port_status = QLabel()
+        layout.addLayout(port_row)
+        self.port_status = QLabel("")
         self.port_status.setWordWrap(True)
-        self.port_status.setStyleSheet(f"color:{MUTED};font-size:8px;border:none;background:transparent;")
-        port_panel_layout.addWidget(self.port_status)
-        port_layout.addWidget(port_panel)
+        self.port_status.setStyleSheet(f"color:{MUTED};font-size:9px;")
+        layout.addWidget(self.port_status)
         self.auto_port.toggled.connect(self._sync_port_controls)
         self._sync_port_controls()
-        content.addWidget(port_card, 0, 1)
+        return card
 
-        privacy_card = _card()
-        privacy_layout = QVBoxLayout(privacy_card)
-        privacy_layout.setContentsMargins(18, 16, 18, 16)
-        privacy_layout.setSpacing(8)
-        privacy_layout.addWidget(
-            _section_header(
-                "Local privacy boundary",
-                "PrivacyGate keeps sensitive working data on this device.",
-                "protect",
+    def _build_privacy_card(self) -> QFrame:
+        card = self._card()
+        layout = QHBoxLayout(card)
+        layout.setContentsMargins(18, 16, 18, 16)
+        shield = QLabel()
+        shield.setPixmap(icon("protect", color=TEAL, size=24).pixmap(24, 24))
+        layout.addWidget(shield, alignment=Qt.AlignmentFlag.AlignTop)
+        text = QVBoxLayout()
+        title = QLabel("Local-first privacy boundary")
+        title.setStyleSheet(f"color:{NAVY};font-size:13px;font-weight:850;")
+        note = QLabel(
+            "Your original documents, protected files, restore mappings and connector tokens remain on this device. "
+            "Organization control stores policy and account metadata only."
+        )
+        note.setWordWrap(True)
+        note.setStyleSheet(f"color:{MUTED};font-size:9px;")
+        text.addWidget(title)
+        text.addWidget(note)
+        layout.addLayout(text, 1)
+        return card
+
+    def _build_updates_card(self) -> QFrame:
+        card = self._card()
+        layout = QVBoxLayout(card)
+        layout.setContentsMargins(18, 16, 18, 16)
+        layout.addWidget(
+            self._card_header(
+                "Updates & release channel",
+                "PrivacyGate checks for app updates through the current release workflow.",
+                "download",
             )
         )
-        privacy_copy = QLabel(
-            "Documents, protected previews, restore mappings and connector credentials stay local. "
-            "Account and organization services store only the minimum control-plane information needed for plans, roles, devices and policies."
-        )
-        privacy_copy.setWordWrap(True)
-        privacy_copy.setStyleSheet(
-            f"background:#F5FBF9;color:{INK};border:1px solid #D2EADF;border-radius:10px;padding:11px;font-size:9px;"
-        )
-        privacy_layout.addWidget(privacy_copy)
-        content.addWidget(privacy_card, 1, 0, 1, 2)
-
-        root.addLayout(content)
-
-        buttons = QHBoxLayout()
-        save = QPushButton("Save settings", objectName="Primary")
-        save.setIcon(icon("save", color="#FFFFFF", size=18))
-        save.setIconSize(QSize(18, 18))
-        save.setMinimumHeight(38)
-        save.clicked.connect(self._save)
-        buttons.addStretch(1)
-        buttons.addWidget(save)
-        root.addLayout(buttons)
-        root.addStretch(1)
-
-    def mount_plan_panel(self, panel: QWidget) -> None:
-        while self.plan_mount.count():
-            item = self.plan_mount.takeAt(0)
-            old = item.widget()
-            if old is not None and old is not panel:
-                old.setParent(None)
-        self.plan_mount.addWidget(panel)
+        note = QLabel("Update controls remain available from Contact / Workflows. Automatic update behavior can be expanded in a future release.")
+        note.setWordWrap(True)
+        note.setStyleSheet(f"color:{MUTED};font-size:9px;")
+        layout.addWidget(note)
+        return card
 
     def _sync_port_controls(self) -> None:
         enabled = self.manual_port.isChecked()
         self.port_input.setEnabled(enabled)
         self.check_button.setEnabled(enabled)
         if not enabled:
-            self.port_status.setText("PrivacyGate will select a free local port automatically when the MCP service starts.")
-        elif not self.port_status.text():
-            self.port_status.setText("Use a fixed port only when another integration requires it.")
+            self.port_status.setText("PrivacyGate will select a free local port automatically at service startup.")
 
     def _port_value(self) -> int | None:
         try:
@@ -284,15 +278,13 @@ class SettingsPage(QWidget):
             return
         if is_port_available(port):
             self.port_status.setText(f"Port {port} is available ✓")
-            self.port_status.setStyleSheet("color:#23824B;font-size:8px;border:none;background:transparent;font-weight:800;")
+            self.port_status.setStyleSheet("color:#23824B;font-size:9px;font-weight:750;")
         else:
             self.port_status.setText(f"Port {port} is already in use.")
-            self.port_status.setStyleSheet("color:#A23A3A;font-size:8px;border:none;background:transparent;font-weight:800;")
+            self.port_status.setStyleSheet("color:#B54747;font-size:9px;font-weight:750;")
 
     def _save(self) -> None:
-        close_behavior = next(
-            value for value, radio in self.close_radios.items() if radio.isChecked()
-        )
+        close_behavior = next(value for value, radio in self.close_radios.items() if radio.isChecked())
         port_mode = "automatic" if self.auto_port.isChecked() else "manual"
         port = self._port_value()
         if port_mode == "manual":

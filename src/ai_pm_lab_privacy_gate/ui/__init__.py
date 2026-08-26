@@ -24,6 +24,7 @@ from .business_foundation import install_business_foundation, apply_business_mai
 from .team_action_recovery import install_team_action_recovery
 from .organization_polish import apply_organization_polish
 from .organization_visual_upgrade import apply_organization_visual_upgrade
+from .premium_organization_rebuild import apply_premium_organization_rebuild
 from .library_source_folders import install_library_source_folders
 from .library_visual_upgrade import install_library_visual_upgrade
 from .page_split import apply_apps_mcp_split
@@ -54,20 +55,12 @@ install_automatic_temp_cleanup()
 install_source_metadata()
 install_library_save_dialog()
 install_privacy_preflight()
-# Business/Enterprise enforcement stays layered over the existing Protect flow.
-# Basic/Pro without an active organization policy keep today's Protect UI.
 install_business_foundation()
-# Account -> Personal + multiple organization workspaces. Existing connector
-# token storage remains unchanged; only local workspace bindings are added.
 install_multi_workspace_client()
 install_multi_workspace_actions()
 install_team_action_recovery()
 install_multi_workspace_experience()
-# Joining/creating an organization activates that exact new workspace instead of
-# snapping back to a previously selected organization on refresh.
 install_workspace_action_follow()
-# Managed workspaces receive the premium Protect context and Original / Anonymized
-# file selector. Personal Protect is intentionally left visually unchanged.
 install_managed_protect_experience()
 install_library_source_folders()
 install_library_visual_upgrade()
@@ -87,12 +80,10 @@ def _main_window_init_with_brand(self, *args, **kwargs) -> None:
     apply_business_main_window(self)
     apply_organization_polish(self)
     apply_workspace_sidebar(self)
-    # Apply the premium organization skin after all team/workspace controls exist.
-    # This is visual-only: RPCs, policy enforcement and local privacy boundaries
-    # remain unchanged.
     apply_organization_visual_upgrade(self)
-    # Account is applied after workspace/organization navigation so its shortcuts
-    # point to the final pages and its card always remains at the bottom.
+    # Full visual rebuild: the historic TeamPage remains the controller while
+    # the new premium Organization view becomes the visible presentation.
+    apply_premium_organization_rebuild(self)
     apply_account_menu(self)
     apply_runtime_fixes(self)
 
