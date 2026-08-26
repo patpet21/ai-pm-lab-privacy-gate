@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import datetime, timezone
 
 from ai_pm_lab_privacy_gate.domain.company_policy import CompanyPolicy
@@ -12,6 +13,16 @@ from ai_pm_lab_privacy_gate.infrastructure.policy.supabase_team import (
 from ai_pm_lab_privacy_gate.infrastructure.policy.workspace_context import WorkspaceDescriptor
 
 _INSTALLED = False
+_ORIGINAL_INDIVIDUAL_STATE = SupabaseTeamClient._individual_state
+
+
+def _personal_state(self: SupabaseTeamClient, session) -> TeamState:
+    state = _ORIGINAL_INDIVIDUAL_STATE(self, session)
+    # Business/Enterprise belong to organization workspaces. A historic or test
+    # user-scoped entitlement must not turn Personal into a managed workspace.
+    if state.plan in {PlanCode.BUSINESS, PlanCode.ENTERPRISE}:
+        return replace(state, plan=PlanCode.PRO)
+    return state
 
 
 def _workspace_descriptors(self: SupabaseTeamClient, session):
@@ -185,5 +196,6 @@ def install_multi_workspace_client() -> None:
     if _INSTALLED:
         return
     _INSTALLED = True
+    SupabaseTeamClient._individual_state = _personal_state
     SupabaseTeamClient.list_workspace_descriptors = _workspace_descriptors
     SupabaseTeamClient.fetch_workspace_state = _workspace_state
