@@ -107,7 +107,6 @@ REAL_ESTATE_SENSITIVE_ENTITIES = (
     "INSPECTION_ACCESS_WINDOW",
     "VACANCY_OCCUPANCY_DATE",
     "APPROVAL_AUTH_CODE",
-    # Privacy Gate Real Estate expansion v2
     "CARD_SECURITY_CODE",
     "PAYMENT_TOKEN",
     "ACH_AUTHORIZATION_ID",
@@ -166,8 +165,6 @@ class PrivacyProfile:
     name: str
     description: str
     entities: tuple[str, ...]
-    # Favor recall for a privacy gate. The user can deselect false positives
-    # before export, while missed PII is harder to recover from.
     threshold: float = 0.35
 
 
@@ -179,31 +176,11 @@ class ProtectionScope:
 
 
 _SCOPES = (
-    ProtectionScope(
-        "essential",
-        "Essential PII",
-        "Identity, contact, government IDs, addresses and payment credentials.",
-    ),
-    ProtectionScope(
-        "financial",
-        "PII + Financial",
-        "Adds accounts, transaction IDs, card endings, amounts, merchants and references.",
-    ),
-    ProtectionScope(
-        "business",
-        "PII + Business Confidential",
-        "Adds company, property, contract, project and operational identifiers.",
-    ),
-    ProtectionScope(
-        "maximum",
-        "Maximum Protection",
-        "Scans every supported sensitive category, including dates, URLs and business data.",
-    ),
-    ProtectionScope(
-        "custom",
-        "Custom Review",
-        "Scans every category, then lets you choose exactly what to protect.",
-    ),
+    ProtectionScope("essential", "Essential PII", "Identity, contact, government IDs, addresses and payment credentials."),
+    ProtectionScope("financial", "PII + Financial", "Adds accounts, transaction IDs, card endings, amounts, merchants and references."),
+    ProtectionScope("business", "PII + Business Confidential", "Adds company, property, contract, project and operational identifiers."),
+    ProtectionScope("maximum", "Maximum Protection", "Scans every supported sensitive category, including dates, URLs and business data."),
+    ProtectionScope("custom", "Custom Review", "Scans every category, then lets you choose exactly what to protect."),
 )
 
 
@@ -225,6 +202,30 @@ _PROFILES = (
         name="Projects & Renovations",
         description="Owner, contractor, subcontractor and project records. Includes dates and URLs.",
         entities=COMMON_US_ENTITIES + FINANCIAL_SENSITIVE_ENTITIES + OPERATIONAL_IDENTIFIER_ENTITIES + BUSINESS_CONFIDENTIAL_ENTITIES + REAL_ESTATE_SENSITIVE_ENTITIES + ("DATE_TIME",),
+    ),
+    PrivacyProfile(
+        key="general_business",
+        name="General Business",
+        description="Identity, contact, financial, contract, customer and operational business data.",
+        entities=COMMON_US_ENTITIES + FINANCIAL_SENSITIVE_ENTITIES + BUSINESS_CONFIDENTIAL_ENTITIES + OPERATIONAL_IDENTIFIER_ENTITIES + ("DATE_TIME",),
+    ),
+    PrivacyProfile(
+        key="construction",
+        name="Construction",
+        description="Owner, contractor, vendor, project, permit, insurance and financial identifiers.",
+        entities=COMMON_US_ENTITIES + FINANCIAL_SENSITIVE_ENTITIES + BUSINESS_CONFIDENTIAL_ENTITIES + OPERATIONAL_IDENTIFIER_ENTITIES + REAL_ESTATE_SENSITIVE_ENTITIES + ("DATE_TIME",),
+    ),
+    PrivacyProfile(
+        key="legal",
+        name="Legal",
+        description="General legal privacy profile for people, cases, contracts, addresses and financial identifiers.",
+        entities=COMMON_US_ENTITIES + FINANCIAL_SENSITIVE_ENTITIES + BUSINESS_CONFIDENTIAL_ENTITIES + OPERATIONAL_IDENTIFIER_ENTITIES + ("DATE_TIME",),
+    ),
+    PrivacyProfile(
+        key="healthcare_general",
+        name="Healthcare — General Privacy",
+        description="General identity/contact privacy for healthcare documents; not a substitute for a specialized clinical/HIPAA recognizer pack.",
+        entities=COMMON_US_ENTITIES + FINANCIAL_SENSITIVE_ENTITIES + BUSINESS_CONFIDENTIAL_ENTITIES + ("DATE_TIME",),
     ),
 )
 
