@@ -57,6 +57,7 @@ from .account_menu import apply_account_menu
 from .account_sidebar_polish import apply_account_sidebar_polish
 from .workspace_management_ui import apply_workspace_management_ui
 from .settings_executive_redesign import apply_settings_executive_redesign
+from .settings_service_hub_2026 import apply_settings_service_hub_2026
 from .workspace_dropdown_cue import apply_workspace_dropdown_cue
 from .workspace_creation_experience import apply_workspace_creation_experience
 from .workspace_refresh_control import apply_workspace_refresh_control
@@ -157,6 +158,9 @@ def _main_window_init_with_brand(self, *args, **kwargs) -> None:
     # original functional widgets and preparing room for future local file/folder
     # management without changing their behavior.
     apply_settings_executive_redesign(self)
+    # Replace the tiny module strip with visible 2026-style service cards. Each
+    # card is keyboard/mouse clickable and navigates to the real functional area.
+    apply_settings_service_hub_2026(self)
     # Keep the workspace switcher unmistakably interactive with a dedicated,
     # clickable chevron beside the selected workspace name.
     apply_workspace_dropdown_cue(self)
