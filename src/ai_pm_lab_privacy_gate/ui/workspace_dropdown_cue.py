@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QColor, QPalette
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QLayout, QVBoxLayout, QWidget
 
 
@@ -39,13 +40,36 @@ def _find_layout(layout: QLayout, target: QWidget) -> QLayout | None:
     return None
 
 
-def apply_workspace_dropdown_cue(main_window) -> None:
-    """Make the active-workspace selector visibly look interactive.
+def _force_readable_combo(combo) -> None:
+    """Keep the selected workspace readable on Windows native Qt styles."""
+    combo.setMinimumHeight(32)
+    combo.setCursor(Qt.CursorShape.PointingHandCursor)
+    combo.setToolTip("Choose where PrivacyGate is working")
+    combo.setStyleSheet(
+        "QComboBox{background:#0A5066;color:#FFFFFF;border:1px solid #2A8392;"
+        "border-radius:8px;padding:5px 8px;font-size:11px;font-weight:900;}"
+        "QComboBox:hover{background:#0C5B70;border-color:#55A8B2;color:#FFFFFF;}"
+        "QComboBox:focus{border-color:#77C7CC;}"
+        "QComboBox::drop-down{border:none;width:0px;}"
+        "QComboBox::down-arrow{image:none;width:0px;height:0px;}"
+        "QComboBox QAbstractItemView{background:#FFFFFF;color:#17384E;border:1px solid #D5E0E7;"
+        "border-radius:8px;selection-background-color:#EAF7F7;selection-color:#062B4F;"
+        "padding:6px;outline:0;font-size:10px;}"
+    )
+    palette = combo.palette()
+    palette.setColor(QPalette.ColorRole.ButtonText, QColor("#FFFFFF"))
+    palette.setColor(QPalette.ColorRole.Text, QColor("#FFFFFF"))
+    palette.setColor(QPalette.ColorRole.WindowText, QColor("#FFFFFF"))
+    palette.setColor(QPalette.ColorRole.Button, QColor("#0A5066"))
+    combo.setPalette(palette)
 
-    The workspace logic stays untouched; this only adds a compact, clickable
-    chevron directly beside the selected workspace name.
-    """
+
+def apply_workspace_dropdown_cue(main_window) -> None:
+    """Make the active-workspace selector visibly look interactive and readable."""
     if bool(getattr(main_window, "_privacygate_workspace_dropdown_cue", False)):
+        combo = getattr(main_window, "workspace_sidebar_combo", None)
+        if combo is not None:
+            _force_readable_combo(combo)
         return
     combo = getattr(main_window, "workspace_sidebar_combo", None)
     card = getattr(main_window, "workspace_sidebar_card", None)
@@ -75,11 +99,6 @@ def apply_workspace_dropdown_cue(main_window) -> None:
     else:
         containing.addWidget(holder)
 
-    combo.setToolTip("Choose where PrivacyGate is working")
-    combo.setCursor(Qt.CursorShape.PointingHandCursor)
-    combo.setStyleSheet(
-        combo.styleSheet()
-        + "QComboBox{padding-right:6px;}QComboBox:hover{color:#FFFFFF;}"
-    )
+    _force_readable_combo(combo)
     main_window.workspace_dropdown_cue = cue
     main_window._privacygate_workspace_dropdown_cue = True
