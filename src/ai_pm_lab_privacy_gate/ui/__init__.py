@@ -1,5 +1,6 @@
 from .mcp_log_guard import install_mcp_log_guard
 from .redesign import install_redesign
+from .protect_ghost_cleanup import install_protect_ghost_cleanup
 from .protect_quick_actions import install_protect_quick_actions
 from .layout_polish import install_layout_polish
 from .connected_apps_ui import install_connected_apps_ui
@@ -8,6 +9,7 @@ from .brand_palette import apply_brand_palette
 from .brand_icons import apply_brand_icons
 from .connected_apps_browse_polish import apply_connected_apps_browse_polish
 from .protect_source_picker import apply_protect_source_picker
+from .protect_workspace_controls import apply_managed_protect_context
 from .source_catalog_activation import activate_oauth_ready_sources
 from .gmail_browser_route import install_gmail_browser_route
 from .clickup_browser_route import install_clickup_browser_route
@@ -49,6 +51,7 @@ from .account_menu import apply_account_menu
 
 install_mcp_log_guard()
 install_redesign()
+install_protect_ghost_cleanup()
 install_protect_quick_actions()
 install_layout_polish()
 install_connected_apps_ui()
@@ -98,15 +101,17 @@ def _main_window_init_with_brand(self, *args, **kwargs) -> None:
     apply_mockup_fidelity(self)
     apply_approved_mockup_override(self)
     apply_runtime_fixes(self)
-    # Final pass intentionally runs last so legacy controller refreshes cannot
+    # Final pass intentionally runs late so legacy controller refreshes cannot
     # reintroduce duplicate Organization chrome or collapse Protect to one pane.
     apply_final_visual_polish(self)
-    # Base Organization workspace/policy controller.
+    # Organization remains the team control plane: policy, account permission,
+    # membership/device context and approved destinations. It no longer embeds a
+    # second document workspace.
     apply_organization_workspace_suite(self)
-    # Final Apps & AI surface: keep the whole company Protect workflow inside
-    # Organization, replace Workspace bindings with a real document suite, and
-    # preserve the standalone Protect page unchanged.
     apply_organization_workspace_suite_v2(self)
+    # The existing Protect UI stays the single document workspace. Business /
+    # Enterprise members get a compact workspace + connected-account bar there.
+    apply_managed_protect_context(self)
     # Contact / Workflows follows the same premium visual language. Dialog polish
     # is presentation-only and preserves each popup's existing actions/logic.
     apply_contact_workflows_polish(self)
