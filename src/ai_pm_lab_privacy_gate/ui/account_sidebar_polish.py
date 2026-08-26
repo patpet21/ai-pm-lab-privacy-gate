@@ -33,8 +33,6 @@ def _place_and_style(controller) -> None:
     button = controller.button
     privacy_note = getattr(main_window, "privacy_note", None)
 
-    # Replace the old LOCAL-FIRST footer with Account. Keep the original label in
-    # the object tree for compatibility, but never show it again.
     if privacy_note is not None:
         privacy_note.hide()
 
@@ -57,6 +55,7 @@ def _place_and_style(controller) -> None:
     display_name = controller._display_name()
     plan_line = controller._plan_line()
     if expanded:
+        button.setMaximumHeight(16777215)
         button.setText(f"  ACCOUNT\n  {display_name} · {plan_line}")
         button.setMinimumHeight(62)
         button.setToolTip(
@@ -101,8 +100,6 @@ def apply_account_sidebar_polish(main_window) -> None:
         controller._render = MethodType(render_with_account_polish, controller)
         controller._privacygate_account_sidebar_polished = True
 
-        # The base sidebar code still tries to show LOCAL-FIRST when expanded.
-        # Keep the replacement stable across manual and automatic collapse/expand.
         original_sidebar = main_window._set_sidebar_expanded
 
         def set_sidebar_expanded(expanded: bool) -> None:
