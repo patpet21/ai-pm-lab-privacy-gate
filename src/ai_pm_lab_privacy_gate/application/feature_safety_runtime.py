@@ -5,6 +5,7 @@ from pathlib import Path
 
 from ai_pm_lab_privacy_gate.application.feature_suite import (
     AdvancedFileService,
+    AutomationActionService,
     WatchedFolderService,
     WatchFolderConfig,
 )
@@ -88,8 +89,57 @@ def _scan_once(self: WatchedFolderService, plan: PlanCode | str, config: WatchFo
     return _original_scan_once(self, plan, config)
 
 
+def _automation_create_folder(self: AutomationActionService, plan, root, name, *, workspace_key="personal") -> Path:
+    require_capability(plan, Capability.ADVANCED_AUTOMATION)
+    target = self.files.create_folder(plan, root, name)
+    self.activity.record("automation_create_folder", workspace_key=workspace_key, source_kind="folder", detail="Controlled folder creation completed")
+    return target
+
+
+def _automation_rename(self: AutomationActionService, plan, root, source, new_name, *, workspace_key="personal") -> Path:
+    require_capability(plan, Capability.ADVANCED_AUTOMATION)
+    target = self.files.rename(plan, root, source, new_name)
+    self.activity.record("automation_rename", workspace_key=workspace_key, source=source, source_kind="file", detail="Controlled rename completed")
+    return target
+
+
+def _automation_move(self: AutomationActionService, plan, root, source, destination_folder, *, workspace_key="personal") -> Path:
+    require_capability(plan, Capability.ADVANCED_AUTOMATION)
+    target = self.files.move(plan, root, source, destination_folder)
+    self.activity.record("automation_move", workspace_key=workspace_key, source=source, source_kind="file", detail="Controlled move completed")
+    return target
+
+
+def _automation_safe_delete(self: AutomationActionService, plan, root, source, *, workspace_key="personal") -> Path:
+    require_capability(plan, Capability.ADVANCED_AUTOMATION)
+    target = self.files.safe_delete(plan, root, source)
+    self.activity.record("automation_safe_delete", workspace_key=workspace_key, source=source, source_kind="file", detail="Moved to .PrivacyGate Trash")
+    return target
+
+
+def _automation_export_copy(self: AutomationActionService, plan, root, source, destination_folder, *, workspace_key="personal") -> Path:
+    require_capability(plan, Capability.ADVANCED_AUTOMATION)
+    require_capability(plan, Capability.ADVANCED_FILE_ROUTING)
+    _, source_path = self.files._inside(root, source)
+    if not source_path.is_file():
+        raise ValueError("Automation export requires a file inside the selected workspace root.")
+    destination = Path(destination_folder).expanduser().resolve()
+    destination.mkdir(parents=True, exist_ok=True)
+    target = destination / source_path.name
+    if target.exists():
+        raise FileExistsError(target.name)
+    shutil.copy2(source_path, target)
+    self.activity.record("automation_export", workspace_key=workspace_key, source=source_path, source_kind="file", detail="Explicit local export copy completed")
+    return target
+
+
 AdvancedFileService.create_folder = _create_folder
 AdvancedFileService.rename = _rename
 AdvancedFileService.move = _move
 AdvancedFileService.safe_delete = _safe_delete
 WatchedFolderService.scan_once = _scan_once
+AutomationActionService.create_folder = _automation_create_folder
+AutomationActionService.rename = _automation_rename
+AutomationActionService.move = _automation_move
+AutomationActionService.safe_delete = _automation_safe_delete
+AutomationActionService.export_copy = _automation_export_copy
