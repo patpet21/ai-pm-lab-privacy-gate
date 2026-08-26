@@ -38,6 +38,7 @@ from .organization_workspace_suite import (
     install_workspace_connector_opt_in,
 )
 from .organization_workspace_suite_v2 import apply_organization_workspace_suite_v2
+from .organization_usability_polish import apply_organization_usability_polish
 from .contact_workflows_polish import apply_contact_workflows_polish, apply_popup_visual_polish
 from .library_source_folders import install_library_source_folders
 from .library_visual_upgrade import install_library_visual_upgrade
@@ -111,6 +112,10 @@ def _main_window_init_with_brand(self, *args, **kwargs) -> None:
     # second document workspace.
     apply_organization_workspace_suite(self)
     apply_organization_workspace_suite_v2(self)
+    # Late Organization pass: improve readability, make provider tiles real
+    # navigation controls, and add policy/readiness guidance without changing
+    # workspace, policy, connector or document-security semantics.
+    apply_organization_usability_polish(self)
     # The existing Protect UI stays the single document workspace. Business /
     # Enterprise members get a compact workspace + connected-account bar there.
     apply_managed_protect_context(self)
