@@ -2,9 +2,6 @@ name: Windows tests
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - feature/privacygate-settings-update-center
 
 permissions:
   contents: read
