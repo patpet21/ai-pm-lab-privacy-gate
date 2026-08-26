@@ -1,3 +1,5 @@
+from ai_pm_lab_privacy_gate.application import portable_backup_runtime as _portable_backup_runtime
+
 from .mcp_log_guard import install_mcp_log_guard
 from .redesign import install_redesign
 from .protect_ghost_cleanup import install_protect_ghost_cleanup
@@ -65,6 +67,7 @@ from .workspace_creation_experience import apply_workspace_creation_experience
 from .workspace_refresh_control import apply_workspace_refresh_control
 from .workspace_creation_feedback import apply_workspace_creation_feedback
 from .settings_service_pages_runtime import apply_settings_service_pages_2026_runtime
+from .feature_suite_2026 import apply_feature_suite_2026
 
 install_mcp_log_guard()
 install_redesign()
@@ -118,71 +121,33 @@ def _main_window_init_with_brand(self, *args, **kwargs) -> None:
     apply_mockup_fidelity(self)
     apply_approved_mockup_override(self)
     apply_runtime_fixes(self)
-    # Final pass intentionally runs late so legacy controller refreshes cannot
-    # reintroduce duplicate Organization chrome or collapse Protect to one pane.
     apply_final_visual_polish(self)
-    # Organization remains the team control plane: policy, account permission,
-    # membership/device context and approved destinations. It no longer embeds a
-    # second document workspace.
     apply_organization_workspace_suite(self)
     apply_organization_workspace_suite_v2(self)
-    # Late Organization pass: improve readability, make provider tiles real
-    # navigation controls, and add policy/readiness guidance without changing
-    # workspace, policy, connector or document-security semantics.
     apply_organization_usability_polish(self)
-    # Dedicated late Overview pass: the Overview is rebuilt dynamically by the
-    # premium dashboard, so re-apply size and click behavior to the visible stack
-    # widget after every render rather than relying on stale child references.
     apply_organization_overview_fix(self)
-    # Normalize Overview to the same typography scale as Apps & AI and keep the
-    # provider navigation icon-only while preserving its click behavior.
     apply_organization_overview_consistency(self)
-    # The existing Protect UI stays the single document workspace. Business /
-    # Enterprise members get a compact workspace + connected-account bar there.
     apply_managed_protect_context(self)
     apply_managed_protect_branding(self)
-    # Contact / Workflows first preserves all existing actions, then gets the same
-    # 2026 executive visual language as the new Settings control center.
     apply_contact_workflows_polish(self)
     apply_contact_executive_2026(self)
     apply_popup_visual_polish(self)
-    # Apply one consistent premium visual system to all dialogs after the legacy
-    # popup pass: account-name input, policy editor, workspace permissions,
-    # connector dialogs, confirmations, warnings and destructive actions.
     apply_dialog_visual_system(self)
-    # Run last: hide detached legacy/parking widgets that can otherwise paint
-    # clipped labels/icons at the far-left edge on Windows.
     apply_protect_late_cleanup(self)
-    # Account replaces the old LOCAL-FIRST footer and must stay below navigation.
     apply_account_sidebar_polish(self)
-    # Keep the Account card inside the sidebar and make the launcher a real toggle:
-    # Account opens it, Account again closes it, and clicking elsewhere dismisses it.
     apply_account_menu_popup_2026(self)
-    # Final workspace pass: make the active work context visually explicit and
-    # expose + Workspace -> Settings for invitation-code enrollment / creation.
     apply_workspace_management_ui(self)
-    # Recompose Settings only after Account/Workspace controls exist, reusing the
-    # original functional widgets and preparing room for future local file/folder
-    # management without changing their behavior.
     apply_settings_executive_redesign(self)
-    # Replace the tiny module strip with visible 2026-style service cards.
     apply_settings_service_hub_2026(self)
-    # Keep the workspace switcher unmistakably interactive with a dedicated,
-    # clickable chevron beside the selected workspace name.
     apply_workspace_dropdown_cue(self)
-    # Finish the workspace UX after the panel exists: one modern creation dialog,
-    # clear seat semantics, friendly errors, and the existing backend actions.
     apply_workspace_creation_experience(self)
-    # Keep a small live refresh control directly under the workspace icon so a
-    # newly created/joined company can be fetched from the control plane on demand.
     apply_workspace_refresh_control(self)
-    # Final creation pass: larger explanatory copy, visible indeterminate loading,
-    # post-create live refresh and a clear completion confirmation dialog.
     apply_workspace_creation_feedback(self)
-    # Final Settings architecture: the cards are a compact launcher and every
-    # service owns a dedicated page. Existing controls are moved, not duplicated.
-    # Files gains local per-workspace routing and folder-management controls.
     apply_settings_service_pages_2026_runtime(self)
+    # Advanced feature suite runs after the final Settings stack exists. It adds
+    # one launcher plus dedicated, capability-gated services without replacing
+    # Protect, Library, Organization or the existing workspace controls.
+    apply_feature_suite_2026(self)
 
 
 MainWindow.__init__ = _main_window_init_with_brand
