@@ -39,6 +39,7 @@ from .organization_workspace_suite import (
 )
 from .organization_workspace_suite_v2 import apply_organization_workspace_suite_v2
 from .organization_usability_polish import apply_organization_usability_polish
+from .organization_overview_fix import apply_organization_overview_fix
 from .contact_workflows_polish import apply_contact_workflows_polish, apply_popup_visual_polish
 from .library_source_folders import install_library_source_folders
 from .library_visual_upgrade import install_library_visual_upgrade
@@ -116,6 +117,10 @@ def _main_window_init_with_brand(self, *args, **kwargs) -> None:
     # navigation controls, and add policy/readiness guidance without changing
     # workspace, policy, connector or document-security semantics.
     apply_organization_usability_polish(self)
+    # Dedicated late Overview pass: the Overview is rebuilt dynamically by the
+    # premium dashboard, so re-apply size and click behavior to the visible stack
+    # widget after every render rather than relying on stale child references.
+    apply_organization_overview_fix(self)
     # The existing Protect UI stays the single document workspace. Business /
     # Enterprise members get a compact workspace + connected-account bar there.
     apply_managed_protect_context(self)
