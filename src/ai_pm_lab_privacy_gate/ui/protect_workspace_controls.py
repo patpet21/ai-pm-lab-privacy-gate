@@ -19,11 +19,8 @@ from ai_pm_lab_privacy_gate.ui.organization_workspace_suite import (
 )
 
 NAVY = "#062B4F"
-INK = "#17384E"
 TEAL = "#0B7F89"
 MUTED = "#61798A"
-GREEN = "#23824B"
-RED = "#B54747"
 
 
 def _label(text: str, size: int = 8, bold: bool = False) -> QLabel:
@@ -61,7 +58,12 @@ def _primary(text: str) -> QPushButton:
 
 
 class ManagedProtectContextBar(QFrame):
-    """Company workspace/source/account controls layered onto the existing Protect UI."""
+    """Workspace/source/account controls layered onto the existing Protect UI.
+
+    The bar exists only for users who belong to at least one Business/Enterprise
+    workspace. Personal remains selectable so the visual context always matches the
+    policy context that the existing ProtectionPage is actually using.
+    """
 
     def __init__(self, main_window, team_page, parent=None) -> None:
         super().__init__(parent, objectName="ManagedProtectContextBar")
@@ -88,12 +90,21 @@ class ManagedProtectContextBar(QFrame):
         cloud = getattr(self.main_window, "cloud_automation_page", None)
         return getattr(cloud, "_connected_apps_service", None) if cloud is not None else None
 
-    def _managed_workspaces(self, context):
+    @staticmethod
+    def _managed_workspaces(context):
         return [
             (key, descriptor)
             for key, descriptor in context.workspaces.items()
             if not descriptor.personal
             and str(descriptor.plan.label).strip().lower() in {"business", "enterprise"}
+        ]
+
+    def _eligible_workspaces(self, context):
+        managed_keys = {key for key, _descriptor in self._managed_workspaces(context)}
+        return [
+            (key, descriptor)
+            for key, descriptor in context.workspaces.items()
+            if descriptor.personal or key in managed_keys
         ]
 
     def _account_rows(self):
@@ -137,11 +148,15 @@ class ManagedProtectContextBar(QFrame):
         root.setSpacing(5)
 
         head = QHBoxLayout()
-        title = _label("TEAM / BUSINESS WORKSPACE", 8, True)
-        subtitle = _label("Choose the company context and connected account before importing. Protect itself stays unchanged.", 7)
-        head.addWidget(title)
-        head.addWidget(subtitle, 1)
-        self.manage = _secondary("Manage in Organization")
+        head.addWidget(_label("WORKSPACE CONTEXT", 8, True))
+        head.addWidget(
+            _label(
+                "Personal or company context + connected account. Detection, preview and Protect behavior below stay the same.",
+                7,
+            ),
+            1,
+        )
+        self.manage = _secondary("Manage team access in Organization")
         self.manage.clicked.connect(self._open_organization)
         head.addWidget(self.manage)
         root.addLayout(head)
@@ -201,15 +216,17 @@ class ManagedProtectContextBar(QFrame):
             if not managed:
                 return
 
+            eligible = self._eligible_workspaces(context)
             rows = self._account_rows()
             current_workspace = str(self.workspace_combo.currentData() or context.active_key)
-            if current_workspace not in {key for key, _descriptor in managed}:
-                current_workspace = context.active_key if context.active_key in {key for key, _descriptor in managed} else managed[0][0]
+            eligible_keys = {key for key, _descriptor in eligible}
+            if current_workspace not in eligible_keys:
+                current_workspace = context.active_key if context.active_key in eligible_keys else eligible[0][0]
 
             self.workspace_combo.blockSignals(True)
             self.workspace_combo.clear()
-            for key, descriptor in managed:
-                role = descriptor.role.title() if descriptor.role else "Member"
+            for key, descriptor in eligible:
+                role = descriptor.role.title() if descriptor.role else "You"
                 self.workspace_combo.addItem(
                     f"{descriptor.name}  ·  {descriptor.plan.label}  ·  {role}", key
                 )
@@ -228,7 +245,6 @@ class ManagedProtectContextBar(QFrame):
             source_index = self.source_combo.findData(current_provider)
             self.source_combo.setCurrentIndex(source_index if source_index >= 0 else 0)
             self.source_combo.blockSignals(False)
-
             self._rebuild_accounts(rows)
         finally:
             self._building = False
@@ -279,27 +295,30 @@ class ManagedProtectContextBar(QFrame):
         account_id = str(self.account_combo.currentData() or "")
         context = self.store.load()
         descriptor = context.workspaces.get(workspace_key)
-        policy = self._policy_for(workspace_key)
         allowed = bool(workspace_key and provider and account_id and descriptor is not None)
 
         if descriptor is None:
-            summary = "Choose a company workspace"
+            summary = "Choose a workspace"
             allowed = False
-        elif policy is None:
-            summary = f"{descriptor.name} • policy syncing"
-            allowed = False
+        elif descriptor.personal:
+            summary = "Personal • no company policy • local connected account"
         else:
-            connector_allowed = bool(
-                policy.allowed_connectors.get(provider, policy.allowed_connectors.get("*", False))
-            )
-            allowed = allowed and connector_allowed
-            summary = (
-                f"{policy.organization_name} • Policy v{policy.version} • "
-                + ("connector allowed" if connector_allowed else "connector blocked")
-            )
+            policy = self._policy_for(workspace_key)
+            if policy is None:
+                summary = f"{descriptor.name} • policy syncing"
+                allowed = False
+            else:
+                connector_allowed = bool(
+                    policy.allowed_connectors.get(provider, policy.allowed_connectors.get("*", False))
+                )
+                allowed = allowed and connector_allowed
+                summary = (
+                    f"{policy.organization_name} • Policy v{policy.version} • "
+                    + ("connector allowed" if connector_allowed else "connector blocked")
+                )
 
         self.policy.setText(summary)
-        if allowed:
+        if allowed and descriptor is not None and not descriptor.personal:
             approved = self.store.is_account_available(provider, account_id, workspace_key)
             self.browse.setText("Browse connected content" if approved else "Approve account & browse")
         else:
@@ -307,6 +326,12 @@ class ManagedProtectContextBar(QFrame):
         self.browse.setEnabled(allowed)
 
     def _ensure_permission(self, provider: str, account_id: str, account_label: str, workspace_key: str) -> bool:
+        context = self.store.load()
+        descriptor = context.workspaces.get(workspace_key)
+        if descriptor is None:
+            return False
+        if descriptor.personal:
+            return True
         if self.store.is_account_available(provider, account_id, workspace_key):
             return True
         dialog = WorkspaceConsentDialog(
@@ -331,15 +356,22 @@ class ManagedProtectContextBar(QFrame):
             return
         context = self.store.load()
         descriptor = context.workspaces.get(workspace_key)
-        policy = self._policy_for(workspace_key)
-        if descriptor is None or policy is None:
+        if descriptor is None:
             return
-        connector_allowed = bool(
-            policy.allowed_connectors.get(provider, policy.allowed_connectors.get("*", False))
-        )
-        if not connector_allowed:
-            QMessageBox.warning(self, "Blocked by company policy", f"{dict(PROVIDERS).get(provider, provider)} is not approved for {descriptor.name}.")
-            return
+        if not descriptor.personal:
+            policy = self._policy_for(workspace_key)
+            if policy is None:
+                return
+            connector_allowed = bool(
+                policy.allowed_connectors.get(provider, policy.allowed_connectors.get("*", False))
+            )
+            if not connector_allowed:
+                QMessageBox.warning(
+                    self,
+                    "Blocked by company policy",
+                    f"{dict(PROVIDERS).get(provider, provider)} is not approved for {descriptor.name}.",
+                )
+                return
         if not self._ensure_permission(provider, account_id, account_label, workspace_key):
             return
         self.service = self._connected_apps_service()
@@ -352,9 +384,6 @@ class ManagedProtectContextBar(QFrame):
             QMessageBox.warning(self, "Connected account", str(exc))
             return
 
-        # The workspace selector drives the policy engine for the existing main
-        # ProtectionPage. The mature source browser therefore imports directly into
-        # this unchanged Protect surface.
         from ai_pm_lab_privacy_gate.ui import connected_apps_browse_polish
 
         opener = getattr(
@@ -386,12 +415,10 @@ def apply_managed_protect_context(main_window) -> ManagedProtectContextBar | Non
     existing = getattr(page, "_managed_workspace_context_bar", None)
     if existing is not None:
         return existing
-
     preview = getattr(page, "preview_card", None)
     preview_layout = preview.layout() if preview is not None else None
     if preview_layout is None:
         return None
-
     bar = ManagedProtectContextBar(main_window, team_page, preview)
     quick = getattr(page, "_protect_source_quick_bar", None)
     index = preview_layout.indexOf(quick) if quick is not None else 0
