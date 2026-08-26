@@ -62,6 +62,7 @@ from .workspace_dropdown_cue import apply_workspace_dropdown_cue
 from .workspace_creation_experience import apply_workspace_creation_experience
 from .workspace_refresh_control import apply_workspace_refresh_control
 from .workspace_creation_feedback import apply_workspace_creation_feedback
+from .settings_service_pages_runtime import apply_settings_service_pages_2026_runtime
 
 install_mcp_log_guard()
 install_redesign()
@@ -158,8 +159,7 @@ def _main_window_init_with_brand(self, *args, **kwargs) -> None:
     # original functional widgets and preparing room for future local file/folder
     # management without changing their behavior.
     apply_settings_executive_redesign(self)
-    # Replace the tiny module strip with visible 2026-style service cards. Each
-    # card is keyboard/mouse clickable and navigates to the real functional area.
+    # Replace the tiny module strip with visible 2026-style service cards.
     apply_settings_service_hub_2026(self)
     # Keep the workspace switcher unmistakably interactive with a dedicated,
     # clickable chevron beside the selected workspace name.
@@ -173,6 +173,10 @@ def _main_window_init_with_brand(self, *args, **kwargs) -> None:
     # Final creation pass: larger explanatory copy, visible indeterminate loading,
     # post-create live refresh and a clear completion confirmation dialog.
     apply_workspace_creation_feedback(self)
+    # Final Settings architecture: the cards are a compact launcher and every
+    # service owns a dedicated page. Existing controls are moved, not duplicated.
+    # Files gains local per-workspace routing and folder-management controls.
+    apply_settings_service_pages_2026_runtime(self)
 
 
 MainWindow.__init__ = _main_window_init_with_brand
