@@ -33,6 +33,7 @@ from .multi_workspace_experience import install_multi_workspace_experience
 from .workspace_action_follow import install_workspace_action_follow
 from .managed_protect_experience import install_managed_protect_experience
 from .workspace_sidebar import apply_workspace_sidebar
+from .account_menu import apply_account_menu
 
 install_mcp_log_guard()
 install_redesign()
@@ -85,6 +86,9 @@ def _main_window_init_with_brand(self, *args, **kwargs) -> None:
     apply_business_main_window(self)
     apply_organization_polish(self)
     apply_workspace_sidebar(self)
+    # Account is applied after workspace/organization navigation so its shortcuts
+    # point to the final pages and its card always remains at the bottom.
+    apply_account_menu(self)
     apply_runtime_fixes(self)
 
 
