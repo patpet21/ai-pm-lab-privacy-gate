@@ -11,28 +11,31 @@ One PrivacyGate account can participate in several privacy contexts:
 Business and Enterprise are organization plans. They do not replace the user's
 Personal workspace and they do not require separate PrivacyGate logins.
 
-## One Protect engine, two UI surfaces
+## One Protect engine, one document workspace
 
-PrivacyGate does not create a second protection implementation for organizations.
-The same `ProtectionPage` / privacy service behavior is reused in two independent UI
-surfaces:
+PrivacyGate keeps a single user-facing Protect surface.
 
-- standalone **Protect** for the normal personal/product navigation;
-- embedded **Workspace Protect** inside Organization → Apps & AI.
+Users who belong to at least one Business/Enterprise workspace receive an additional
+workspace context bar inside the existing Protect page. The rest of Protect — upload,
+paste, scan, review, two-document preview, protection, Library save/export and AI
+preflight — remains the same.
 
-The Organization instance has its own document state and preview, so working in a
-company workspace does not redirect the user to the standalone Protect page. Both
-surfaces use the same detection, protection, export, Library and policy-enforcement
-code.
+The context bar provides:
+
+- Personal or company workspace selection;
+- connected source selection;
+- connected account selection;
+- company policy status;
+- direct connected-content browsing/import;
+- a link back to Organization for team/account administration.
 
 The active workspace selects the policy context:
 
-1. Select Personal or a company workspace.
+1. Select Personal or a company workspace in Protect.
 2. Upload/paste locally or import from an approved connected account.
-3. The document opens in the Workspace Protect preview inside Organization.
-4. Protect applies required/default/user-choice company directives locally.
-5. A second local scan is performed before AI handoff.
-6. Only AI/apps approved by the active company policy may be used.
+3. Protect applies required/default/user-choice company directives locally.
+4. A second local scan is performed before AI handoff.
+5. Only AI/apps approved by the active company policy may be used.
 
 Personal keeps the normal individual behavior and has no company policy.
 
@@ -46,31 +49,30 @@ A connected account is:
 - always available in **Personal**;
 - **not automatically available** in a Business/Enterprise workspace;
 - reusable in one or many company workspaces only after the user explicitly
-  approves a workspace binding.
+  approves workspace access.
 
-The binding stores only local availability (`provider + account + workspace`).
-It does not copy OAuth tokens or source contents into the Organization control
-plane.
+The permission stores only local availability (`provider + account + workspace`). It
+does not copy OAuth tokens or source contents into the Organization control plane.
 
-## Organization Apps & AI flow
+## Organization Apps & AI
 
-Organization → Apps & AI is a workspace suite, not a redirect page.
+Organization is the team control plane, not a second document-protection page.
 
-The left side lists connected accounts, including provider logos and the workspaces
-where each account is approved. Workspace permissions remain editable from that
-list; a separate Workspace bindings card is not part of the main working surface.
+Organization → Apps & AI provides:
 
-The document workflow is:
+- active company workspace context;
+- connected accounts with real provider logos;
+- per-account workspace permission management;
+- workspace policy/version status;
+- member/device/account readiness counts;
+- approved AI and connected-app visibility;
+- quick navigation to Protect and to the main Apps connection page;
+- privacy-boundary explanation.
 
-`active workspace → source → account → explicit workspace permission → connected-content picker → embedded Workspace Protect preview`
-
-Google Drive and Gmail currently support direct materialization into the embedded
-Workspace Protect instance. Other connected applications keep their existing
-browse/search routes and can be promoted to direct import as their connector
-materializers are implemented.
-
-Local upload and paste-text actions are also available directly inside the embedded
-Workspace Protect surface.
+Document previews and protection are deliberately absent from Organization. Team
+members use the existing Protect page and select the required company workspace there.
+This avoids two parallel document experiences while keeping all company controls in
+Organization.
 
 ## Admin privacy boundary
 
@@ -92,6 +94,5 @@ Organization admins do not receive:
 - connector OAuth tokens;
 - connector source item lists.
 
-The embedded Workspace Protect document state remains local to the employee device.
 Any future Enterprise audit feature should use metadata-minimization by default and
 must remain separate from document access.
