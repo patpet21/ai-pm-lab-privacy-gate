@@ -10,6 +10,7 @@ from .connected_apps_browse_polish import (
     _drive_call_with_refresh,
     _friendly_connection_error,
 )
+from .google_drive_embedded_picker import pick_google_drive_file_ids
 
 
 def _run_picker_busy(parent, title: str, message: str, operation):
@@ -30,22 +31,6 @@ def _run_picker_busy(parent, title: str, message: str, operation):
         QApplication.processEvents()
 
 
-def _restore_privacygate_focus(main_window) -> None:
-    """Best-effort return to PrivacyGate after Google's system-browser Picker."""
-    try:
-        if main_window.isMinimized():
-            main_window.showNormal()
-        else:
-            main_window.show()
-        main_window.raise_()
-        main_window.activateWindow()
-        QApplication.processEvents()
-    except Exception:
-        # Foreground activation is ultimately controlled by the desktop OS. A
-        # focus failure must never interrupt a successful Drive import.
-        pass
-
-
 def _is_google_drive_browse(button: QAbstractButton) -> bool:
     if button.text().strip() != "Browse":
         return False
@@ -58,21 +43,16 @@ def _is_google_drive_browse(button: QAbstractButton) -> bool:
 
 
 def _open_google_drive_picker(main_window) -> None:
+    """Select and import one Drive file without leaving PrivacyGate."""
     page = getattr(main_window, "cloud_automation_page", None)
     service = getattr(page, "_connected_apps_service", None) if page is not None else None
-    if service is None or not hasattr(service, "pick_google_drive_items"):
+    if service is None or not hasattr(service, "google_drive_items_from_ids"):
         QMessageBox.warning(main_window, "Google Drive", "Google Drive Picker is unavailable.")
         return
 
     try:
-        rows = _run_picker_busy(
-            main_window,
-            "Google Drive Picker",
-            "Choose a file in the Google Drive window opened in your browser. PrivacyGate will receive access only to the file you select…",
-            lambda: service.pick_google_drive_items(),
-        )
+        picked_ids = pick_google_drive_file_ids(main_window, service)
     except Exception as exc:
-        _restore_privacygate_focus(main_window)
         QMessageBox.warning(
             main_window,
             "Unable to choose from Google Drive",
@@ -80,14 +60,30 @@ def _open_google_drive_picker(main_window) -> None:
         )
         return
 
-    # Google requires the native desktop Picker to use the system browser. As
-    # soon as Google returns the selection, bring the desktop app back forward so
-    # the user continues the workflow in PrivacyGate instead of staying on the
-    # callback/browser tab.
-    _restore_privacygate_focus(main_window)
+    if not picked_ids:
+        main_window.statusBar().showMessage("Google Drive: no file selected", 5000)
+        return
+
+    try:
+        rows = _run_picker_busy(
+            main_window,
+            "Reading Google Drive selection",
+            "Reading only the Google Drive file you selected…",
+            lambda: _drive_call_with_refresh(
+                service,
+                lambda: service.google_drive_items_from_ids(picked_ids),
+            ),
+        )
+    except Exception as exc:
+        QMessageBox.warning(
+            main_window,
+            "Unable to read Google Drive selection",
+            _friendly_connection_error("Google Drive", exc),
+        )
+        return
 
     if not rows:
-        main_window.statusBar().showMessage("Google Drive: no file selected", 5000)
+        main_window.statusBar().showMessage("Google Drive: selected file was not returned", 5000)
         return
 
     remote = rows[0]
@@ -130,11 +126,10 @@ def _open_google_drive_picker(main_window) -> None:
         "item_id": str(remote.item_id or ""),
         "item_title": str(remote.title or ""),
         "item_kind": str(remote.kind or ""),
-        "access_model": "drive.file + Google Picker",
+        "access_model": "drive.file + embedded Google Picker",
     }
 
     main_window._show_page(0)
-    _restore_privacygate_focus(main_window)
     main_window.statusBar().showMessage(
         f"Imported from Google Drive: {remote.title} — ready for local scan",
         9000,
@@ -145,14 +140,14 @@ def apply_google_drive_picker_ui(main_window) -> None:
     """Replace only Google Drive's Browse action with least-privilege Picker.
 
     Gmail and every other connected-app browser keep their existing behavior.
-    This runs after the general connected-app browse polish and rewires only the
-    Google Drive button.
+    Google Drive selection stays inside the PrivacyGate desktop window after the
+    account has been connected.
     """
     page = getattr(main_window, "cloud_automation_page", None)
     if page is None:
         return
     service = getattr(page, "_connected_apps_service", None)
-    if service is None or not hasattr(service, "pick_google_drive_items"):
+    if service is None or not hasattr(service, "google_drive_items_from_ids"):
         return
 
     for button in page.findChildren(QAbstractButton):
@@ -164,5 +159,5 @@ def apply_google_drive_picker_ui(main_window) -> None:
             pass
         button.clicked.connect(lambda _checked=False: _open_google_drive_picker(main_window))
         button.setToolTip(
-            "Open Google Picker. PrivacyGate can access only the Drive file you explicitly select."
+            "Choose a Google Drive file inside PrivacyGate. Only files you explicitly select are accessible."
         )
