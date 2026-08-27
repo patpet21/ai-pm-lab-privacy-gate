@@ -14,6 +14,7 @@ from .protect_source_picker import apply_protect_source_picker
 from .protect_workspace_controls import apply_managed_protect_context
 from .protect_workspace_branding import apply_managed_protect_branding
 from .protect_late_cleanup import apply_protect_late_cleanup
+from .protect_usability_polish import apply_protect_usability_polish
 from .source_catalog_activation import activate_oauth_ready_sources
 from .gmail_browser_route import install_gmail_browser_route
 from .clickup_browser_route import install_clickup_browser_route
@@ -167,6 +168,9 @@ def _main_window_init_with_brand(self, *args, **kwargs) -> None:
     # Governance is a separate read-only product surface. It reads the existing
     # Protect/Preflight/Activity state and never replaces the document workflow.
     apply_governance_center_2026(self)
+    # Final Protect pass is presentation-only: clearer guidance, tooltips and
+    # Advanced-settings explanations without moving/replacing any existing control.
+    apply_protect_usability_polish(self)
 
 
 MainWindow.__init__ = _main_window_init_with_brand
