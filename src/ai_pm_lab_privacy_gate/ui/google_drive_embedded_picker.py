@@ -78,11 +78,14 @@ def _picker_html(access_token: str, developer_key: str, app_id: str) -> str:
   <title>PrivacyGate · Google Drive</title>
   <style>
     html, body {{ width:100%; height:100%; margin:0; overflow:hidden; background:#f7fafc; font-family:Segoe UI, Arial, sans-serif; }}
-    #loading {{ position:fixed; inset:0; display:grid; place-items:center; color:#526c7d; font-size:14px; }}
-    #error {{ display:none; padding:28px; color:#7a2633; white-space:pre-wrap; line-height:1.5; }}
+    #picker-container {{ position:fixed; inset:0; background:#fff; }}
+    #loading {{ position:fixed; inset:0; display:grid; place-items:center; color:#526c7d; font-size:14px; z-index:5; background:#f7fafc; }}
+    #error {{ display:none; position:fixed; inset:0; padding:28px; color:#7a2633; background:#fff; white-space:pre-wrap; line-height:1.5; z-index:10; }}
+    #picker-frame {{ width:100%; height:100%; border:0; display:block; background:#fff; }}
   </style>
 </head>
 <body>
+  <div id="picker-container"></div>
   <div id="loading">Loading your Google Drive…</div>
   <div id="error"></div>
   <script>
@@ -92,6 +95,8 @@ def _picker_html(access_token: str, developer_key: str, app_id: str) -> str:
     const MIME_TYPES = {mime_types};
     const CALLBACK_PATH = {callback_path};
     let pickerStarted = false;
+    let pickerBuilder = null;
+    let pickerFrame = null;
 
     function finish(action, ids) {{
       const params = new URLSearchParams();
@@ -109,35 +114,50 @@ def _picker_html(access_token: str, developer_key: str, app_id: str) -> str:
 
     function pickerCallback(data) {{
       if (!window.google || !google.picker) return;
-      if (data.action === google.picker.Action.PICKED) {{
-        const docs = data[google.picker.Response.DOCUMENTS] || [];
-        const ids = docs.map(doc => doc[google.picker.Document.ID]).filter(Boolean);
+      const action = data[google.picker.Response.ACTION] || data.action;
+      if (action === google.picker.Action.PICKED) {{
+        const docs = data[google.picker.Response.DOCUMENTS] || data.docs || [];
+        const ids = docs.map(doc => doc[google.picker.Document.ID] || doc.id).filter(Boolean);
         finish('picked', ids);
-      }} else if (data.action === google.picker.Action.CANCEL) {{
+      }} else if (action === google.picker.Action.CANCEL) {{
         finish('cancel', []);
       }}
     }}
 
     function pickerReady() {{
       try {{
-        pickerStarted = true;
-        document.getElementById('loading').style.display = 'none';
         const view = new google.picker.DocsView(google.picker.ViewId.DOCS);
         view.setIncludeFolders(true);
         view.setSelectFolderEnabled(false);
         view.setMode(google.picker.DocsViewMode.LIST);
         view.setMimeTypes(MIME_TYPES);
 
-        const picker = new google.picker.PickerBuilder()
+        // Google documents toUri() as the supported way to embed Picker directly
+        // into an iframe. Keeping this builder alive also preserves its callback
+        // registration while the iframe is active.
+        pickerBuilder = new google.picker.PickerBuilder()
           .addView(view)
           .setOAuthToken(ACCESS_TOKEN)
           .setDeveloperKey(DEVELOPER_KEY)
           .setAppId(APP_ID)
-          .setOrigin(window.location.origin)
-          .setTitle('Choose a file from Google Drive')
-          .setCallback(pickerCallback)
-          .build();
-        picker.setVisible(true);
+          .setCallback(pickerCallback);
+
+        const uri = pickerBuilder.toUri();
+        const src = (typeof uri === 'string') ? uri : uri.toString();
+        if (!src) {{
+          throw new Error('Google Picker did not return an iframe URI.');
+        }}
+
+        pickerFrame = document.createElement('iframe');
+        pickerFrame.id = 'picker-frame';
+        pickerFrame.setAttribute('src', src);
+        pickerFrame.setAttribute('title', 'Google Drive Picker');
+        pickerFrame.setAttribute('referrerpolicy', 'strict-origin-when-cross-origin');
+        pickerFrame.addEventListener('load', () => {{
+          document.getElementById('loading').style.display = 'none';
+        }});
+        document.getElementById('picker-container').appendChild(pickerFrame);
+        pickerStarted = true;
       }} catch (error) {{
         showError(String(error && error.message ? error.message : error));
       }}
