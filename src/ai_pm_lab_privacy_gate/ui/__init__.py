@@ -16,6 +16,7 @@ from .protect_session_upgrade import apply_protect_session_upgrade
 from .protect_session_runtime_fix import apply_protect_session_runtime_fix
 from .gmail_package_browser import apply_gmail_package_browser
 from .gmail_package_runtime_fix import apply_gmail_package_runtime_fix
+from .gmail_component_session import apply_gmail_component_session
 from .protect_workspace_controls import apply_managed_protect_context
 from .protect_workspace_branding import apply_managed_protect_branding
 from .protect_late_cleanup import apply_protect_late_cleanup
@@ -170,10 +171,12 @@ def _main_window_init_with_brand(self, *args, **kwargs) -> None:
     # visible fidelity status, and clearer Drive navigation.
     apply_protect_session_upgrade(self)
     apply_protect_session_runtime_fix(self)
-    # Gmail can now pass the email body plus any selected supported attachments
-    # into the same local Protect session while still allowing single selection.
+    # Gmail package picker still owns remote selection/materialization.
     apply_gmail_package_browser(self)
     apply_gmail_package_runtime_fix(self)
+    # Final Gmail Protect pass: preserve body + every selected attachment as
+    # independent native sources with explicit source buttons and previews.
+    apply_gmail_component_session(self)
 
 
 MainWindow.__init__ = _main_window_init_with_brand
