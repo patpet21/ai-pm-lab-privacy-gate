@@ -19,15 +19,131 @@ def _summary_available(page, original_should_show) -> bool:
         return False
 
 
+def _reset_stale_source_state(page) -> None:
+    """Invalidate the previous source without clearing the newly selected input."""
+    page.current_document = None
+    page.current_findings = ()
+    page.current_result = None
+    page._last_residual = ()
+
+    table = getattr(page, "findings_table", None)
+    if table is not None:
+        table.blockSignals(True)
+        try:
+            table.setRowCount(0)
+        finally:
+            table.blockSignals(False)
+
+    categories = getattr(page, "category_list", None)
+    if categories is not None:
+        categories.clear()
+
+    preview = getattr(page, "preview", None)
+    if preview is not None:
+        preview.clear()
+
+    for document_name in ("original_pdf_document", "protected_pdf_document"):
+        document = getattr(page, document_name, None)
+        if document is not None:
+            try:
+                document.close()
+            except Exception:
+                pass
+
+    for view_name in ("original_office_view", "protected_office_view"):
+        view = getattr(page, view_name, None)
+        if view is not None:
+            try:
+                view.clear()
+            except Exception:
+                pass
+
+    if hasattr(page, "_redesign_protected_metric"):
+        page._redesign_protected_metric.setText("0 protected")
+    if hasattr(page, "_redesign_review_metric"):
+        page._redesign_review_metric.setText("Ready to scan")
+    if hasattr(page, "_redesign_protect_button"):
+        page._redesign_protect_button.setEnabled(False)
+        page._redesign_protect_button.setText("Protect document")
+    if hasattr(page, "_redesign_final_actions"):
+        page._redesign_final_actions.hide()
+    if hasattr(page, "_redesign_set_final_actions"):
+        page._redesign_set_final_actions(False)
+
+    quick_actions = getattr(page, "_protect_quick_actions", None)
+    if quick_actions is not None:
+        quick_actions.hide()
+
+
+def _install_source_isolation(page) -> None:
+    """Make document and pasted/email sources mutually exclusive."""
+    if bool(getattr(page, "_privacygate_source_isolation_installed", False)):
+        return
+    page._privacygate_source_isolation_installed = True
+    page._privacygate_source_reset_guard = False
+
+    def clear_provenance() -> None:
+        page._external_source_name = ""
+        page._external_source_metadata = {}
+
+    def text_changed() -> None:
+        if bool(getattr(page, "_privacygate_source_reset_guard", False)):
+            return
+        if not page.text_input.toPlainText().strip():
+            return
+        page._privacygate_source_reset_guard = True
+        try:
+            if page.pdf_path.text().strip():
+                page.pdf_path.clear()
+            clear_provenance()
+            _reset_stale_source_state(page)
+        finally:
+            page._privacygate_source_reset_guard = False
+
+    def file_changed(path: str) -> None:
+        if bool(getattr(page, "_privacygate_source_reset_guard", False)):
+            return
+        if not str(path or "").strip():
+            return
+        page._privacygate_source_reset_guard = True
+        try:
+            if page.text_input.toPlainText():
+                page.text_input.clear()
+            clear_provenance()
+            _reset_stale_source_state(page)
+        finally:
+            page._privacygate_source_reset_guard = False
+
+    page.text_input.textChanged.connect(text_changed)
+    page.pdf_path.textChanged.connect(file_changed)
+
+
+def _keep_protect_actions_visible(page) -> None:
+    """Keep Scan/Protect controls above the long document preview."""
+    preview_card = getattr(page, "preview_card", None)
+    preview_layout = preview_card.layout() if preview_card is not None else None
+    action_bar = getattr(page, "_polish_protect_bottom_bar", None)
+    mode_bar = getattr(page, "_polish_protect_mode_bar", None)
+    if not isinstance(preview_layout, QVBoxLayout) or action_bar is None:
+        return
+
+    preview_layout.removeWidget(action_bar)
+    insert_at = 0
+    if mode_bar is not None:
+        mode_index = preview_layout.indexOf(mode_bar)
+        if mode_index >= 0:
+            insert_at = mode_index + 1
+    preview_layout.insertWidget(insert_at, action_bar)
+    action_bar.setMaximumHeight(16777215)
+    action_bar.show()
+
+    protect_button = getattr(page, "_redesign_protect_button", None)
+    if protect_button is not None:
+        protect_button.show()
+
+
 def apply_protect_workflow_visibility_fix(main_window) -> None:
-    """Keep the established Protect/file workflow as the primary managed view.
-
-    The approved managed Protect & Preflight summary remains available, but it is
-    opt-in instead of replacing the existing upload/scan/review controls as soon
-    as findings exist. This is presentation-only: ProtectionPage remains the
-    controller and no protection, policy, connector or save semantics change.
-    """
-
+    """Keep Protect usable while exposing managed Preflight as a secondary view."""
     page = getattr(main_window, "protection_page", None)
     if page is None or bool(getattr(page, "_privacygate_protect_workflow_visibility_fixed", False)):
         return
@@ -38,8 +154,16 @@ def apply_protect_workflow_visibility_fix(main_window) -> None:
         return
 
     page._privacygate_protect_workflow_visibility_fixed = True
-    # Existing Protect stays primary. The user explicitly opens the managed
-    # summary when they want to review the governance/preflight presentation.
+
+    # Keep the existing Scan/Protect dock above long previews so it never appears
+    # to disappear after a scan.
+    _keep_protect_actions_visible(page)
+
+    # Gmail/pasted text and local/Drive documents are mutually exclusive. Clear
+    # the previous renderer state when the source changes so stale PDFs cannot
+    # survive into a text/email scan.
+    _install_source_isolation(page)
+
     page._privacygate_force_original_protect = True
 
     original_should_show = summary.should_show
@@ -53,8 +177,6 @@ def apply_protect_workflow_visibility_fix(main_window) -> None:
 
     summary.should_show = MethodType(should_show, summary)
 
-    # A compact banner in the original Protect page exposes the managed summary
-    # without taking away upload, file-change, scan, preview or save controls.
     banner = QFrame(objectName="ManagedPreflightSummaryBanner")
     banner.setStyleSheet(
         "QFrame#ManagedPreflightSummaryBanner{background:#F2FAFA;border:1px solid #CDE7E9;"
@@ -93,8 +215,6 @@ def apply_protect_workflow_visibility_fix(main_window) -> None:
     else:
         banner.hide()
 
-    # The managed summary gets an explicit return action. It does not clear the
-    # current document, so the user comes back to the same file and findings.
     back_bar = QFrame(objectName="ManagedPreflightBackBar")
     back_bar.setStyleSheet(
         f"QFrame#ManagedPreflightBackBar{{background:#FFFFFF;border:1px solid {BORDER};border-radius:9px;}}"
