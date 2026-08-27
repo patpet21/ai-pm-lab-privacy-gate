@@ -2,16 +2,14 @@ from __future__ import annotations
 
 import time
 
-import httpx
-
-from .google_drive_picker import authorize_drive_file_desktop, authorize_drive_picker_desktop
 from .google_oauth import (
+    authorize_desktop,
     configured_client_id,
     configured_client_secret,
     refresh_access_token,
     token_expiry_timestamp,
 )
-from .service import ConnectedAppsService, RemoteItem
+from .service import ConnectedAppsService
 
 
 _ORIGINAL_TOKEN = ConnectedAppsService._token
@@ -59,10 +57,7 @@ def _stored_google_client_secret(self: ConnectedAppsService) -> str:
 def _connect_google_oauth(self: ConnectedAppsService, client_id: str | None = None) -> None:
     resolved_client_id = (client_id or _stored_google_client_id(self, "google_drive")).strip()
     client_secret = _stored_google_client_secret(self)
-    payload = authorize_drive_file_desktop(
-        resolved_client_id,
-        client_secret=client_secret,
-    )
+    payload = authorize_desktop(resolved_client_id, client_secret=client_secret)
     access_token = payload.get("access_token", "")
     refresh_token = payload.get("refresh_token", "")
     if not access_token:
@@ -75,123 +70,6 @@ def _connect_google_oauth(self: ConnectedAppsService, client_id: str | None = No
     self.secret_store.set("connected.google_drive.expires_at", str(token_expiry_timestamp(payload)))
     if refresh_token:
         self.secret_store.set("connected.google_drive.refresh_token", refresh_token)
-
-
-def _drive_identity(self: ConnectedAppsService, token: str) -> tuple[str, str]:
-    response = httpx.get(
-        "https://www.googleapis.com/drive/v3/about",
-        headers={"Authorization": f"Bearer {token}"},
-        params={"fields": "user(displayName,emailAddress,permissionId)"},
-        timeout=self.timeout,
-    )
-    response.raise_for_status()
-    user = response.json().get("user") or {}
-    identity = str(user.get("emailAddress") or user.get("permissionId") or "").strip()
-    label = str(user.get("emailAddress") or user.get("displayName") or "Google Drive account").strip()
-    return identity, label
-
-
-def _sync_active_drive_alias(self: ConnectedAppsService) -> None:
-    registry = getattr(self, "_multi_account_registry", None)
-    if registry is not None and hasattr(registry, "sync_active_from_legacy"):
-        registry.sync_active_from_legacy("google_drive")
-
-
-def _google_drive_items_from_ids(
-    self: ConnectedAppsService,
-    picked_ids: tuple[str, ...] | list[str],
-) -> tuple[RemoteItem, ...]:
-    """Resolve files explicitly granted through Picker using the active Drive token.
-
-    With ``drive.file`` the Picker itself authorizes each selected file for this
-    Google Cloud app. After the callback we only need ``files.get`` for those
-    exact IDs; PrivacyGate never falls back to broad ``files.list`` discovery.
-    """
-    normalized_ids = tuple(str(file_id).strip() for file_id in picked_ids if str(file_id).strip())
-    if not normalized_ids:
-        return ()
-
-    access_token = self._token("google_drive")
-    headers = {"Authorization": f"Bearer {access_token}"}
-    rows: list[RemoteItem] = []
-    for file_id in normalized_ids:
-        response = httpx.get(
-            f"https://www.googleapis.com/drive/v3/files/{file_id}",
-            headers=headers,
-            params={
-                "fields": "id,name,mimeType,modifiedTime,webViewLink",
-                "supportsAllDrives": "true",
-            },
-            timeout=self.timeout,
-        )
-        response.raise_for_status()
-        item = response.json()
-        rows.append(
-            RemoteItem(
-                "google_drive",
-                str(item.get("id") or file_id),
-                str(item.get("name") or "Google Drive document"),
-                str(item.get("modifiedTime") or ""),
-                str(item.get("mimeType") or "file"),
-                str(item.get("webViewLink") or ""),
-            )
-        )
-    return tuple(rows)
-
-
-def _pick_google_drive_items(self: ConnectedAppsService) -> tuple[RemoteItem, ...]:
-    """Legacy system-browser Picker fallback for the active Drive account.
-
-    The normal PrivacyGate UI now uses the embedded Picker. Keep this path only as
-    a compatibility fallback while the least-privilege migration is tested.
-    """
-    current_token = self._token("google_drive")
-    expected_identity = ""
-    expected_label = ""
-    try:
-        expected_identity, expected_label = _drive_identity(self, current_token)
-    except Exception:
-        expected_identity = ""
-        expected_label = ""
-
-    resolved_client_id = _stored_google_client_id(self, "google_drive").strip()
-    client_secret = _stored_google_client_secret(self)
-    payload = authorize_drive_picker_desktop(
-        resolved_client_id,
-        client_secret=client_secret,
-        login_hint=expected_identity or expected_label,
-    )
-    picked_ids = tuple(payload.get("picked_file_ids") or ())
-    if not picked_ids:
-        return ()
-
-    access_token = str(payload.get("access_token") or "").strip()
-    if not access_token:
-        raise RuntimeError("Google Drive Picker did not return an access token.")
-
-    actual_identity, actual_label = _drive_identity(self, access_token)
-    if (
-        expected_identity
-        and actual_identity
-        and expected_identity.casefold() != actual_identity.casefold()
-    ):
-        raise RuntimeError(
-            "Google Picker used a different Google account. "
-            f"Choose the active Drive account ({expected_label or expected_identity}) and try again."
-        )
-
-    self.secret_store.set("oauth.google.client_id", resolved_client_id)
-    if client_secret:
-        self.secret_store.set("oauth.google.client_secret", client_secret)
-    self.secret_store.set("connected.google_drive.token", access_token)
-    self.secret_store.set("connected.google_drive.client_id", resolved_client_id)
-    self.secret_store.set("connected.google_drive.expires_at", str(token_expiry_timestamp(payload)))
-    refresh_token = str(payload.get("refresh_token") or "").strip()
-    if refresh_token:
-        self.secret_store.set("connected.google_drive.refresh_token", refresh_token)
-    _sync_active_drive_alias(self)
-
-    return _google_drive_items_from_ids(self, picked_ids)
 
 
 def _refresh_google_token(self: ConnectedAppsService) -> str:
@@ -257,16 +135,14 @@ def _disconnect(self: ConnectedAppsService, provider: str) -> None:
             "connected.google_drive.expires_at",
         ):
             self.secret_store.delete(key)
-        # Keep app-level OAuth/Picker configuration. These values belong to the
-        # PrivacyGate Google Cloud project, not to one user's connected account.
+        # Keep oauth.google.client_id and oauth.google.client_secret: these
+        # belong to the PrivacyGate developer OAuth client, not one user account.
 
 
 def install_google_oauth_adapter() -> None:
     if getattr(ConnectedAppsService, "_google_oauth_installed", False):
         return
     ConnectedAppsService.connect_google_oauth = _connect_google_oauth  # type: ignore[attr-defined]
-    ConnectedAppsService.pick_google_drive_items = _pick_google_drive_items  # type: ignore[attr-defined]
-    ConnectedAppsService.google_drive_items_from_ids = _google_drive_items_from_ids  # type: ignore[attr-defined]
     ConnectedAppsService.force_google_refresh = _force_google_refresh  # type: ignore[attr-defined]
     ConnectedAppsService.google_oauth_client_id = _stored_google_client_id  # type: ignore[attr-defined]
     ConnectedAppsService.google_oauth_client_secret = _stored_google_client_secret  # type: ignore[attr-defined]
