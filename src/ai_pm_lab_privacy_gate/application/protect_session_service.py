@@ -175,6 +175,7 @@ class ProtectSessionService:
     ) -> ProtectSessionResult:
         selected_ids = set(selected_finding_ids)
         protected: list[ProtectSourceResult] = []
+        multi_source = len(analysis.sources) > 1
         for index, source_analysis in enumerate(analysis.sources, start=1):
             selected = tuple(
                 finding
@@ -186,14 +187,21 @@ class ProtectSessionService:
                 selected,
                 replacement_mode=replacement_mode,
             )
-            namespaced = namespace_protection_result(
-                raw,
-                f"S{index}_{source_analysis.source.key}",
+            # Preserve the historical token shape for a normal one-document or
+            # one-paste Protect operation. Namespacing is only required when two
+            # or more independent sources share the same session/AI handoff.
+            result = (
+                namespace_protection_result(
+                    raw,
+                    f"S{index}_{source_analysis.source.key}",
+                )
+                if multi_source
+                else raw
             )
             protected.append(
                 ProtectSourceResult(
                     analysis=source_analysis,
-                    result=namespaced,
+                    result=result,
                 )
             )
         return ProtectSessionResult(analysis=analysis, sources=tuple(protected))
