@@ -1,4 +1,5 @@
 import os
+from dataclasses import replace
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
@@ -34,6 +35,26 @@ def _sample_result():
     )
 
 
+def _namespaced_result():
+    result = _sample_result()
+    person = "[[PG_GMAIL1_PERSON_001]]"
+    email = "[[PG_GMAIL1_EMAIL_ADDRESS_001]]"
+    text = result.combined_text.replace("[[PG_PERSON_001]]", person).replace(
+        "[[PG_EMAIL_ADDRESS_001]]", email
+    )
+    # Deliberately retain the pre-namespace numeric offsets. The visual layer
+    # must use exact replacement tokens rather than depending on stale offsets.
+    spans = (
+        replace(result.protected_spans[0], replacement_text=person),
+        replace(result.protected_spans[1], replacement_text=email),
+    )
+    return replace(
+        result,
+        protected_pages=(replace(result.protected_pages[0], text=text),),
+        protected_spans=spans,
+    )
+
+
 def test_colored_reflow_markup_uses_entity_palette():
     from ai_pm_lab_privacy_gate.infrastructure.documents.colored_reflow_pdf import (
         _styled_line_markup,
@@ -56,6 +77,28 @@ def test_colored_reflow_markup_uses_entity_palette():
     assert "[[PG_EMAIL_ADDRESS_001]]" in markup
 
 
+def test_colored_reflow_markup_keeps_category_after_namespace():
+    from ai_pm_lab_privacy_gate.infrastructure.documents.colored_reflow_pdf import (
+        _styled_line_markup,
+    )
+    from ai_pm_lab_privacy_gate.infrastructure.documents.pdf_service import PdfDocumentService
+
+    result = _namespaced_result()
+    text = result.combined_text
+    markup = _styled_line_markup(
+        text,
+        0,
+        len(text),
+        result.protected_spans,
+        PdfDocumentService.ENTITY_COLORS,
+    )
+
+    assert 'backColor="#DDE7FF"' in markup
+    assert 'backColor="#D9F3EE"' in markup
+    assert "[[PG_GMAIL1_PERSON_001]]" in markup
+    assert "[[PG_GMAIL1_EMAIL_ADDRESS_001]]" in markup
+
+
 def test_colored_reflow_pdf_builds(tmp_path):
     from pypdf import PdfReader
 
@@ -66,15 +109,15 @@ def test_colored_reflow_pdf_builds(tmp_path):
 
     output = write_colored_reflow_pdf(
         PdfDocumentService(),
-        _sample_result(),
+        _namespaced_result(),
         tmp_path / "protected.pdf",
     )
 
     assert output.exists()
     assert output.stat().st_size > 0
     extracted = "\n".join((page.extract_text() or "") for page in PdfReader(str(output)).pages)
-    assert "PG_PERSON_001" in extracted
-    assert "PG_EMAIL_ADDRESS_001" in extracted
+    assert "PG_GMAIL1_PERSON_001" in extracted
+    assert "PG_GMAIL1_EMAIL_ADDRESS_001" in extracted
 
 
 def test_protected_text_token_colors_use_existing_palette():
@@ -86,7 +129,7 @@ def test_protected_text_token_colors_use_existing_palette():
     from ai_pm_lab_privacy_gate.ui.protect_micro_ux import _apply_result_token_colors
 
     app = QApplication.instance() or QApplication([])
-    result = _sample_result()
+    result = _namespaced_result()
     editor = QPlainTextEdit()
     editor.setPlainText(result.combined_text)
     page = SimpleNamespace(
@@ -100,8 +143,8 @@ def test_protected_text_token_colors_use_existing_palette():
     _apply_result_token_colors(page, result)
     app.processEvents()
 
-    person_position = result.combined_text.index("[[PG_PERSON_001]]") + 2
-    email_position = result.combined_text.index("[[PG_EMAIL_ADDRESS_001]]") + 2
+    person_position = result.combined_text.index("[[PG_GMAIL1_PERSON_001]]") + 2
+    email_position = result.combined_text.index("[[PG_GMAIL1_EMAIL_ADDRESS_001]]") + 2
 
     person_cursor = QTextCursor(editor.document())
     person_cursor.setPosition(person_position)
@@ -112,3 +155,19 @@ def test_protected_text_token_colors_use_existing_palette():
     assert email_cursor.charFormat().background().color().name().upper() == "#D9F3EE"
 
     editor.close()
+
+
+def test_namespace_aware_office_palette_resolves_real_category():
+    from ai_pm_lab_privacy_gate.ui.protect_micro_ux import _NamespaceAwareColors
+
+    palette = _NamespaceAwareColors(
+        {
+            "PERSON": "#DDE7FF",
+            "EMAIL_ADDRESS": "#D9F3EE",
+            "PROPERTY_IDENTIFIER": "#D9F0F3",
+        }
+    )
+
+    assert palette.get("GMAIL1_PERSON") == "#DDE7FF"
+    assert palette.get("S2_EMAIL_ADDRESS") == "#D9F3EE"
+    assert palette.get("S1_DOCUMENT_PROPERTY_IDENTIFIER") == "#D9F0F3"
