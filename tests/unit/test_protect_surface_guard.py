@@ -15,9 +15,13 @@ def test_final_surface_guard_hides_detached_direct_child(tmp_path):
     app = QApplication.instance() or QApplication([])
     page = ProtectionPage(PrivacyGateService(), LibraryRepository(tmp_path / "data"))
     try:
+        page.show()
+        app.processEvents()
+
         ghost = QLabel("ghost", page)
         ghost.move(1, 140)
         ghost.show()
+        app.processEvents()
         assert ghost.isVisible()
 
         apply_protect_surface_guard(SimpleNamespace(protection_page=page))
