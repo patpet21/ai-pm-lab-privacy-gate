@@ -13,6 +13,7 @@ from ai_pm_lab_privacy_gate.domain.models import (
     ReplacementMapping,
 )
 from ai_pm_lab_privacy_gate.domain.profiles import PrivacyProfile
+from ai_pm_lab_privacy_gate.infrastructure.documents.document_pipeline import DocumentPipelineService
 from ai_pm_lab_privacy_gate.infrastructure.documents.office_service import OfficeDocumentService
 from ai_pm_lab_privacy_gate.infrastructure.documents.pdf_service import PdfDocumentService
 from ai_pm_lab_privacy_gate.infrastructure.pii.presidio_engine import PresidioPrivacyEngine
@@ -26,10 +27,15 @@ class PrivacyGateService:
         pii_engine: PresidioPrivacyEngine | None = None,
         pdf_service: PdfDocumentService | None = None,
         office_service: OfficeDocumentService | None = None,
+        document_pipeline: DocumentPipelineService | None = None,
     ) -> None:
         self._pii = pii_engine or PresidioPrivacyEngine()
-        self._pdf = pdf_service or PdfDocumentService()
-        self._office = office_service or OfficeDocumentService()
+        self._pipeline = document_pipeline or DocumentPipelineService(
+            pdf_service=pdf_service,
+            office_service=office_service,
+        )
+        self._pdf = self._pipeline.pdf
+        self._office = self._pipeline.office
 
     def document_from_text(self, text: str) -> AnalysisDocument:
         return AnalysisDocument(
@@ -41,14 +47,7 @@ class PrivacyGateService:
         return self._pdf.extract(path)
 
     def document_from_file(self, path: str | Path) -> AnalysisDocument:
-        source = Path(path)
-        if source.suffix.lower() == ".pdf":
-            return self.document_from_pdf(source)
-        if source.suffix.lower() in {".docx", ".xlsx"}:
-            return self._office.extract(source)
-        raise ValueError(
-            "Supported document formats are PDF, Word (.docx) and Excel (.xlsx)."
-        )
+        return self._pipeline.extract(path)
 
     def analyze(self, document: AnalysisDocument, profile: PrivacyProfile) -> tuple[Finding, ...]:
         if not document.has_text:
@@ -146,7 +145,6 @@ class PrivacyGateService:
         result: ProtectionResult,
         profile: PrivacyProfile,
     ) -> tuple[Finding, ...]:
-        """Run a fail-safe second analysis on the exact text about to leave the app."""
         protected_document = AnalysisDocument(
             source_kind="protected",
             pages=result.protected_pages,
@@ -172,7 +170,6 @@ class PrivacyGateService:
 
     @staticmethod
     def _without_overlaps(findings: tuple[Finding, ...]) -> tuple[Finding, ...]:
-        """Keep the strongest non-overlapping spans on each page."""
         accepted: list[Finding] = []
         for candidate in sorted(
             findings,
@@ -190,6 +187,9 @@ class PrivacyGateService:
 
     def save_protected_text(self, result: ProtectionResult, path: str | Path) -> Path:
         destination = Path(path)
+        if destination.suffix.lower() != ".txt":
+            destination = destination.with_suffix(".txt")
+        destination.parent.mkdir(parents=True, exist_ok=True)
         destination.write_text(result.combined_text, encoding="utf-8")
         return destination
 
@@ -214,3 +214,12 @@ class PrivacyGateService:
         source_document: AnalysisDocument,
     ) -> Path:
         return self._office.write_protected(source_document, result, path)
+
+    def save_protected_document(
+        self,
+        result: ProtectionResult,
+        path: str | Path,
+        source_document: AnalysisDocument,
+    ) -> Path:
+        """Write the safe copy in the same supported format as its source."""
+        return self._pipeline.write_protected(source_document, result, path)
