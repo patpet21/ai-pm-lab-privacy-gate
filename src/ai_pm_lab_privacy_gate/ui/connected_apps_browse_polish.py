@@ -17,10 +17,15 @@ from PySide6.QtWidgets import (
     QProgressDialog,
     QPushButton,
     QVBoxLayout,
+    QInputDialog,
 )
 
 from ai_pm_lab_privacy_gate.infrastructure.connectors.google_drive_import import materialize_google_drive_item
-from ai_pm_lab_privacy_gate.infrastructure.connectors.gmail_import import materialize_gmail_message
+from ai_pm_lab_privacy_gate.infrastructure.connectors.gmail_import import (
+    list_gmail_attachments,
+    materialize_gmail_attachment,
+    materialize_gmail_message,
+)
 
 
 _PROVIDER_BY_TITLE = {
@@ -53,6 +58,8 @@ def _display_kind(kind: str) -> str:
         "application/pdf": "PDF",
         "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "Word document",
         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": "Excel workbook",
+        "application/vnd.openxmlformats-officedocument.presentationml.presentation": "PowerPoint deck",
+        "text/plain": "Text file",
         "email": "Email",
         "workspace": "Workspace",
         "board": "Board",
@@ -248,9 +255,7 @@ def _open_source_browser(main_window, provider: str, title: str) -> None:
 
     def load(query: str = "") -> None:
         label = "Searching" if query else "Loading"
-        message = (
-            f"Searching {title} for ‘{query}’…" if query else f"Loading data from {title}…"
-        )
+        message = f"Searching {title} for ‘{query}’…" if query else f"Loading data from {title}…"
         try:
             operation = (
                 (lambda: service.search_items(provider, query, 60))
@@ -265,12 +270,7 @@ def _open_source_browser(main_window, provider: str, title: str) -> None:
                     lambda: _drive_call_with_refresh(service, operation),
                 )
             else:
-                rows = _run_busy(
-                    dialog,
-                    f"{label} {title}",
-                    message,
-                    lambda: _retry_network(operation),
-                )
+                rows = _run_busy(dialog, f"{label} {title}", message, lambda: _retry_network(operation))
         except Exception as exc:
             QMessageBox.warning(dialog, f"Unable to read {title}", _friendly_connection_error(title, exc))
             return
@@ -329,25 +329,72 @@ def _open_source_browser(main_window, provider: str, title: str) -> None:
 
         elif provider == "gmail":
             try:
-                local_path = _run_busy(
+                attachments = _run_busy(
                     dialog,
-                    "Importing from Gmail",
-                    "Preparing the selected email locally…",
-                    lambda: _retry_network(lambda: materialize_gmail_message(service, remote)),
+                    "Reading Gmail message",
+                    "Checking the selected email and its supported attachments…",
+                    lambda: _retry_network(lambda: list_gmail_attachments(service, remote)),
                 )
-                email_text = local_path.read_text(encoding="utf-8")
+            except Exception as exc:
+                QMessageBox.warning(dialog, "Unable to read Gmail attachments", _friendly_connection_error("Gmail", exc))
+                return
+
+            chosen_attachment = None
+            if attachments:
+                choices = ["Email message"] + [f"Attachment: {attachment.filename}" for attachment in attachments]
+                choice, ok = QInputDialog.getItem(
+                    dialog,
+                    "Choose Gmail content",
+                    "Protect the email message or one of its supported attachments:",
+                    choices,
+                    0,
+                    False,
+                )
+                if not ok:
+                    return
+                if choice != "Email message":
+                    chosen_attachment = attachments[choices.index(choice) - 1]
+
+            try:
+                if chosen_attachment is not None:
+                    local_path = _run_busy(
+                        dialog,
+                        "Importing Gmail attachment",
+                        f"Preparing {chosen_attachment.filename} locally…",
+                        lambda: _retry_network(
+                            lambda: materialize_gmail_attachment(service, remote, chosen_attachment)
+                        ),
+                    )
+                    document_button = getattr(protect, "_redesign_document_mode", None)
+                    if document_button is not None and not document_button.isChecked():
+                        document_button.click()
+                    protect.input_tabs.setCurrentIndex(1)
+                    protect.pdf_path.setText(str(local_path))
+                    item_title = f"{remote.title} • {chosen_attachment.filename}"
+                    status = f"Imported Gmail attachment: {chosen_attachment.filename} — ready for local scan"
+                else:
+                    local_path = _run_busy(
+                        dialog,
+                        "Importing from Gmail",
+                        "Preparing the selected email locally…",
+                        lambda: _retry_network(lambda: materialize_gmail_message(service, remote)),
+                    )
+                    email_text = local_path.read_text(encoding="utf-8")
+                    paste_button = getattr(protect, "_redesign_paste_mode", None)
+                    if paste_button is not None and not paste_button.isChecked():
+                        paste_button.click()
+                    protect.input_tabs.setCurrentIndex(0)
+                    protect.text_input.setPlainText(email_text)
+                    item_title = remote.title
+                    status = f"Imported from Gmail: {remote.title} — ready for local scan"
             except Exception as exc:
                 QMessageBox.warning(dialog, "Unable to import from Gmail", _friendly_connection_error("Gmail", exc))
                 return
-            paste_button = getattr(protect, "_redesign_paste_mode", None)
-            if paste_button is not None and not paste_button.isChecked():
-                paste_button.click()
-            protect.input_tabs.setCurrentIndex(0)
-            protect.text_input.setPlainText(email_text)
+
             source_parts = ["Gmail"]
             if account_label:
                 source_parts.append(account_label)
-            source_parts.append(remote.title)
+            source_parts.append(item_title)
             protect._external_source_name = " • ".join(source_parts)
             protect._external_source_metadata = {
                 "provider": "gmail",
@@ -355,10 +402,9 @@ def _open_source_browser(main_window, provider: str, title: str) -> None:
                 "account_id": account_id,
                 "account_label": account_label,
                 "item_id": str(remote.item_id or ""),
-                "item_title": str(remote.title or ""),
-                "item_kind": str(remote.kind or "email"),
+                "item_title": str(item_title or ""),
+                "item_kind": "attachment" if chosen_attachment is not None else str(remote.kind or "email"),
             }
-            status = f"Imported from Gmail: {remote.title} — ready for local scan"
 
         else:
             QMessageBox.information(
