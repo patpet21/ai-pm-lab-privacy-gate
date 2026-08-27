@@ -280,27 +280,24 @@ def apply_document_pipeline_v2_ui(main_window) -> None:
         if destination.suffix.lower() != suffix:
             destination = destination.with_suffix(suffix)
 
-        if kind in {"text", "txt"}:
-            self.service.save_protected_text(self.current_result, destination)
-            QMessageBox.information(
-                self,
-                "Protected file exported",
-                f"Protected TXT saved to:\n{destination}",
-            )
-            return
-
-        self.service.save_protected_document(
+        main_output, companion = self.service.save_protected_bundle(
             self.current_result,
             destination,
             source_document=self.current_document,
         )
-        companion = destination.with_suffix(".txt")
-        self.service.save_protected_text(self.current_result, companion)
+        if main_output == companion:
+            QMessageBox.information(
+                self,
+                "Protected file exported",
+                f"Protected TXT saved to:\n{main_output}",
+            )
+            return
+
         QMessageBox.information(
             self,
             "Protected files exported",
             f"Protected {suffix.upper().lstrip('.')} and TXT companion saved locally:\n"
-            f"{destination}\n{companion}",
+            f"{main_output}\n{companion}",
         )
 
     try:
