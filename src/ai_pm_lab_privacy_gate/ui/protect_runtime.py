@@ -99,6 +99,7 @@ def apply_protect_runtime(main_window, stage: str) -> None:
         from .gmail_component_capture_fix import apply_gmail_component_capture_fix
         from .protect_source_state_reset import apply_protect_source_state_reset
         from .protect_workflow_v2 import apply_protect_workflow_v2
+        from .protect_top_area_design import apply_protect_top_area_design
         from .protect_surface_guard import apply_protect_surface_guard
 
         apply_protect_usability_polish(main_window)
@@ -116,6 +117,10 @@ def apply_protect_runtime(main_window, stage: str) -> None:
         # document/session Privacy Check. This intentionally does not reuse the
         # legacy AI Preflight dialog.
         apply_protect_workflow_v2(main_window)
+
+        # Approved visual hierarchy. Presentation only: the same controllers and
+        # original provider logos remain in place underneath this treatment.
+        apply_protect_top_area_design(main_window)
 
         # Must be last. It observes the final widget tree rather than trying to
         # guess which intermediate patch may still show a detached legacy child.
