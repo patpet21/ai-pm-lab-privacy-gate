@@ -30,6 +30,22 @@ def _run_picker_busy(parent, title: str, message: str, operation):
         QApplication.processEvents()
 
 
+def _restore_privacygate_focus(main_window) -> None:
+    """Best-effort return to PrivacyGate after Google's system-browser Picker."""
+    try:
+        if main_window.isMinimized():
+            main_window.showNormal()
+        else:
+            main_window.show()
+        main_window.raise_()
+        main_window.activateWindow()
+        QApplication.processEvents()
+    except Exception:
+        # Foreground activation is ultimately controlled by the desktop OS. A
+        # focus failure must never interrupt a successful Drive import.
+        pass
+
+
 def _is_google_drive_browse(button: QAbstractButton) -> bool:
     if button.text().strip() != "Browse":
         return False
@@ -56,12 +72,19 @@ def _open_google_drive_picker(main_window) -> None:
             lambda: service.pick_google_drive_items(),
         )
     except Exception as exc:
+        _restore_privacygate_focus(main_window)
         QMessageBox.warning(
             main_window,
             "Unable to choose from Google Drive",
             _friendly_connection_error("Google Drive", exc),
         )
         return
+
+    # Google requires the native desktop Picker to use the system browser. As
+    # soon as Google returns the selection, bring the desktop app back forward so
+    # the user continues the workflow in PrivacyGate instead of staying on the
+    # callback/browser tab.
+    _restore_privacygate_focus(main_window)
 
     if not rows:
         main_window.statusBar().showMessage("Google Drive: no file selected", 5000)
@@ -111,6 +134,7 @@ def _open_google_drive_picker(main_window) -> None:
     }
 
     main_window._show_page(0)
+    _restore_privacygate_focus(main_window)
     main_window.statusBar().showMessage(
         f"Imported from Google Drive: {remote.title} — ready for local scan",
         9000,
