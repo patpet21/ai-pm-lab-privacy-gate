@@ -10,6 +10,9 @@ def test_redesigned_protection_page_constructs(tmp_path):
     from ai_pm_lab_privacy_gate.application.privacy_service import PrivacyGateService
     from ai_pm_lab_privacy_gate.infrastructure.storage.library_repository import LibraryRepository
     from ai_pm_lab_privacy_gate.ui.protection_page import ProtectionPage
+    from ai_pm_lab_privacy_gate.ui.protect_runtime import (
+        _wire_privacy_check_refresh_triggers,
+    )
     from ai_pm_lab_privacy_gate.ui.protect_workflow_v2 import apply_protect_workflow_v2
 
     app = QApplication.instance() or QApplication([])
@@ -34,6 +37,23 @@ def test_redesigned_protection_page_constructs(tmp_path):
         assert page._redesign_protect_button.isHidden()
         assert page.preview_tabs.tabText(page._privacy_check_tab_index) == "Privacy Check"
         assert not page.preview_tabs.isTabVisible(page._privacy_check_tab_index)
+
+        # Compatibility regression: the protected-copy completion signal must
+        # still request Privacy Check even if an older bound _refresh_preview
+        # callable bypasses the workflow wrapper. This is the desktop path that
+        # previously left the Privacy Check tab hidden after protection.
+        refresh_calls = []
+
+        def record_privacy_refresh():
+            refresh_calls.append(True)
+            page._privacy_check_generation += 1
+
+        page._refresh_privacy_check = record_privacy_refresh
+        _wire_privacy_check_refresh_triggers(page)
+        page._redesign_protect_button.setEnabled(True)
+        page._redesign_protect_button.click()
+        app.processEvents()
+        assert refresh_calls == [True]
 
         page.text_input.setPlainText(
             "Daniel Mercer lives at 26 Meridian Street"
