@@ -2,12 +2,19 @@ from __future__ import annotations
 
 from types import MethodType
 
-from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QPushButton, QVBoxLayout
+from PySide6.QtCore import QTimer, Qt
+from PySide6.QtWidgets import (
+    QFrame,
+    QHBoxLayout,
+    QLabel,
+    QPlainTextEdit,
+    QPushButton,
+    QSizePolicy,
+    QVBoxLayout,
+)
 
 
 NAVY = "#062B4F"
-TEAL = "#0B7180"
 MUTED = "#61798A"
 BORDER = "#D7E2EA"
 
@@ -57,6 +64,10 @@ def _reset_stale_source_state(page) -> None:
                 view.clear()
             except Exception:
                 pass
+
+    text_compare = getattr(page, "_privacygate_text_compare_protected", None)
+    if text_compare is not None:
+        text_compare.clear()
 
     if hasattr(page, "_redesign_protected_metric"):
         page._redesign_protected_metric.setText("0 protected")
@@ -118,32 +129,145 @@ def _install_source_isolation(page) -> None:
     page.pdf_path.textChanged.connect(file_changed)
 
 
-def _keep_protect_actions_visible(page) -> None:
-    """Keep Scan/Protect controls above the long document preview."""
+def _restore_action_dock_under_documents(page) -> None:
+    """Keep one Scan/Protect dock directly below the document comparison cards."""
     preview_card = getattr(page, "preview_card", None)
     preview_layout = preview_card.layout() if preview_card is not None else None
     action_bar = getattr(page, "_polish_protect_bottom_bar", None)
-    mode_bar = getattr(page, "_polish_protect_mode_bar", None)
+    preview_tabs = getattr(page, "preview_tabs", None)
     if not isinstance(preview_layout, QVBoxLayout) or action_bar is None:
         return
 
     preview_layout.removeWidget(action_bar)
-    insert_at = 0
-    if mode_bar is not None:
-        mode_index = preview_layout.indexOf(mode_bar)
-        if mode_index >= 0:
-            insert_at = mode_index + 1
+    insert_at = preview_layout.count()
+    if preview_tabs is not None:
+        tab_index = preview_layout.indexOf(preview_tabs)
+        if tab_index >= 0:
+            insert_at = tab_index + 1
     preview_layout.insertWidget(insert_at, action_bar)
     action_bar.setMaximumHeight(16777215)
     action_bar.show()
+
+    # The upper quick-source strip is for choosing a source only. Scan and
+    # Protect belong below the document cards, so do not duplicate them above.
+    for name in ("_protect_source_scan", "_protect_source_protect"):
+        duplicate = getattr(page, name, None)
+        if duplicate is not None:
+            duplicate.hide()
 
     protect_button = getattr(page, "_redesign_protect_button", None)
     if protect_button is not None:
         protect_button.show()
 
+    # Keep the cards useful but compact enough that their action dock is reachable
+    # without traversing an oversized multi-page preview. The PDF/Office viewers
+    # remain internally scrollable and Full document view can still expand them.
+    if preview_card is not None:
+        preview_card.setMinimumHeight(650)
+    if preview_tabs is not None:
+        preview_tabs.setMinimumHeight(500)
+    splitter = getattr(page, "document_preview_splitter", None)
+    if splitter is not None:
+        splitter.setMinimumHeight(430)
+
+
+def _install_text_email_compare(page) -> None:
+    """Render pasted text and Gmail email in the same Original/Protected compare UI."""
+    if bool(getattr(page, "_privacygate_text_compare_installed", False)):
+        return
+
+    protected_panel = getattr(page, "protected_document_panel", None)
+    protected_stack = getattr(page, "protected_view_stack", None)
+    if protected_panel is None or protected_stack is None:
+        return
+    protected_layout = protected_panel.layout()
+    if not isinstance(protected_layout, QVBoxLayout):
+        return
+
+    page._privacygate_text_compare_installed = True
+
+    protected_text = QPlainTextEdit(protected_panel)
+    protected_text.setReadOnly(True)
+    protected_text.setPlaceholderText(
+        "Protected text will appear here after you click Protect document."
+    )
+    protected_text.setSizePolicy(
+        QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
+    )
+    protected_text.setMinimumHeight(360)
+    protected_text.setStyleSheet(
+        "QPlainTextEdit{background:#FFFFFF;color:#17384E;border:1px solid #CFDBE5;"
+        "border-radius:8px;padding:14px;font-size:13px;}"
+    )
+    protected_layout.addWidget(protected_text, 1)
+    protected_text.hide()
+    page._privacygate_text_compare_protected = protected_text
+
+    def text_mode() -> bool:
+        return bool(
+            page.input_tabs.currentIndex() == 0
+            and not page.pdf_path.text().strip()
+        )
+
+    def refresh_compare() -> None:
+        if text_mode():
+            protected_stack.hide()
+            protected_text.show()
+            result = getattr(page, "current_result", None)
+            protected_text.setPlainText(result.combined_text if result is not None else "")
+            page.preview_tabs.setTabVisible(1, True)
+            page.comparison_note.setText(
+                "Original text or email on the left. Protected text on the right."
+            )
+            try:
+                page._set_pdf_controls_enabled(False)
+            except Exception:
+                pass
+        else:
+            protected_text.hide()
+            protected_stack.show()
+            document = getattr(page, "current_document", None)
+            if document is not None and document.source_kind in {"pdf", "docx", "xlsx"}:
+                page.preview_tabs.setTabVisible(1, True)
+
+    # Refresh after the existing scan/protect handlers so this view always follows
+    # the same controller state rather than maintaining a second protection flow.
+    original_analysis_ready = page._analysis_ready
+
+    def analysis_ready(self, payload: object) -> None:
+        original_analysis_ready(payload)
+        QTimer.singleShot(0, refresh_compare)
+
+    page._analysis_ready = MethodType(analysis_ready, page)
+
+    original_refresh_preview = page._refresh_preview
+
+    def refresh_preview(self, *args, **kwargs):
+        result = original_refresh_preview(*args, **kwargs)
+        QTimer.singleShot(0, refresh_compare)
+        return result
+
+    page._refresh_preview = MethodType(refresh_preview, page)
+
+    page.text_input.textChanged.connect(lambda: QTimer.singleShot(0, refresh_compare))
+    page.pdf_path.textChanged.connect(lambda _value: QTimer.singleShot(0, refresh_compare))
+
+    document_mode = getattr(page, "_redesign_document_mode", None)
+    paste_mode = getattr(page, "_redesign_paste_mode", None)
+    if document_mode is not None:
+        document_mode.clicked.connect(lambda: QTimer.singleShot(0, refresh_compare))
+    if paste_mode is not None:
+        paste_mode.clicked.connect(lambda: QTimer.singleShot(0, refresh_compare))
+
+    protect_button = getattr(page, "_redesign_protect_button", None)
+    if protect_button is not None:
+        protect_button.clicked.connect(lambda: QTimer.singleShot(0, refresh_compare))
+
+    QTimer.singleShot(0, refresh_compare)
+
 
 def apply_protect_workflow_visibility_fix(main_window) -> None:
-    """Keep Protect usable while exposing managed Preflight as a secondary view."""
+    """Keep the established file workflow primary and make Compare source-safe."""
     page = getattr(main_window, "protection_page", None)
     if page is None or bool(getattr(page, "_privacygate_protect_workflow_visibility_fixed", False)):
         return
@@ -155,14 +279,9 @@ def apply_protect_workflow_visibility_fix(main_window) -> None:
 
     page._privacygate_protect_workflow_visibility_fixed = True
 
-    # Keep the existing Scan/Protect dock above long previews so it never appears
-    # to disappear after a scan.
-    _keep_protect_actions_visible(page)
-
-    # Gmail/pasted text and local/Drive documents are mutually exclusive. Clear
-    # the previous renderer state when the source changes so stale PDFs cannot
-    # survive into a text/email scan.
+    _restore_action_dock_under_documents(page)
     _install_source_isolation(page)
+    _install_text_email_compare(page)
 
     page._privacygate_force_original_protect = True
 
@@ -222,7 +341,9 @@ def apply_protect_workflow_visibility_fix(main_window) -> None:
     back_row = QHBoxLayout(back_bar)
     back_row.setContentsMargins(10, 7, 10, 7)
     back_row.setSpacing(9)
-    back_note = QLabel("Preflight summary · your original Protect controls and current file remain available.")
+    back_note = QLabel(
+        "Preflight summary · your original Protect controls and current file remain available."
+    )
     back_note.setWordWrap(True)
     back_note.setStyleSheet(f"color:{MUTED};font-size:8px;")
     back_button = QPushButton("← Back to Protect / Files")
@@ -257,8 +378,12 @@ def apply_protect_workflow_visibility_fix(main_window) -> None:
     def render_with_navigation(self) -> None:
         original_render()
         available = _summary_available(page, original_should_show)
-        banner.setVisible(available and bool(getattr(page, "_privacygate_force_original_protect", True)))
-        back_bar.setVisible(available and not bool(getattr(page, "_privacygate_force_original_protect", True)))
+        banner.setVisible(
+            available and bool(getattr(page, "_privacygate_force_original_protect", True))
+        )
+        back_bar.setVisible(
+            available and not bool(getattr(page, "_privacygate_force_original_protect", True))
+        )
 
     summary.render = MethodType(render_with_navigation, summary)
     summary.render()
