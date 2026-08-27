@@ -310,3 +310,8 @@ def apply_gmail_component_capture_fix(main_window) -> None:
     # Final authoritative route. This intentionally replaces the older Gmail
     # wrappers installed earlier during startup.
     gmail_browser_route.open_gmail_inbox = routed
+
+    # Contextual Gmail source/view controls plus a truly animated connector loader.
+    from ai_pm_lab_privacy_gate.ui.gmail_package_ux import apply_gmail_package_ux
+
+    apply_gmail_package_ux(main_window)
