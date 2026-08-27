@@ -69,6 +69,7 @@ from .workspace_creation_feedback import apply_workspace_creation_feedback
 from .settings_service_pages_runtime import apply_settings_service_pages_2026_runtime
 from .feature_suite_2026 import apply_feature_suite_2026
 from .feature_suite_runtime import apply_feature_suite_runtime
+from .governance_hardening_2026 import apply_governance_hardening_2026
 
 install_mcp_log_guard()
 install_redesign()
@@ -152,6 +153,9 @@ def _main_window_init_with_brand(self, *args, **kwargs) -> None:
     # Wire the new capability model into live handoffs/profile scans and feed
     # Workspace Rules into the existing local account/workspace routing layer.
     apply_feature_suite_runtime(self)
+    # Final additive privacy/governance hardening runs only after all existing
+    # pages, policy controls and advanced services are wired.
+    apply_governance_hardening_2026(self)
 
 
 MainWindow.__init__ = _main_window_init_with_brand
