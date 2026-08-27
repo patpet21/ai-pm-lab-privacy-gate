@@ -67,6 +67,8 @@ def test_privacy_check_stays_reachable_across_view_navigation(tmp_path):
     page._protect_session_results = {"document": result}
     page._privacy_check_summary = object()
 
+    page.show()
+    app.processEvents()
     apply_protect_privacy_check_persistence(
         SimpleNamespace(protection_page=page)
     )
