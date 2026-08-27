@@ -138,8 +138,12 @@ def _install_source_switch_loading(page, controller) -> None:
             if key == old_key:
                 return previous_selector(key)
 
+            current_controller = getattr(self, "_unified_loading", None)
+            if current_controller is None:
+                return previous_selector(key)
+
             label = _source_label(self, key)
-            controller.begin(
+            current_controller.begin(
                 _SOURCE_SWITCH_KEY,
                 "Opening source preview",
                 f"Loading {label} locally…",
@@ -150,7 +154,7 @@ def _install_source_switch_loading(page, controller) -> None:
                 value = previous_selector(key)
             except Exception:
                 self._privacygate_source_switch_waiting = False
-                controller.end(_SOURCE_SWITCH_KEY)
+                current_controller.end(_SOURCE_SWITCH_KEY)
                 raise
 
             payload = dict(getattr(self, "_gmail_component_sources", {}) or {}).get(key, {})
@@ -166,7 +170,7 @@ def _install_source_switch_loading(page, controller) -> None:
             if not waits_for_document_preview:
                 QTimer.singleShot(
                     120,
-                    lambda: _finish_source_switch(self, controller),
+                    lambda: _finish_source_switch(self, current_controller),
                 )
             return value
 
@@ -188,7 +192,11 @@ def _install_source_switch_loading(page, controller) -> None:
                 previous_activate(target_page, key)
                 return
 
-            target_controller = getattr(target_page, "_unified_loading", controller)
+            target_controller = getattr(target_page, "_unified_loading", None)
+            if target_controller is None:
+                previous_activate(target_page, key)
+                return
+
             label = "document" if key == "document" else "pasted text"
             target_controller.begin(
                 _SOURCE_SWITCH_KEY,
