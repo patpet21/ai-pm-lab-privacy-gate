@@ -92,6 +92,7 @@ def apply_protect_runtime(main_window, stage: str) -> None:
         from .document_pipeline_v2_ui import apply_document_pipeline_v2_ui
         from .protect_session_upgrade import apply_protect_session_upgrade
         from .protect_session_runtime_fix import apply_protect_session_runtime_fix
+        from .local_protect_session_runtime import apply_local_protect_session_runtime
         from .gmail_package_browser import apply_gmail_package_browser
         from .gmail_package_runtime_fix import apply_gmail_package_runtime_fix
         from .gmail_component_session import apply_gmail_component_session
@@ -106,6 +107,14 @@ def apply_protect_runtime(main_window, stage: str) -> None:
         apply_document_pipeline_v2_ui(main_window)
         apply_protect_session_upgrade(main_window)
         apply_protect_session_runtime_fix(main_window)
+
+        # First engine migration: local Upload/Paste now enter the generic
+        # ProtectPackage -> ProtectSessionService core. The adapter deliberately
+        # mirrors compatibility state so the approved desktop UI does not move.
+        # Connector runtimes are installed afterwards and retain ownership of
+        # Gmail/Drive until their dedicated migration phases.
+        apply_local_protect_session_runtime(main_window)
+
         apply_gmail_package_browser(main_window)
         apply_gmail_package_runtime_fix(main_window)
         apply_gmail_component_session(main_window)
