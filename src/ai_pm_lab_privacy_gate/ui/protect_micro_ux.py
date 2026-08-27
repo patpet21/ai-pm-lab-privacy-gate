@@ -7,12 +7,35 @@ from PySide6.QtGui import QColor, QFont, QTextCharFormat, QTextCursor
 from PySide6.QtWidgets import QApplication
 
 from ai_pm_lab_privacy_gate.infrastructure.documents.colored_reflow_pdf import (
+    _replacement_entities,
     write_colored_reflow_pdf,
 )
+from ai_pm_lab_privacy_gate.ui.office_internal_preview import OfficeInternalPreview
 
 
 _DOCUMENT_KINDS = {"pdf", "docx", "xlsx", "pptx"}
 _SOURCE_SWITCH_KEY = "protect.source-switch"
+
+
+class _NamespaceAwareColors(dict):
+    """Resolve PG source namespaces back to the canonical entity palette."""
+
+    def get(self, key, default=None):
+        value = super().get(key)
+        if value is not None:
+            return value
+        raw = str(key or "")
+        for entity in sorted(self.keys(), key=len, reverse=True):
+            if raw.endswith("_" + entity):
+                return super().get(entity, default)
+        return default
+
+
+def _install_namespace_aware_office_colors(main_window) -> None:
+    for preview in main_window.findChildren(OfficeInternalPreview):
+        if isinstance(preview.colors, _NamespaceAwareColors):
+            continue
+        preview.colors = _NamespaceAwareColors(preview.colors)
 
 
 def _apply_result_token_colors(page, result) -> None:
@@ -21,17 +44,30 @@ def _apply_result_token_colors(page, result) -> None:
     editor = getattr(page, "preview", None)
     if editor is None or result is None:
         return
-    if editor.toPlainText() != str(getattr(result, "combined_text", "") or ""):
+    text = str(getattr(result, "combined_text", "") or "")
+    if editor.toPlainText() != text:
         return
-    for span in tuple(getattr(result, "combined_spans", ()) or ()):
-        cursor = QTextCursor(editor.document())
-        cursor.setPosition(span.start)
-        cursor.setPosition(span.end, QTextCursor.MoveMode.KeepAnchor)
-        formatting = QTextCharFormat()
-        formatting.setBackground(QColor(page._entity_color(span.entity_type)))
-        formatting.setForeground(QColor("#102A43"))
-        formatting.setFontWeight(int(QFont.Weight.DemiBold))
-        cursor.mergeCharFormat(formatting)
+
+    token_entities = _replacement_entities(
+        tuple(getattr(result, "protected_spans", ()) or ())
+    )
+    for token, entity_type in token_entities.items():
+        if not token:
+            continue
+        start = 0
+        while True:
+            start = text.find(token, start)
+            if start < 0:
+                break
+            cursor = QTextCursor(editor.document())
+            cursor.setPosition(start)
+            cursor.setPosition(start + len(token), QTextCursor.MoveMode.KeepAnchor)
+            formatting = QTextCharFormat()
+            formatting.setBackground(QColor(page._entity_color(entity_type)))
+            formatting.setForeground(QColor("#102A43"))
+            formatting.setFontWeight(int(QFont.Weight.DemiBold))
+            cursor.mergeCharFormat(formatting)
+            start += len(token)
 
 
 def _install_protected_text_colors(page) -> None:
@@ -192,6 +228,7 @@ def apply_protect_micro_ux(main_window) -> None:
         return
     page._protect_micro_ux = True
 
+    _install_namespace_aware_office_colors(main_window)
     _install_protected_text_colors(page)
     _install_colored_safe_reflow(page)
     _install_source_switch_loading(page, controller)
