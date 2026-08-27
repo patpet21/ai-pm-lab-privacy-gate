@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from collections.abc import Mapping
 from pathlib import Path
 from xml.sax.saxutils import escape
@@ -13,6 +14,21 @@ from reportlab.platypus import PageBreak, Paragraph, SimpleDocTemplate, Spacer
 from ai_pm_lab_privacy_gate.domain.models import ProtectedSpan, ProtectionResult
 
 
+def _replacement_entities(spans: tuple[ProtectedSpan, ...]) -> dict[str, str]:
+    """Map exact replacement tokens to their real category, ignoring namespaces."""
+
+    categories: dict[str, set[str]] = {}
+    for span in spans:
+        token = str(span.replacement_text or "")
+        if not token:
+            continue
+        categories.setdefault(token, set()).add(span.entity_type)
+    return {
+        token: next(iter(values)) if len(values) == 1 else "REDACTED"
+        for token, values in categories.items()
+    }
+
+
 def _styled_line_markup(
     text: str,
     line_start: int,
@@ -20,25 +36,33 @@ def _styled_line_markup(
     spans: tuple[ProtectedSpan, ...],
     entity_colors: Mapping[str, str],
 ) -> str:
-    """Return ReportLab paragraph markup with category-colored protected spans."""
+    """Return category-colored markup using exact replacement tokens.
 
-    cursor = line_start
+    Multi-source sessions deliberately add namespaces to reversible placeholders
+    (for example ``PG_GMAIL1_PERSON``). Exact token matching keeps the visual
+    category tied to ``PERSON`` even if legacy span offsets predate that namespace.
+    """
+
+    line = text[line_start:line_end]
+    token_entities = _replacement_entities(spans)
+    if not token_entities:
+        return escape(line)
+    tokens = sorted(token_entities, key=len, reverse=True)
+    pattern = re.compile("|".join(re.escape(token) for token in tokens))
+    cursor = 0
     chunks: list[str] = []
-    for span in sorted(spans, key=lambda item: (item.start, item.end)):
-        if span.end <= line_start or span.start >= line_end:
-            continue
-        start = max(line_start, span.start)
-        end = min(line_end, span.end)
-        if start > cursor:
-            chunks.append(escape(text[cursor:start]))
-        protected = escape(text[start:end])
-        color = entity_colors.get(span.entity_type, "#E7E9ED")
+    for match in pattern.finditer(line):
+        if match.start() > cursor:
+            chunks.append(escape(line[cursor : match.start()]))
+        token = match.group(0)
+        entity = token_entities[token]
+        color = entity_colors.get(entity, "#E7E9ED")
         chunks.append(
-            f'<font backColor="{color}" color="#102A43"><b>{protected}</b></font>'
+            f'<font backColor="{color}" color="#102A43"><b>{escape(token)}</b></font>'
         )
-        cursor = max(cursor, end)
-    if cursor < line_end:
-        chunks.append(escape(text[cursor:line_end]))
+        cursor = match.end()
+    if cursor < len(line):
+        chunks.append(escape(line[cursor:]))
     return "".join(chunks)
 
 
