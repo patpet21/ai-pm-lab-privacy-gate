@@ -92,6 +92,36 @@ def test_gmail_component_result_has_priority_over_stale_current_result():
     assert protected_text_for_active_source(page) == "safe attachment text"
 
 
+def test_migrated_drive_session_uses_session_result_not_stale_current_result():
+    document = _Document("xlsx", "drive-working-copy.xlsx")
+    page = _base_page(
+        _protect_session_results={
+            "document": _Result("protected Drive spreadsheet text"),
+        },
+        _protect_session_sources={
+            "document": {
+                "document": document,
+                "label": "Client Budget.xlsx",
+            },
+        },
+        _privacygate_active_source_key="document",
+        current_document=document,
+        current_result=_Result("stale pre-migration result"),
+        _external_source_metadata={
+            "provider": "google_drive",
+            "item_title": "Client Budget.xlsx",
+        },
+    )
+
+    key, active_document, result, label = resolve_active_source(page)
+
+    assert key == "document"
+    assert active_document is document
+    assert result.combined_text == "protected Drive spreadsheet text"
+    assert label == "Client Budget.xlsx"
+    assert protected_text_for_active_source(page) == "protected Drive spreadsheet text"
+
+
 def test_single_drive_or_document_source_falls_back_to_current_result():
     document = _Document("pdf", "drive-file.pdf")
     page = _base_page(
