@@ -8,7 +8,7 @@ from ai_pm_lab_privacy_gate.ui.apps_hub import AppsHubPage
 
 
 _INSTALLED = False
-_SPECIAL_APPS_ROUTES = {"gmail", "clickup", "asana", "trello", "notion", "monday", "jira"}
+_SPECIAL_APPS_ROUTES = {"google_drive", "gmail", "clickup", "asana", "trello", "notion", "monday", "jira"}
 
 
 def _choose_account_item(parent, title: str, label: str, items: list[str], current: int, editable: bool):
@@ -110,10 +110,10 @@ def install_account_aware_routing() -> None:
         return
     _INSTALLED = True
 
-    # At this point Gmail/ClickUp/project-platform route installers have already
-    # composed their final _open_source_browser chain. Wrapping the final chain
-    # covers Protect -> Connected Sources and the legacy Connected Apps surface
-    # for every current multi-account provider, including Google Drive.
+    # At this point Gmail/Drive/ClickUp/project-platform route installers have
+    # already composed their final _open_source_browser chain. Wrapping the final
+    # chain covers Protect -> Connected Sources and the legacy Connected Apps
+    # surface for every current multi-account provider.
     previous_open = connected_apps_browse_polish._open_source_browser
 
     # Organization's workspace-aware importer already contains an explicit account
@@ -130,10 +130,10 @@ def install_account_aware_routing() -> None:
     connected_apps_browse_polish._open_source_browser = account_aware_open
     protect_source_picker._open_source_browser = account_aware_open
 
-    # The dedicated Apps routes for these providers open their custom browser
-    # directly and therefore bypass AppsMultiAccount's generic account menu.
-    # Add the same centralized selector there. Google Drive is intentionally not
-    # included: AppsMultiAccount already handles it before the generic browser.
+    # Dedicated Apps routes open their custom browser directly, so apply the
+    # same centralized account selector before the provider-specific picker.
+    # This now includes Drive because its new hierarchical picker is also a
+    # dedicated route rather than the old generic browser.
     previous_apps_browse = AppsHubPage._browse
 
     def apps_browse(self: AppsHubPage, provider: str, title: str, supported: bool) -> None:
