@@ -139,3 +139,29 @@ def test_session_can_protect_only_selected_source_findings():
 
     assert result.source("one").result.applied_findings == ()
     assert len(result.source("two").result.applied_findings) == 1
+
+
+def test_single_source_preserves_historical_placeholder_shape():
+    package = ProtectPackage(
+        origin="local_upload",
+        label="agreement.pdf",
+        sources=(
+            ProtectSource.file_source(
+                key="document",
+                label="agreement.pdf",
+                path="agreement.pdf",
+            ),
+        ),
+    )
+    service = ProtectSessionService(_FakePrivacyService())
+    analysis = service.analyze(package, object())
+
+    result = service.protect(
+        analysis,
+        (finding.finding_id for finding in analysis.findings),
+    )
+
+    document = result.source("document")
+    assert document is not None
+    assert "[[PG_PERSON_001]]" in document.result.combined_text
+    assert "[[PG_S1_DOCUMENT_PERSON_001]]" not in document.result.combined_text
