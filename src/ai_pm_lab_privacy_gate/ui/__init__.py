@@ -11,6 +11,7 @@ from .brand_palette import apply_brand_palette
 from .brand_icons import apply_brand_icons
 from .connected_apps_browse_polish import apply_connected_apps_browse_polish
 from .protect_source_picker import apply_protect_source_picker
+from .document_pipeline_v2_ui import apply_document_pipeline_v2_ui
 from .protect_workspace_controls import apply_managed_protect_context
 from .protect_workspace_branding import apply_managed_protect_branding
 from .protect_late_cleanup import apply_protect_late_cleanup
@@ -150,27 +151,16 @@ def _main_window_init_with_brand(self, *args, **kwargs) -> None:
     apply_workspace_refresh_control(self)
     apply_workspace_creation_feedback(self)
     apply_settings_service_pages_2026_runtime(self)
-    # Advanced feature suite runs after the final Settings stack exists. It adds
-    # one launcher plus dedicated, capability-gated services without replacing
-    # Protect, Library, Organization or the existing workspace controls.
     apply_feature_suite_2026(self)
-    # Wire the new capability model into live handoffs/profile scans and feed
-    # Workspace Rules into the existing local account/workspace routing layer.
     apply_feature_suite_runtime(self)
-    # Final additive privacy/governance hardening runs only after all existing
-    # pages, policy controls and advanced services are wired.
     apply_governance_hardening_2026(self)
-    # Apply the final UI polish against the live premium Organization views.
     apply_governance_release_polish_2026(self)
-    # Keep the established Protect/file workflow primary; the managed summary is
-    # now an explicit secondary view instead of replacing the working controls.
     apply_protect_workflow_visibility_fix(self)
-    # Governance is a separate read-only product surface. It reads the existing
-    # Protect/Preflight/Activity state and never replaces the document workflow.
     apply_governance_center_2026(self)
-    # Final Protect pass is presentation-only: clearer guidance, tooltips and
-    # Advanced-settings explanations without moving/replacing any existing control.
     apply_protect_usability_polish(self)
+    # Final functional pass: keep every supported file source on one local
+    # import/protect/export path and add the TXT companion export.
+    apply_document_pipeline_v2_ui(self)
 
 
 MainWindow.__init__ = _main_window_init_with_brand
