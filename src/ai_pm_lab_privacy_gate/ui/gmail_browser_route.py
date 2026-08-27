@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from PySide6.QtWidgets import QPushButton
+
 from ai_pm_lab_privacy_gate.ui import connected_apps_browse_polish, protect_source_picker
 from ai_pm_lab_privacy_gate.ui.apps_hub import AppsHubPage
 from ai_pm_lab_privacy_gate.ui.drive_browser import open_drive_browser
@@ -10,7 +12,7 @@ _INSTALLED = False
 
 
 def install_gmail_browser_route() -> None:
-    """Route Google providers to their familiar provider-specific import pickers."""
+    """Route Google providers to familiar import pickers and clarify Apps actions."""
     global _INSTALLED
     if _INSTALLED:
         return
@@ -44,3 +46,13 @@ def install_gmail_browser_route() -> None:
         original_browse(self, provider, title, supported)
 
     AppsHubPage._browse = apps_browse
+
+    original_refresh = AppsHubPage.refresh
+
+    def apps_refresh(self: AppsHubPage) -> None:
+        original_refresh(self)
+        for button in self.findChildren(QPushButton, "AppBrowse"):
+            button.setText("Import")
+            button.setToolTip("Choose content from this connected app and bring it locally into Protect.")
+
+    AppsHubPage.refresh = apps_refresh
