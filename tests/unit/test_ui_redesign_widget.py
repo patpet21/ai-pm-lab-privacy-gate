@@ -1,4 +1,5 @@
 import os
+from types import SimpleNamespace
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
@@ -9,6 +10,7 @@ def test_redesigned_protection_page_constructs(tmp_path):
     from ai_pm_lab_privacy_gate.application.privacy_service import PrivacyGateService
     from ai_pm_lab_privacy_gate.infrastructure.storage.library_repository import LibraryRepository
     from ai_pm_lab_privacy_gate.ui.protection_page import ProtectionPage
+    from ai_pm_lab_privacy_gate.ui.protect_workflow_v2 import apply_protect_workflow_v2
 
     app = QApplication.instance() or QApplication([])
     page = ProtectionPage(PrivacyGateService(), LibraryRepository(tmp_path / "data"))
@@ -27,14 +29,20 @@ def test_redesigned_protection_page_constructs(tmp_path):
         assert not page.scan_button.isEnabled()
         assert not page._redesign_protect_button.isEnabled()
 
+        apply_protect_workflow_v2(SimpleNamespace(protection_page=page))
+        assert page.scan_button.text() == "Scan & Protect"
+        assert page._redesign_protect_button.isHidden()
+        assert page.preview_tabs.tabText(page._privacy_check_tab_index) == "Privacy Check"
+        assert not page.preview_tabs.isTabVisible(page._privacy_check_tab_index)
+
         page.text_input.setPlainText(
             "Daniel Mercer lives at 26 Meridian Street"
         )
         app.processEvents()
         assert page.scan_button.isEnabled()
+        assert page.scan_button.text() == "Scan & Protect"
         assert page._redesign_results_card.isHidden()
         assert page._protect_quick_actions.isHidden()
-        assert not page._redesign_protect_button.isEnabled()
 
         page.clear()
         app.processEvents()
@@ -42,6 +50,7 @@ def test_redesigned_protection_page_constructs(tmp_path):
         assert page._redesign_results_card.isHidden()
         assert page._protect_quick_actions.isHidden()
         assert page.setup_toggle.isHidden()
+        assert not page.preview_tabs.isTabVisible(page._privacy_check_tab_index)
 
         page.pdf_path.setText(str(tmp_path / "sample.pdf"))
         app.processEvents()
