@@ -18,6 +18,7 @@ from .gmail_package_browser import apply_gmail_package_browser
 from .gmail_package_runtime_fix import apply_gmail_package_runtime_fix
 from .gmail_component_session import apply_gmail_component_session
 from .gmail_component_preview_polish import apply_gmail_component_preview_polish
+from .gmail_component_capture_fix import apply_gmail_component_capture_fix
 from .protect_workspace_controls import apply_managed_protect_context
 from .protect_workspace_branding import apply_managed_protect_branding
 from .protect_late_cleanup import apply_protect_late_cleanup
@@ -179,6 +180,9 @@ def _main_window_init_with_brand(self, *args, **kwargs) -> None:
     # independent native sources with explicit source buttons and previews.
     apply_gmail_component_session(self)
     apply_gmail_component_preview_polish(self)
+    # Capture every actual materialized attachment path after all other Gmail
+    # wrappers are installed, so no late UI patch can hide/drop the primary file.
+    apply_gmail_component_capture_fix(self)
 
 
 MainWindow.__init__ = _main_window_init_with_brand
