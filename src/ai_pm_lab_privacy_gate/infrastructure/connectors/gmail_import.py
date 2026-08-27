@@ -24,6 +24,7 @@ class GmailAttachment:
     filename: str
     mime_type: str
     part_id: str = ""
+    inline_data: str = ""
 
 
 def _decode(data: str) -> str:
@@ -43,9 +44,12 @@ def _decode_bytes(data: str) -> bytes:
 
 def _collect_text(part: dict) -> list[str]:
     mime = str(part.get("mimeType") or "")
+    filename = str(part.get("filename") or "").strip()
     body = part.get("body") or {}
     chunks: list[str] = []
-    if mime == "text/plain" and body.get("data"):
+    # A text/plain attachment can also carry body.data. Do not merge attachment
+    # contents into the message body merely because Gmail encoded it inline.
+    if mime == "text/plain" and not filename and body.get("data"):
         text = _decode(str(body.get("data") or "")).strip()
         if text:
             chunks.append(text)
@@ -60,13 +64,16 @@ def _collect_attachments(part: dict) -> list[GmailAttachment]:
     filename = str(part.get("filename") or "").strip()
     body = part.get("body") or {}
     attachment_id = str(body.get("attachmentId") or "").strip()
-    if filename and attachment_id and Path(filename).suffix.lower() in SUPPORTED_ATTACHMENT_SUFFIXES:
+    inline_data = str(body.get("data") or "").strip()
+    supported = filename and Path(filename).suffix.lower() in SUPPORTED_ATTACHMENT_SUFFIXES
+    if supported and (attachment_id or inline_data):
         found.append(
             GmailAttachment(
                 attachment_id=attachment_id,
                 filename=filename,
                 mime_type=str(part.get("mimeType") or "application/octet-stream"),
                 part_id=str(part.get("partId") or ""),
+                inline_data=inline_data,
             )
         )
     for child in part.get("parts") or []:
@@ -115,20 +122,26 @@ def materialize_gmail_attachment(
     item: RemoteItem,
     attachment: GmailAttachment,
 ) -> Path:
-    """Download one supported Gmail attachment into PrivacyGate's local workspace."""
+    """Materialize one supported Gmail attachment in PrivacyGate's local workspace."""
     suffix = Path(attachment.filename).suffix.lower()
     if suffix not in SUPPORTED_ATTACHMENT_SUFFIXES:
         raise ValueError("Unsupported Gmail attachment format.")
-    token = service._token("gmail")
-    response = httpx.get(
-        f"https://gmail.googleapis.com/gmail/v1/users/me/messages/{item.item_id}/attachments/{attachment.attachment_id}",
-        headers={"Authorization": f"Bearer {token}"},
-        timeout=service.timeout,
-    )
-    response.raise_for_status()
-    encoded = str(response.json().get("data") or "")
+
+    encoded = attachment.inline_data
+    if not encoded:
+        if not attachment.attachment_id:
+            raise ValueError("Gmail did not provide attachment content.")
+        token = service._token("gmail")
+        response = httpx.get(
+            f"https://gmail.googleapis.com/gmail/v1/users/me/messages/{item.item_id}/attachments/{attachment.attachment_id}",
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=service.timeout,
+        )
+        response.raise_for_status()
+        encoded = str(response.json().get("data") or "")
     if not encoded:
         raise ValueError("Gmail returned an empty attachment.")
+
     target = new_working_path("gmail", _safe_filename(attachment.filename, suffix=""))
     target.write_bytes(_decode_bytes(encoded))
     return target
@@ -139,7 +152,7 @@ def materialize_gmail_message(service: ConnectedAppsService, item: RemoteItem) -
     payload = message.get("payload") or {}
     headers = _headers(payload)
     text_parts = _collect_text(payload)
-    if not text_parts and payload.get("body", {}).get("data"):
+    if not text_parts and not payload.get("filename") and payload.get("body", {}).get("data"):
         text_parts = [_decode(str(payload.get("body", {}).get("data") or ""))]
     body = "\n\n".join(part for part in text_parts if part.strip()).strip()
     if not body:
