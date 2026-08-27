@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 from pathlib import Path
 
 from pptx import Presentation
@@ -7,8 +8,12 @@ from pptx.util import Inches
 
 from ai_pm_lab_privacy_gate.application.privacy_service import PrivacyGateService
 from ai_pm_lab_privacy_gate.domain.models import Finding
-from ai_pm_lab_privacy_gate.infrastructure.connectors.gmail_import import _collect_attachments
+from ai_pm_lab_privacy_gate.infrastructure.connectors.gmail_import import (
+    _collect_attachments,
+    _collect_text,
+)
 from ai_pm_lab_privacy_gate.infrastructure.connectors.google_drive_import import _GOOGLE_EXPORTS
+from ai_pm_lab_privacy_gate.infrastructure.documents.document_pipeline import DocumentPipelineService
 from ai_pm_lab_privacy_gate.infrastructure.documents.restore_service import DocumentRestoreService
 
 
@@ -29,6 +34,12 @@ def _finding(document, value: str, entity_type: str = "PERSON") -> Finding:
     raise AssertionError(f"{value!r} was not extracted")
 
 
+def test_unified_pipeline_exposes_expected_formats() -> None:
+    assert DocumentPipelineService.SUPPORTED_SUFFIXES == {
+        ".pdf", ".docx", ".xlsx", ".pptx", ".txt"
+    }
+
+
 def test_txt_uses_same_document_pipeline_and_exports_utf8(tmp_path: Path) -> None:
     source = tmp_path / "message.txt"
     source.write_text("Contact Jane Smith at jane@example.com", encoding="utf-8")
@@ -39,7 +50,10 @@ def test_txt_uses_same_document_pipeline_and_exports_utf8(tmp_path: Path) -> Non
     finding = _finding(document, "Jane Smith")
     result = service.protect(document, (finding,))
 
-    output = service.save_protected_document(result, tmp_path / "message_protected.txt", document)
+    output, companion = service.save_protected_bundle(
+        result, tmp_path / "message_protected.txt", document
+    )
+    assert output == companion
     assert output.read_text(encoding="utf-8") == result.combined_text
     assert "Jane Smith" not in result.combined_text
     assert "[[PG_PERSON_001]]" in result.combined_text
@@ -58,12 +72,14 @@ def test_pptx_protect_companion_and_restore_round_trip(tmp_path: Path) -> None:
     assert document.source_kind == "pptx"
     result = service.protect(document, (_finding(document, "Jane Smith"),))
 
-    protected = service.save_protected_document(result, tmp_path / "deck_protected.pptx", document)
-    companion = service.save_protected_text(result, tmp_path / "deck_protected.txt")
+    protected, companion = service.save_protected_bundle(
+        result, tmp_path / "deck_protected.pptx", document
+    )
 
     protected_text = DocumentRestoreService.extract_text(protected)
     assert "Jane Smith" not in protected_text
     assert "[[PG_PERSON_001]]" in protected_text
+    assert companion == tmp_path / "deck_protected.txt"
     assert companion.read_text(encoding="utf-8") == result.combined_text
 
     restored = DocumentRestoreService().restore(
@@ -81,7 +97,8 @@ def test_google_slides_export_to_pptx() -> None:
     assert suffix == ".pptx"
 
 
-def test_gmail_supported_attachments_include_pptx_and_txt() -> None:
+def test_gmail_supported_attachments_include_pptx_txt_and_inline_data() -> None:
+    inline_text = base64.urlsafe_b64encode(b"private attachment text").decode("ascii")
     payload = {
         "mimeType": "multipart/mixed",
         "parts": [
@@ -95,7 +112,7 @@ def test_gmail_supported_attachments_include_pptx_and_txt() -> None:
                 "filename": "notes.txt",
                 "mimeType": "text/plain",
                 "partId": "2",
-                "body": {"attachmentId": "A2"},
+                "body": {"data": inline_text},
             },
             {
                 "filename": "photo.jpg",
@@ -107,3 +124,5 @@ def test_gmail_supported_attachments_include_pptx_and_txt() -> None:
     }
     attachments = _collect_attachments(payload)
     assert [item.filename for item in attachments] == ["deck.pptx", "notes.txt"]
+    assert attachments[1].inline_data == inline_text
+    assert _collect_text(payload) == []
