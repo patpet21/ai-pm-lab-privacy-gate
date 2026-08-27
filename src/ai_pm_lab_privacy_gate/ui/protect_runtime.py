@@ -3,7 +3,7 @@ from __future__ import annotations
 """Single orchestration point for the Protect desktop experience.
 
 The application historically accumulated Protect features as independent UI
-patches.  Keeping their imports and ordering here gives us one controlled
+patches. Keeping their imports and ordering here gives us one controlled
 migration boundary: behavior remains compatible today, while each legacy layer
 can be replaced behind this module without growing ``ui.__init__`` again.
 """
@@ -25,7 +25,7 @@ def install_protect_runtime() -> None:
     if _INSTALLED:
         return
 
-    # Preserve the proven installation order.  Imports stay lazy so this module
+    # Preserve the proven installation order. Imports stay lazy so this module
     # cannot create circular imports while the ``ui`` package is initializing.
     from .redesign import install_redesign
     from .protect_ghost_cleanup import install_protect_ghost_cleanup
@@ -48,7 +48,7 @@ def _completed_stages(main_window) -> set[str]:
 def apply_protect_runtime(main_window, stage: str) -> None:
     """Apply one ordered Protect stage to ``main_window`` exactly once.
 
-    Stages intentionally mirror the old startup positions.  That lets us clean
+    Stages intentionally mirror the old startup positions. That lets us clean
     the architecture without changing connector routing, workspace policy,
     preview generation, Gmail multi-source behavior, or export semantics.
     """
@@ -72,7 +72,7 @@ def apply_protect_runtime(main_window, stage: str) -> None:
         apply_managed_protect_branding(main_window)
 
     elif stage == "layout":
-        # Compatibility cleanup retained during migration.  The final surface
+        # Compatibility cleanup retained during migration. The final surface
         # guard below becomes the authoritative protection against detached
         # legacy widgets after *all* later Gmail/session passes have run.
         from .protect_late_cleanup import apply_protect_late_cleanup
@@ -85,7 +85,7 @@ def apply_protect_runtime(main_window, stage: str) -> None:
         apply_protect_workflow_visibility_fix(main_window)
 
     elif stage == "final":
-        # Keep the tested order from the previous startup chain.  This is the
+        # Keep the tested order from the previous startup chain. This is the
         # compatibility bridge while the underlying modules are progressively
         # folded into the generic ProtectSession implementation.
         from .protect_usability_polish import apply_protect_usability_polish
@@ -98,6 +98,7 @@ def apply_protect_runtime(main_window, stage: str) -> None:
         from .gmail_component_preview_polish import apply_gmail_component_preview_polish
         from .gmail_component_capture_fix import apply_gmail_component_capture_fix
         from .protect_source_state_reset import apply_protect_source_state_reset
+        from .protect_workflow_v2 import apply_protect_workflow_v2
         from .protect_surface_guard import apply_protect_surface_guard
 
         apply_protect_usability_polish(main_window)
@@ -111,7 +112,12 @@ def apply_protect_runtime(main_window, stage: str) -> None:
         apply_gmail_component_capture_fix(main_window)
         apply_protect_source_state_reset(main_window)
 
-        # Must be last.  It observes the final widget tree rather than trying to
+        # Fresh workflow boundary: one Scan & Protect action plus a contextual
+        # document/session Privacy Check. This intentionally does not reuse the
+        # legacy AI Preflight dialog.
+        apply_protect_workflow_v2(main_window)
+
+        # Must be last. It observes the final widget tree rather than trying to
         # guess which intermediate patch may still show a detached legacy child.
         apply_protect_surface_guard(main_window)
 
