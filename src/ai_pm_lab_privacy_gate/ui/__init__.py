@@ -17,6 +17,7 @@ from .protect_session_runtime_fix import apply_protect_session_runtime_fix
 from .gmail_package_browser import apply_gmail_package_browser
 from .gmail_package_runtime_fix import apply_gmail_package_runtime_fix
 from .gmail_component_session import apply_gmail_component_session
+from .gmail_component_preview_polish import apply_gmail_component_preview_polish
 from .protect_workspace_controls import apply_managed_protect_context
 from .protect_workspace_branding import apply_managed_protect_branding
 from .protect_late_cleanup import apply_protect_late_cleanup
@@ -177,6 +178,7 @@ def _main_window_init_with_brand(self, *args, **kwargs) -> None:
     # Final Gmail Protect pass: preserve body + every selected attachment as
     # independent native sources with explicit source buttons and previews.
     apply_gmail_component_session(self)
+    apply_gmail_component_preview_polish(self)
 
 
 MainWindow.__init__ = _main_window_init_with_brand
