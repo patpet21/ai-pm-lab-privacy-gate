@@ -9,12 +9,14 @@ import pdfplumber
 from PIL import ImageDraw
 from docx import Document
 from openpyxl import load_workbook
+from pptx import Presentation
 from reportlab.lib.utils import ImageReader
 from reportlab.pdfgen import canvas
 
 from ai_pm_lab_privacy_gate.domain.models import ReplacementMapping
 from ai_pm_lab_privacy_gate.infrastructure.documents.office_service import OfficeDocumentService
 from ai_pm_lab_privacy_gate.infrastructure.documents.pdf_service import PdfDocumentService
+from ai_pm_lab_privacy_gate.infrastructure.documents.pptx_service import PowerPointDocumentService
 
 
 TOKEN_PATTERN = re.compile(r"\[\[PG_[A-Z0-9_]+_\d+\]\]")
@@ -29,14 +31,9 @@ class RestoreReport:
 
 
 class DocumentRestoreService:
-    """Restore Privacy Gate placeholders inside a protected result locally.
+    """Restore Privacy Gate placeholders inside a protected result locally."""
 
-    The supplied document is treated as the layout source. The original source
-    document is neither required nor loaded. Only the encrypted mapping selected
-    from the local Library is used to replace matching tokens.
-    """
-
-    SUPPORTED_SUFFIXES = {".txt", ".pdf", ".docx", ".xlsx"}
+    SUPPORTED_SUFFIXES = {".txt", ".pdf", ".docx", ".xlsx", ".pptx"}
 
     def restore(
         self,
@@ -49,7 +46,7 @@ class DocumentRestoreService:
             raise FileNotFoundError(source_path)
         suffix = source_path.suffix.lower()
         if suffix not in self.SUPPORTED_SUFFIXES:
-            raise ValueError("Restore supports TXT, PDF, DOCX and XLSX files.")
+            raise ValueError("Restore supports TXT, PDF, DOCX, XLSX and PPTX files.")
         output = Path(destination)
         if output.suffix.lower() != suffix:
             output = output.with_suffix(suffix)
@@ -63,6 +60,8 @@ class DocumentRestoreService:
             count, present, unknown = self._restore_docx(source_path, output, replacements)
         elif suffix == ".xlsx":
             count, present, unknown = self._restore_xlsx(source_path, output, replacements)
+        elif suffix == ".pptx":
+            count, present, unknown = self._restore_pptx(source_path, output, replacements)
         else:
             count, present, unknown = self._restore_pdf(source_path, output, replacements)
         return RestoreReport(
@@ -97,7 +96,14 @@ class DocumentRestoreService:
                 )
             finally:
                 workbook.close()
-        raise ValueError("Restore supports TXT, PDF, DOCX and XLSX files.")
+        if suffix == ".pptx":
+            presentation = Presentation(str(path))
+            return "\n".join(
+                part.paragraph.text
+                for part in PowerPointDocumentService._iter_parts(presentation)
+                if part.paragraph.text
+            )
+        raise ValueError("Restore supports TXT, PDF, DOCX, XLSX and PPTX files.")
 
     @staticmethod
     def _restore_text(
@@ -145,7 +151,7 @@ class DocumentRestoreService:
         try:
             for part in OfficeDocumentService._iter_excel_parts(workbook):
                 text = OfficeDocumentService._excel_part_text(part)
-                restored, item_count, item_present, _unknown = self._restore_text(text, replacements)
+                restored, item_count, _item_present, _unknown = self._restore_text(text, replacements)
                 present.update(TOKEN_PATTERN.findall(text))
                 if not item_count:
                     continue
@@ -158,6 +164,31 @@ class DocumentRestoreService:
             workbook.save(output)
         finally:
             workbook.close()
+        return count, present.intersection(replacements), present.difference(replacements)
+
+    def _restore_pptx(
+        self, source: Path, output: Path, replacements: dict[str, str]
+    ) -> tuple[int, set[str], set[str]]:
+        presentation = Presentation(str(source))
+        count = 0
+        present: set[str] = set()
+        for part in PowerPointDocumentService._iter_parts(presentation):
+            paragraph = part.paragraph
+            text = paragraph.text
+            matches = list(TOKEN_PATTERN.finditer(text))
+            present.update(match.group(0) for match in matches)
+            for match in reversed(matches):
+                replacement = replacements.get(match.group(0))
+                if replacement is None:
+                    continue
+                PowerPointDocumentService._replace_paragraph_range(
+                    paragraph, match.start(), match.end(), replacement
+                )
+                count += 1
+        presentation.core_properties.author = "AI PM LAB Privacy Gate"
+        presentation.core_properties.last_modified_by = "AI PM LAB Privacy Gate"
+        presentation.core_properties.comments = "Restored locally by AI PM LAB Privacy Gate"
+        presentation.save(str(output))
         return count, present.intersection(replacements), present.difference(replacements)
 
     def _restore_pdf(
@@ -194,10 +225,6 @@ class DocumentRestoreService:
                                 min(rendered.width, int(match["x1"] * scale_x) + 5),
                                 min(rendered.height, int(match["bottom"] * scale_y) + 5),
                             )
-                            # Cover the protected token chip completely, then
-                            # draw the original value without a visible border.
-                            # On ordinary white document backgrounds this reads
-                            # like normal document text instead of a form field.
                             draw.rectangle(box, fill="#FFFFFF")
                             PdfDocumentService._draw_fitted_text(
                                 draw,
