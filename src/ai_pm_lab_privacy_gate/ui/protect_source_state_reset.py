@@ -26,6 +26,11 @@ def _gmail_body_text(page) -> str | None:
     return None
 
 
+def _source_state_reset_suspended(page) -> bool:
+    """Return True while a connector is atomically replacing Protect sources."""
+    return bool(getattr(page, "_protect_source_transaction", False))
+
+
 def _reset_gmail_state(page, *, clear_external_metadata: bool = True) -> None:
     """Drop Gmail-only routing state without touching the newly selected source."""
     page._gmail_component_manifest = ()
@@ -170,13 +175,20 @@ def apply_protect_source_state_reset(main_window) -> None:
     first, Scan kept re-running the old email package.  This runtime guard clears
     Gmail routing state as soon as a genuinely different document or pasted text
     source is selected.  Clear also flushes Qt's cached document renderers.
+
+    Connector imports may update compatibility widgets in several steps.  Those
+    writes are wrapped in ``_protect_source_transaction`` so the reset listeners
+    do not destroy a partially-built multi-source package mid-import.
     """
     page = getattr(main_window, "protection_page", None)
     if page is None or getattr(page, "_protect_source_state_reset", False):
         return
     page._protect_source_state_reset = True
+    page._protect_source_transaction = False
 
     def document_changed(value: str) -> None:
+        if _source_state_reset_suspended(page):
+            return
         manifest = tuple(getattr(page, "_gmail_component_manifest", ()) or ())
         if not manifest:
             return
@@ -195,6 +207,8 @@ def apply_protect_source_state_reset(main_window) -> None:
             _reset_gmail_state(page)
 
     def text_changed() -> None:
+        if _source_state_reset_suspended(page):
+            return
         manifest = tuple(getattr(page, "_gmail_component_manifest", ()) or ())
         if not manifest:
             return
@@ -215,10 +229,14 @@ def apply_protect_source_state_reset(main_window) -> None:
     def clear(self) -> None:
         # Clear routing first so text/path signals emitted by the legacy clear
         # cannot re-enter the Gmail package path.
-        _reset_gmail_state(self)
-        previous_clear()
-        _reset_gmail_state(self)
-        _clear_preview_surfaces(self)
+        self._protect_source_transaction = True
+        try:
+            _reset_gmail_state(self)
+            previous_clear()
+            _reset_gmail_state(self)
+            _clear_preview_surfaces(self)
+        finally:
+            self._protect_source_transaction = False
 
         helper = getattr(self, "_protect_session_source_helper", None)
         if helper is not None:
