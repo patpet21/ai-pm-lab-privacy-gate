@@ -111,29 +111,28 @@ def install_account_aware_routing() -> None:
     _INSTALLED = True
 
     # At this point Gmail/ClickUp/project-platform route installers have already
-    # composed their final _open_source_browser chain. Wrapping the final chain
-    # covers Protect -> Connected Sources and the legacy Connected Apps surface
-    # for every current multi-account provider, including Google Drive.
+    # composed their final _open_source_browser chain.
     previous_open = connected_apps_browse_polish._open_source_browser
 
-    # Organization's workspace-aware importer already contains an explicit account
-    # selector. Keep a reference to the composed browser before adding the generic
-    # picker so that flow does not ask the user to choose the same account twice.
-    connected_apps_browse_polish._privacygate_raw_open_source_browser = previous_open
-
-    def account_aware_open(main_window, provider: str, title: str) -> None:
-        service = _service_from_main_window(main_window)
-        if not choose_provider_account(main_window, service, provider, title):
-            return
+    def open_after_account_is_ready(main_window, provider: str, title: str) -> None:
+        """Open provider data when the caller already chose/activated an account."""
         if provider == "google_drive":
-            # Native desktop Google Picker must open in the system browser. Route
-            # every in-app Drive entry point through the same least-privilege flow
-            # instead of falling back to the old drive.readonly list/search UI.
             from ai_pm_lab_privacy_gate.ui.google_drive_picker_ui import _open_google_drive_picker
 
             _open_google_drive_picker(main_window)
             return
         previous_open(main_window, provider, title)
+
+    # Organization's workspace-aware importer already contains an explicit account
+    # selector. Give that flow a no-second-prompt opener, but still route Drive to
+    # the same embedded least-privilege Picker rather than the old files.list UI.
+    connected_apps_browse_polish._privacygate_raw_open_source_browser = open_after_account_is_ready
+
+    def account_aware_open(main_window, provider: str, title: str) -> None:
+        service = _service_from_main_window(main_window)
+        if not choose_provider_account(main_window, service, provider, title):
+            return
+        open_after_account_is_ready(main_window, provider, title)
 
     connected_apps_browse_polish._open_source_browser = account_aware_open
     protect_source_picker._open_source_browser = account_aware_open
