@@ -11,7 +11,6 @@ from PySide6.QtWidgets import (
 )
 
 from ai_pm_lab_privacy_gate.ui.apps_hub import AppsHubPage
-from ai_pm_lab_privacy_gate.ui.google_drive_picker_ui import _open_google_drive_picker
 
 
 _INSTALLED = False
@@ -50,8 +49,8 @@ def _confirm_google_drive_connection(parent) -> bool:
     root.addWidget(intro)
 
     points = (
-        "You choose the file you want to use in Google's own Drive Picker.",
-        "PrivacyGate receives access only to Drive files you explicitly select for the app.",
+        "You explicitly authorize the Drive files you want to use with PrivacyGate.",
+        "Authorized files can then be browsed inside PrivacyGate without leaving the app.",
         "The selected document is prepared as a local working copy for Scan and Protect.",
         "PrivacyGate does not modify or delete the original file in Google Drive.",
     )
@@ -62,7 +61,8 @@ def _confirm_google_drive_connection(parent) -> bool:
         root.addWidget(line)
 
     note = QLabel(
-        "Google's authorization window will open in your browser next. You can cancel there at any time."
+        "Google's authorization window will open in your browser only when account or file permission is required. "
+        "Normal browsing of already authorized Drive files stays inside PrivacyGate."
     )
     note.setWordWrap(True)
     note.setStyleSheet(
@@ -98,11 +98,11 @@ def _confirm_google_drive_connection(parent) -> bool:
 
 
 def install_google_drive_picker_route() -> None:
-    """Route only Google Drive through Picker while preserving other connectors.
+    """Keep Google Drive least-privilege while preserving an in-app browse UX.
 
-    Install this before AppsMultiAccount. The multi-account wrapper then keeps its
-    existing account selection/management behavior and delegates the selected
-    Drive account to this Picker route.
+    Account/file authorization uses drive.file. Once a file has been authorized,
+    Apps -> Google Drive -> Browse uses the same PrivacyGate source browser used by
+    Protect, so normal browsing and import do not leave the desktop app.
     """
     global _INSTALLED
     if _INSTALLED:
@@ -134,8 +134,8 @@ def install_google_drive_picker_route() -> None:
                     "Google Drive connected",
                     f"{result.account_label}\n\n"
                     "Least-privilege connection active.\n\n"
-                    "PrivacyGate does not request broad access to browse your entire Drive. "
-                    "Use Browse to open Google Picker and explicitly choose the file you want to import. "
+                    "PrivacyGate does not request broad access to your entire Drive. "
+                    "Use Browse to view the Drive files already authorized for PrivacyGate inside the app. "
                     "Selected files are prepared locally for Scan and Protect; PrivacyGate does not modify or delete the originals in Google Drive.",
                 )
             else:
@@ -156,7 +156,14 @@ def install_google_drive_picker_route() -> None:
             return
         if not supported or not self._connected(provider):
             return
-        _open_google_drive_picker(self.main_window)
+
+        # Deliberately use PrivacyGate's in-app source browser here. With
+        # drive.file, Drive files previously authorized for this app can be listed
+        # and searched without reopening the system browser. This matches the
+        # Protect -> Google Drive experience and keeps Apps consistent.
+        from ai_pm_lab_privacy_gate.ui.connected_apps_browse_polish import _open_source_browser
+
+        _open_source_browser(self.main_window, "google_drive", title)
 
     AppsHubPage._connect = connect
     AppsHubPage._browse = browse
