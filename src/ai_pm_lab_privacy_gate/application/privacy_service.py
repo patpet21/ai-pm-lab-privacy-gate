@@ -223,3 +223,22 @@ class PrivacyGateService:
     ) -> Path:
         """Write the safe copy in the same supported format as its source."""
         return self._pipeline.write_protected(source_document, result, path)
+
+    def save_protected_bundle(
+        self,
+        result: ProtectionResult,
+        path: str | Path,
+        source_document: AnalysisDocument,
+    ) -> tuple[Path, Path]:
+        """Export the safe source-format copy and its UTF-8 TXT companion.
+
+        TXT is a first-class protected format, so a TXT source naturally uses the
+        same path for both values. Every other supported file receives a sibling
+        ``.txt`` companion containing the exact protected text used by the Library
+        and AI handoff flows.
+        """
+        main = self.save_protected_document(result, path, source_document)
+        if main.suffix.lower() == ".txt":
+            return main, main
+        companion = self.save_protected_text(result, main.with_suffix(".txt"))
+        return main, companion
