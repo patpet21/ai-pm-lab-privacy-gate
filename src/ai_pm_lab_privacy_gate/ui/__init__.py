@@ -13,6 +13,7 @@ from .connected_apps_browse_polish import apply_connected_apps_browse_polish
 from .protect_source_picker import apply_protect_source_picker
 from .document_pipeline_v2_ui import apply_document_pipeline_v2_ui
 from .protect_session_upgrade import apply_protect_session_upgrade
+from .protect_session_runtime_fix import apply_protect_session_runtime_fix
 from .protect_workspace_controls import apply_managed_protect_context
 from .protect_workspace_branding import apply_managed_protect_branding
 from .protect_late_cleanup import apply_protect_late_cleanup
@@ -166,6 +167,7 @@ def _main_window_init_with_brand(self, *args, **kwargs) -> None:
     # document + pasted-text session, clearer source review, PPTX drag/drop,
     # visible fidelity status, and clearer Drive navigation.
     apply_protect_session_upgrade(self)
+    apply_protect_session_runtime_fix(self)
 
 
 MainWindow.__init__ = _main_window_init_with_brand
