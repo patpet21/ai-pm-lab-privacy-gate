@@ -1,13 +1,15 @@
 from __future__ import annotations
 
-"""Migration bridge: route local Upload/Paste through ProtectSessionService.
+"""Migration bridge: route local Upload/Paste and Drive through ProtectSessionService.
 
 The visible Protect page and its proven export/preview controls are intentionally
-left unchanged in this phase.  This bridge owns only the local engine boundary
-and mirrors session data back into the temporary compatibility dictionaries that
+left unchanged in this phase.  This bridge owns only the engine boundary and
+mirrors session data back into the temporary compatibility dictionaries that
 those controls still read.
 
-Drive and Gmail are explicitly excluded until their own migration phases.
+Google Drive joins the generic core only after its browser has materialized a
+supported remote item locally. Gmail remains explicitly excluded until its own
+migration phase.
 """
 
 from types import MethodType
@@ -15,6 +17,10 @@ from types import MethodType
 from PySide6.QtCore import QTimer, Qt
 from PySide6.QtWidgets import QMessageBox
 
+from ai_pm_lab_privacy_gate.application.google_drive_protect_sources import (
+    build_google_drive_protect_package,
+    should_use_google_drive_adapter,
+)
 from ai_pm_lab_privacy_gate.application.local_protect_sources import (
     LOCAL_DOCUMENT_KEY,
     build_local_protect_package,
@@ -43,7 +49,7 @@ def _primary_analysis(analysis):
 
 
 def apply_local_protect_session_runtime(main_window) -> None:
-    """Move only local Upload/Paste onto the generic N-source session service."""
+    """Move local Upload/Paste and materialized Drive files onto ProtectSession."""
 
     page = getattr(main_window, "protection_page", None)
     if page is None or getattr(page, "_local_protect_session_runtime", False):
@@ -72,18 +78,26 @@ def apply_local_protect_session_runtime(main_window) -> None:
     page.pdf_path.textChanged.connect(invalidate_local_session)
 
     def start_analysis(self) -> None:
-        # Connector-specific sources remain on their current proven routes until
-        # their dedicated migration. This prevents the first local migration from
-        # silently changing Drive provenance or Gmail package behavior.
         metadata = dict(getattr(self, "_external_source_metadata", {}) or {})
-        if not should_use_local_adapter(metadata):
+
+        if should_use_google_drive_adapter(metadata):
+            package = build_google_drive_protect_package(
+                document_path=self.pdf_path.text(),
+                pasted_text=self.text_input.toPlainText(),
+                source_metadata=metadata,
+                source_name=str(getattr(self, "_external_source_name", "") or ""),
+            )
+        elif should_use_local_adapter(metadata):
+            package = build_local_protect_package(
+                document_path=self.pdf_path.text(),
+                pasted_text=self.text_input.toPlainText(),
+            )
+        else:
+            # Gmail and every other connected provider remain on their current
+            # proven routes until their dedicated migration phases.
             previous_start()
             return
 
-        package = build_local_protect_package(
-            document_path=self.pdf_path.text(),
-            pasted_text=self.text_input.toPlainText(),
-        )
         if package is None:
             previous_start()
             return
@@ -130,7 +144,7 @@ def apply_local_protect_session_runtime(main_window) -> None:
         if callable(begin):
             begin(
                 "scan",
-                f"Scanning {package.source_count} local source"
+                f"Scanning {package.source_count} source"
                 f"{'s' if package.source_count != 1 else ''} with ProtectSession…",
             )
         worker = FunctionWorker(task)
