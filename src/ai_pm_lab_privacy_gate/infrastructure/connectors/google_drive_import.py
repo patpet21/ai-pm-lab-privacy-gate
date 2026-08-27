@@ -24,6 +24,7 @@ _GOOGLE_EXPORTS = {
     ),
 }
 _SUPPORTED_SUFFIXES = {".pdf", ".docx", ".xlsx", ".pptx", ".txt"}
+_IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".webp", ".tif", ".tiff", ".heic"}
 
 
 def _safe_filename(name: str) -> str:
@@ -36,7 +37,7 @@ def materialize_google_drive_item(service: ConnectedAppsService, item: RemoteIte
     if item.provider != "google_drive":
         raise ValueError("This importer currently supports Google Drive only.")
     if item.kind == "application/vnd.google-apps.folder":
-        raise ValueError("Choose a file, not a folder.")
+        raise ValueError("Open the folder first, then choose a file to import into Protect.")
 
     token = service._token("google_drive")
     headers = {"Authorization": f"Bearer {token}"}
@@ -56,9 +57,15 @@ def materialize_google_drive_item(service: ConnectedAppsService, item: RemoteIte
     else:
         suffix = Path(item.title).suffix.lower()
         if suffix not in _SUPPORTED_SUFFIXES:
+            if item.kind.startswith("image/") or suffix in _IMAGE_SUFFIXES:
+                raise ValueError(
+                    "This image is visible in Google Drive, but PrivacyGate cannot analyze image pixels yet. "
+                    "Local OCR/image protection is the next document-engine block. "
+                    "Supported now: PDF, DOCX, XLSX, PPTX, TXT, Google Docs, Google Sheets and Google Slides."
+                )
             raise ValueError(
-                "PrivacyGate can currently import PDF, Word (.docx), Excel (.xlsx), "
-                "PowerPoint (.pptx), text (.txt), Google Docs, Google Sheets and Google Slides from Drive."
+                "This Drive file type is not supported by Protect yet. Supported now: PDF, Word (.docx), "
+                "Excel (.xlsx), PowerPoint (.pptx), text (.txt), Google Docs, Google Sheets and Google Slides."
             )
         filename = _safe_filename(item.title)
         response = httpx.get(
