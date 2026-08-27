@@ -83,11 +83,10 @@ class PowerPointDocumentService:
     def _iter_parts(cls, presentation) -> Iterator[_PptxPart]:
         for slide_number, slide in enumerate(presentation.slides, start=1):
             yield from cls._iter_shapes(slide.shapes, slide_number)
-            try:
+            # Accessing ``notes_slide`` can create one. Only inspect notes that
+            # already exist so scanning never mutates an otherwise notes-free deck.
+            if getattr(slide, "has_notes_slide", False):
                 notes_frame = slide.notes_slide.notes_text_frame
-            except (AttributeError, ValueError):
-                notes_frame = None
-            if notes_frame is not None:
                 for index, paragraph in enumerate(notes_frame.paragraphs, start=1):
                     yield _PptxPart(paragraph, f"Slide {slide_number} · Notes {index}")
 
