@@ -4,6 +4,7 @@ from types import MethodType
 
 from PySide6.QtCore import QEventLoop, QThreadPool, QTimer, Qt
 from PySide6.QtWidgets import (
+    QApplication,
     QButtonGroup,
     QDialog,
     QFrame,
@@ -24,6 +25,7 @@ from ai_pm_lab_privacy_gate.ui.workers import FunctionWorker
 
 VIEW_ORIGINAL = "original"
 VIEW_TEXT = "text"
+VIEW_PROTECTED_TEXT = "protected_text"
 VIEW_COMPARE = "compare"
 
 
@@ -137,7 +139,8 @@ def _ensure_view_toolbar(page) -> None:
     buttons: dict[str, QPushButton] = {}
     for key, text in (
         (VIEW_ORIGINAL, "Original"),
-        (VIEW_TEXT, "Text analyzed"),
+        (VIEW_TEXT, "Analyzed text"),
+        (VIEW_PROTECTED_TEXT, "Protected text"),
         (VIEW_COMPARE, "Protected comparison"),
     ):
         button = QPushButton(text)
@@ -186,6 +189,16 @@ def _active_manifest_item(page):
     )
 
 
+def _set_document_surface(page, *, native_compare: bool) -> None:
+    """Prevent the legacy text overlay from covering Gmail file previews."""
+    text_overlay = getattr(page, "_privacygate_text_compare_protected", None)
+    protected_stack = getattr(page, "protected_view_stack", None)
+    if text_overlay is not None:
+        text_overlay.hide()
+    if protected_stack is not None:
+        protected_stack.setVisible(native_compare)
+
+
 def _sync_view_capabilities(page) -> None:
     _ensure_view_toolbar(page)
     toolbar = getattr(page, "_gmail_view_toolbar", None)
@@ -206,14 +219,23 @@ def _sync_view_capabilities(page) -> None:
     payload = getattr(page, "_gmail_component_sources", {}).get(key)
     result = getattr(page, "_gmail_component_results", {}).get(key)
     is_body = bool(item and item.get("component_kind") == "body")
+    is_file = bool(item and item.get("component_kind") == "attachment" and item.get("path"))
 
     buttons = page._gmail_view_buttons
     buttons[VIEW_ORIGINAL].setEnabled(item is not None)
-    buttons[VIEW_TEXT].setEnabled(payload is not None and not is_body)
+    # File text can be extracted on demand even before Scan; after Scan it reuses
+    # the exact AnalysisDocument already inspected by the detector.
+    buttons[VIEW_TEXT].setEnabled(is_file or (payload is not None and not is_body))
     buttons[VIEW_TEXT].setToolTip(
-        "Show the exact text extracted locally and analyzed by PrivacyGate."
+        "Show the exact text extracted locally from this attachment."
         if not is_body
         else "The email body is already plain text, so Original is the analyzed text."
+    )
+    buttons[VIEW_PROTECTED_TEXT].setEnabled(result is not None)
+    buttons[VIEW_PROTECTED_TEXT].setToolTip(
+        "Show the protected text representation for this source."
+        if result is not None
+        else "Available after Protect creates the safe copy."
     )
     buttons[VIEW_COMPARE].setEnabled(result is not None)
     buttons[VIEW_COMPARE].setToolTip(
@@ -225,6 +247,8 @@ def _sync_view_capabilities(page) -> None:
     mode = str(getattr(page, "_gmail_view_mode", VIEW_ORIGINAL) or VIEW_ORIGINAL)
     if mode == VIEW_TEXT and not buttons[VIEW_TEXT].isEnabled():
         mode = VIEW_ORIGINAL
+    if mode == VIEW_PROTECTED_TEXT and not buttons[VIEW_PROTECTED_TEXT].isEnabled():
+        mode = VIEW_ORIGINAL
     if mode == VIEW_COMPARE and not buttons[VIEW_COMPARE].isEnabled():
         mode = VIEW_ORIGINAL
     page._gmail_view_mode = mode
@@ -234,11 +258,11 @@ def _sync_view_capabilities(page) -> None:
     if is_body:
         detail = "email body"
     elif payload is None:
-        detail = "original ready · scan to inspect extracted text"
+        detail = "original ready · analyzed text available"
     elif result is None:
         detail = "scanned · analyzed text available"
     else:
-        detail = "protected · comparison available"
+        detail = "protected · text + comparison available"
     page._gmail_view_status.setText(f"{label} · {detail}")
 
 
@@ -251,10 +275,12 @@ def _show_analyzed_text(page) -> None:
     page.current_document = document
     page.preview.setPlainText(_document_to_analyzed_text(document))
     page.preview_tabs.setTabVisible(0, True)
+    page.preview_tabs.setTabText(0, "Analyzed text")
     page.preview_tabs.setCurrentIndex(0)
+    _set_document_surface(page, native_compare=False)
     metric = getattr(page, "_redesign_review_metric", None)
     if metric is not None:
-        metric.setText(f"Text analyzed · {payload.get('label', 'Source')}")
+        metric.setText(f"Analyzed text · {payload.get('label', 'Source')}")
     status = getattr(page, "_gmail_view_status", None)
     if status is not None:
         page_count = len(tuple(getattr(document, "pages", ()) or ()))
@@ -262,6 +288,69 @@ def _show_analyzed_text(page) -> None:
             f"{payload.get('label', 'Source')} · exact local text analyzed"
             + (f" · {page_count} pages/segments" if page_count else "")
         )
+
+
+def _show_protected_text(page) -> None:
+    key = str(getattr(page, "_gmail_component_active_key", "") or "")
+    payload = _ensure_source_document(page, key)
+    result = getattr(page, "_gmail_component_results", {}).get(key)
+    if payload is None or result is None:
+        return
+    page.current_document = payload["document"]
+    page.current_result = result
+    page.preview.setPlainText(result.combined_text)
+    # Reuse the established token-highlighting renderer when available.
+    render_preview = getattr(page, "_render_preview", None)
+    if callable(render_preview):
+        render_preview(result.combined_text)
+    page.preview_tabs.setTabVisible(0, True)
+    page.preview_tabs.setTabText(0, "Protected text")
+    page.preview_tabs.setCurrentIndex(0)
+    _set_document_surface(page, native_compare=False)
+    metric = getattr(page, "_redesign_review_metric", None)
+    if metric is not None:
+        metric.setText(f"Protected text · {payload.get('label', 'Source')}")
+    status = getattr(page, "_gmail_view_status", None)
+    if status is not None:
+        status.setText(f"{payload.get('label', 'Source')} · protected text ready")
+
+
+def _show_protected_comparison(page) -> None:
+    key = str(getattr(page, "_gmail_component_active_key", "") or "")
+    payload = _ensure_source_document(page, key)
+    result = getattr(page, "_gmail_component_results", {}).get(key)
+    item = _active_manifest_item(page)
+    if payload is None or result is None:
+        return
+
+    # The email body comparison remains the dedicated side-by-side text card.
+    if item and item.get("component_kind") == "body":
+        selector = getattr(page, "_gmail_view_base_selector", None)
+        if callable(selector):
+            selector(key)
+        return
+
+    page.current_document = payload["document"]
+    page.current_result = result
+    page.preview_tabs.setTabVisible(1, True)
+    page.preview_tabs.setTabText(0, "Protected text")
+    page.preview_tabs.setCurrentIndex(1)
+    _set_document_surface(page, native_compare=True)
+
+    # Render the actual protected PDF/DOCX/XLSX/PPTX immediately. Relying only
+    # on the legacy timer allowed the previous body text overlay to remain on
+    # top of the protected file panel when switching Gmail sources.
+    updater = getattr(page, "_update_document_comparison", None)
+    if callable(updater):
+        updater()
+        QApplication.processEvents()
+
+    metric = getattr(page, "_redesign_review_metric", None)
+    if metric is not None:
+        metric.setText(f"Protected comparison · {payload.get('label', 'Source')}")
+    status = getattr(page, "_gmail_view_status", None)
+    if status is not None:
+        status.setText(f"{payload.get('label', 'Source')} · protected file comparison")
 
 
 def _apply_view(page, mode: str) -> None:
@@ -272,11 +361,13 @@ def _apply_view(page, mode: str) -> None:
 
     if mode == VIEW_TEXT:
         _show_analyzed_text(page)
+    elif mode == VIEW_PROTECTED_TEXT:
+        _show_protected_text(page)
     elif mode == VIEW_COMPARE:
-        selector = getattr(page, "_gmail_view_base_selector", None)
-        if callable(selector):
-            selector(key)
+        _show_protected_comparison(page)
     else:
+        page.preview_tabs.setTabText(0, "Protected text")
+        _set_document_surface(page, native_compare=True)
         _show_unprotected_source(page, key)
 
     _sync_view_capabilities(page)
@@ -302,9 +393,9 @@ def apply_gmail_package_ux(main_window) -> None:
 
         def select_component(self, key: str) -> None:
             result = getattr(self, "_gmail_component_results", {}).get(key)
-            # Source switches default to the most useful view: original before
-            # protection, comparison once a protected result exists.
             self._gmail_component_active_key = key
+            # Keep source switching predictable: original before protection;
+            # protected comparison once that source has a protected result.
             self._gmail_view_mode = VIEW_COMPARE if result is not None else VIEW_ORIGINAL
             _apply_view(self, self._gmail_view_mode)
 
@@ -314,6 +405,9 @@ def apply_gmail_package_ux(main_window) -> None:
     if buttons:
         buttons[VIEW_ORIGINAL].clicked.connect(lambda: _apply_view(page, VIEW_ORIGINAL))
         buttons[VIEW_TEXT].clicked.connect(lambda: _apply_view(page, VIEW_TEXT))
+        buttons[VIEW_PROTECTED_TEXT].clicked.connect(
+            lambda: _apply_view(page, VIEW_PROTECTED_TEXT)
+        )
         buttons[VIEW_COMPARE].clicked.connect(lambda: _apply_view(page, VIEW_COMPARE))
 
     # The package installer calls this module function dynamically. Wrapping it
@@ -328,8 +422,12 @@ def apply_gmail_package_ux(main_window) -> None:
         gmail_component_session._refresh_component_strip = refresh_with_context
         gmail_component_session._gmail_package_ux_refresh_installed = True
 
-    # Update capabilities when Scan/Protect changes source/result state.
-    page.scan_button.clicked.connect(lambda: QTimer.singleShot(50, lambda: _sync_view_capabilities(page)))
+    # Update capabilities when Scan/Protect changes source/result state. The
+    # component runtime also refreshes after its workers complete; these timers
+    # are only a fast visual response, not the source of truth.
+    page.scan_button.clicked.connect(
+        lambda: QTimer.singleShot(50, lambda: _sync_view_capabilities(page))
+    )
     protect_button = getattr(page, "_redesign_protect_button", None)
     if protect_button is not None:
         protect_button.clicked.connect(
