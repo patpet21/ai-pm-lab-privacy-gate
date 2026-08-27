@@ -43,7 +43,7 @@ def _is_google_drive_browse(button: QAbstractButton) -> bool:
 
 
 def _open_google_drive_picker(main_window) -> None:
-    """Select and import one Drive file without leaving PrivacyGate."""
+    """Authorize/select and import one new Drive file without leaving PrivacyGate."""
     page = getattr(main_window, "cloud_automation_page", None)
     service = getattr(page, "_connected_apps_service", None) if page is not None else None
     if service is None or not hasattr(service, "google_drive_items_from_ids"):
@@ -136,18 +136,39 @@ def _open_google_drive_picker(main_window) -> None:
     )
 
 
-def apply_google_drive_picker_ui(main_window) -> None:
-    """Replace only Google Drive's Browse action with least-privilege Picker.
+def _open_google_drive_sources(main_window) -> None:
+    """Browse already-authorized Drive files in PrivacyGate's native source UI."""
+    page = getattr(main_window, "cloud_automation_page", None)
+    service = getattr(page, "_connected_apps_service", None) if page is not None else None
+    if service is None:
+        QMessageBox.warning(main_window, "Google Drive", "Connected Apps service is unavailable.")
+        return
 
-    Gmail and every other connected-app browser keep their existing behavior.
-    Google Drive selection stays inside the PrivacyGate desktop window after the
-    account has been connected.
+    # Keep the existing multi-account behavior: with more than one Drive account,
+    # explicitly choose/activate the source account before showing its authorized
+    # files. Import is deliberately inside the function to avoid module cycles at
+    # startup.
+    from ai_pm_lab_privacy_gate.ui.account_aware_routing import choose_provider_account
+    from ai_pm_lab_privacy_gate.ui.connected_apps_browse_polish import _open_source_browser
+
+    if not choose_provider_account(main_window, service, "google_drive", "Google Drive"):
+        return
+    _open_source_browser(main_window, "google_drive", "Google Drive")
+
+
+def apply_google_drive_picker_ui(main_window) -> None:
+    """Keep Apps browsing inside PrivacyGate while retaining Picker for new files.
+
+    Apps -> Google Drive -> Browse uses the same native available-sources dialog
+    used by Protect. The embedded Picker remains a separate authorization/import
+    mechanism for a new file, so normal browsing never opens the system browser.
+    Gmail and all other connectors are untouched.
     """
     page = getattr(main_window, "cloud_automation_page", None)
     if page is None:
         return
     service = getattr(page, "_connected_apps_service", None)
-    if service is None or not hasattr(service, "google_drive_items_from_ids"):
+    if service is None:
         return
 
     for button in page.findChildren(QAbstractButton):
@@ -157,7 +178,7 @@ def apply_google_drive_picker_ui(main_window) -> None:
             button.clicked.disconnect()
         except (RuntimeError, TypeError):
             pass
-        button.clicked.connect(lambda _checked=False: _open_google_drive_picker(main_window))
+        button.clicked.connect(lambda _checked=False: _open_google_drive_sources(main_window))
         button.setToolTip(
-            "Choose a Google Drive file inside PrivacyGate. Only files you explicitly select are accessible."
+            "Browse Google Drive files already authorized for PrivacyGate without leaving the app."
         )
