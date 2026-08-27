@@ -2,18 +2,17 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterator
+from typing import Any, Iterator
 
 from pptx import Presentation
 from pptx.enum.shapes import MSO_SHAPE_TYPE
-from pptx.text.text import _Paragraph
 
 from ai_pm_lab_privacy_gate.domain.models import AnalysisDocument, PageContent, ProtectionResult
 
 
 @dataclass(frozen=True, slots=True)
 class _PptxPart:
-    paragraph: _Paragraph
+    paragraph: Any
     location: str
 
 
@@ -134,7 +133,7 @@ class PowerPointDocumentService:
 
     @staticmethod
     def _replace_paragraph_range(
-        paragraph: _Paragraph, start: int, end: int, replacement: str
+        paragraph: Any, start: int, end: int, replacement: str
     ) -> None:
         runs = list(paragraph.runs)
         if not runs or "".join(run.text for run in runs) != paragraph.text:
@@ -155,7 +154,7 @@ class PowerPointDocumentService:
                 break
             cursor = next_cursor
 
-        if None in {start_run, start_offset, end_run, end_offset}:
+        if any(value is None for value in (start_run, start_offset, end_run, end_offset)):
             raise ValueError("Unable to map a protected value back to the PowerPoint deck.")
         assert start_run is not None and start_offset is not None
         assert end_run is not None and end_offset is not None
