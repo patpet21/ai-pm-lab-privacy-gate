@@ -17,10 +17,7 @@ import httpx
 AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
 TOKEN_URL = "https://oauth2.googleapis.com/token"
 DRIVE_SCOPES = (
-    "openid",
-    "email",
-    "profile",
-    "https://www.googleapis.com/auth/drive.readonly",
+    "https://www.googleapis.com/auth/drive.file",
 )
 GMAIL_SCOPES = (
     "openid",
@@ -124,6 +121,7 @@ def authorize_desktop(
     server.timeout = 0.5
     redirect_uri = f"http://127.0.0.1:{server.server_port}"
 
+    drive_file_only = tuple(requested_scopes) == DRIVE_SCOPES
     auth_query = urlencode({
         "client_id": client_id,
         "redirect_uri": redirect_uri,
@@ -133,7 +131,8 @@ def authorize_desktop(
         # Deliberately force account choice for multi-account even when the
         # browser already has a Google session.
         "prompt": "select_account consent",
-        "include_granted_scopes": "true",
+        # Never fold an old broad Drive grant into a new drive.file-only token.
+        "include_granted_scopes": "false" if drive_file_only else "true",
         "state": state,
         "code_challenge": challenge,
         "code_challenge_method": "S256",

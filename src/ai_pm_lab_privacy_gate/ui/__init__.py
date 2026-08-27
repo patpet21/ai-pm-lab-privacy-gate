@@ -10,6 +10,7 @@ from .google_oauth_ui import install_google_oauth_ui
 from .brand_palette import apply_brand_palette
 from .brand_icons import apply_brand_icons
 from .connected_apps_browse_polish import apply_connected_apps_browse_polish
+from .google_drive_picker_ui import apply_google_drive_picker_ui
 from .protect_source_picker import apply_protect_source_picker
 from .protect_workspace_controls import apply_managed_protect_context
 from .protect_workspace_branding import apply_managed_protect_branding
@@ -113,6 +114,7 @@ def _main_window_init_with_brand(self, *args, **kwargs) -> None:
     apply_brand_palette(self)
     apply_brand_icons(self)
     apply_connected_apps_browse_polish(self)
+    apply_google_drive_picker_ui(self)
     apply_protect_source_picker(self)
     apply_apps_mcp_split(self)
     apply_business_main_window(self)
