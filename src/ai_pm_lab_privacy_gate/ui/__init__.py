@@ -70,6 +70,7 @@ from .settings_service_pages_runtime import apply_settings_service_pages_2026_ru
 from .feature_suite_2026 import apply_feature_suite_2026
 from .feature_suite_runtime import apply_feature_suite_runtime
 from .governance_hardening_2026 import apply_governance_hardening_2026
+from .governance_release_polish_2026 import apply_governance_release_polish_2026
 
 install_mcp_log_guard()
 install_redesign()
@@ -156,6 +157,8 @@ def _main_window_init_with_brand(self, *args, **kwargs) -> None:
     # Final additive privacy/governance hardening runs only after all existing
     # pages, policy controls and advanced services are wired.
     apply_governance_hardening_2026(self)
+    # Apply the final UI polish against the live premium Organization views.
+    apply_governance_release_polish_2026(self)
 
 
 MainWindow.__init__ = _main_window_init_with_brand
