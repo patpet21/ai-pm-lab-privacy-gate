@@ -38,15 +38,14 @@ def _install_namespace_aware_office_colors(main_window) -> None:
         preview.colors = _NamespaceAwareColors(preview.colors)
 
 
-def _apply_result_token_colors(page, result) -> None:
-    """Apply the canonical category palette to the currently rendered safe text."""
+def _color_result_tokens(page, editor, result) -> None:
+    """Apply category colors by exact token text, independent of namespaced offsets."""
 
-    editor = getattr(page, "preview", None)
     if editor is None or result is None:
         return
     text = str(getattr(result, "combined_text", "") or "")
     if editor.toPlainText() != text:
-        return
+        editor.setPlainText(text)
 
     token_entities = _replacement_entities(
         tuple(getattr(result, "protected_spans", ()) or ())
@@ -70,20 +69,38 @@ def _apply_result_token_colors(page, result) -> None:
             start += len(token)
 
 
+def _apply_result_token_colors(page, result) -> None:
+    """Apply the canonical category palette to the main protected-text preview."""
+
+    _color_result_tokens(page, getattr(page, "preview", None), result)
+
+
 def _install_protected_text_colors(page) -> None:
     from ai_pm_lab_privacy_gate.ui import protect_view_experience as view
 
-    if getattr(view, "_privacygate_category_color_patch", False):
-        return
-    view._privacygate_category_color_patch = True
-    previous = view._render_protected_text
+    if not getattr(view, "_privacygate_category_color_patch", False):
+        view._privacygate_category_color_patch = True
+        previous = view._render_protected_text
 
-    def render_protected_text(target_page) -> None:
-        previous(target_page)
-        _key, _document, result, _label = view.resolve_active_source(target_page)
-        _apply_result_token_colors(target_page, result)
+        def render_protected_text(target_page) -> None:
+            previous(target_page)
+            _key, _document, result, _label = view.resolve_active_source(target_page)
+            _apply_result_token_colors(target_page, result)
 
-    view._render_protected_text = render_protected_text
+        view._render_protected_text = render_protected_text
+
+    # Gmail body/non-document comparison has its own editor and historically used
+    # numeric spans. Namespacing makes those offsets stale, so use the exact token
+    # text here as well while retaining the original renderer contract.
+    from ai_pm_lab_privacy_gate.ui import gmail_component_session as gmail
+
+    if not getattr(gmail, "_privacygate_category_color_patch", False):
+        gmail._privacygate_category_color_patch = True
+
+        def render_gmail_tokens(target_page, editor, result) -> None:
+            _color_result_tokens(target_page, editor, result)
+
+        gmail._render_tokens = render_gmail_tokens
 
 
 def _install_colored_safe_reflow(page) -> None:
