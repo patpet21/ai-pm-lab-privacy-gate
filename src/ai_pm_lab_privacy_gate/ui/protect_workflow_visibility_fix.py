@@ -3,6 +3,7 @@ from __future__ import annotations
 from types import MethodType
 
 from PySide6.QtCore import QTimer, Qt
+from PySide6.QtGui import QColor, QFont, QTextCharFormat, QTextCursor
 from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
@@ -26,8 +27,8 @@ def _summary_available(page, original_should_show) -> bool:
         return False
 
 
-def _reset_stale_source_state(page) -> None:
-    """Invalidate the previous source without clearing the newly selected input."""
+def _reset_stale_source_state(page, *, preserve_original_preview: bool = False) -> None:
+    """Invalidate the previous analysis without destroying the newly selected source."""
     page.current_document = None
     page.current_findings = ()
     page.current_result = None
@@ -49,7 +50,14 @@ def _reset_stale_source_state(page) -> None:
     if preview is not None:
         preview.clear()
 
-    for document_name in ("original_pdf_document", "protected_pdf_document"):
+    # When pdf_path changes, the existing redesign has already loaded the NEW
+    # source into the left/original viewer. Do not close that renderer again.
+    pdf_names = (
+        ("protected_pdf_document",)
+        if preserve_original_preview
+        else ("original_pdf_document", "protected_pdf_document")
+    )
+    for document_name in pdf_names:
         document = getattr(page, document_name, None)
         if document is not None:
             try:
@@ -57,7 +65,12 @@ def _reset_stale_source_state(page) -> None:
             except Exception:
                 pass
 
-    for view_name in ("original_office_view", "protected_office_view"):
+    office_names = (
+        ("protected_office_view",)
+        if preserve_original_preview
+        else ("original_office_view", "protected_office_view")
+    )
+    for view_name in office_names:
         view = getattr(page, view_name, None)
         if view is not None:
             try:
@@ -121,7 +134,9 @@ def _install_source_isolation(page) -> None:
             if page.text_input.toPlainText():
                 page.text_input.clear()
             clear_provenance()
-            _reset_stale_source_state(page)
+            # Preserve the just-loaded PDF/Office source on the left. Only stale
+            # analysis/protected-renderer state must be invalidated here.
+            _reset_stale_source_state(page, preserve_original_preview=True)
         finally:
             page._privacygate_source_reset_guard = False
 
@@ -129,8 +144,8 @@ def _install_source_isolation(page) -> None:
     page.pdf_path.textChanged.connect(file_changed)
 
 
-def _restore_action_dock_under_documents(page) -> None:
-    """Keep one Scan/Protect dock directly below the document comparison cards."""
+def _restore_dual_action_controls(page) -> None:
+    """Keep Scan/Protect both above and directly below the document cards."""
     preview_card = getattr(page, "preview_card", None)
     preview_layout = preview_card.layout() if preview_card is not None else None
     action_bar = getattr(page, "_polish_protect_bottom_bar", None)
@@ -138,6 +153,7 @@ def _restore_action_dock_under_documents(page) -> None:
     if not isinstance(preview_layout, QVBoxLayout) or action_bar is None:
         return
 
+    # Bottom dock: directly below Original/Protected cards.
     preview_layout.removeWidget(action_bar)
     insert_at = preview_layout.count()
     if preview_tabs is not None:
@@ -148,20 +164,20 @@ def _restore_action_dock_under_documents(page) -> None:
     action_bar.setMaximumHeight(16777215)
     action_bar.show()
 
-    # The upper quick-source strip is for choosing a source only. Scan and
-    # Protect belong below the document cards, so do not duplicate them above.
+    # Upper dock: keep the compact Scan + Protect shortcuts as well. They are
+    # already wired to the exact same controller buttons, so there is no second
+    # protection path and no duplicated business logic.
     for name in ("_protect_source_scan", "_protect_source_protect"):
         duplicate = getattr(page, name, None)
         if duplicate is not None:
-            duplicate.hide()
+            duplicate.show()
 
     protect_button = getattr(page, "_redesign_protect_button", None)
     if protect_button is not None:
         protect_button.show()
 
-    # Keep the cards useful but compact enough that their action dock is reachable
-    # without traversing an oversized multi-page preview. The PDF/Office viewers
-    # remain internally scrollable and Full document view can still expand them.
+    # Keep the compare area large but bounded; PDF/Office viewers scroll inside
+    # their own cards, while Full document view remains available for expansion.
     if preview_card is not None:
         preview_card.setMinimumHeight(650)
     if preview_tabs is not None:
@@ -171,8 +187,31 @@ def _restore_action_dock_under_documents(page) -> None:
         splitter.setMinimumHeight(430)
 
 
+def _render_colored_protected_text(page, target: QPlainTextEdit) -> None:
+    result = getattr(page, "current_result", None)
+    target.setPlainText(result.combined_text if result is not None else "")
+    if result is None:
+        return
+
+    for span in tuple(getattr(result, "combined_spans", ()) or ()):
+        start = max(0, int(getattr(span, "start", 0)))
+        end = max(start, int(getattr(span, "end", start)))
+        if end <= start:
+            continue
+        cursor = QTextCursor(target.document())
+        cursor.setPosition(start)
+        cursor.setPosition(end, QTextCursor.MoveMode.KeepAnchor)
+        token_format = QTextCharFormat()
+        token_format.setBackground(
+            QColor(page._entity_color(str(getattr(span, "entity_type", "") or "CUSTOM")))
+        )
+        token_format.setForeground(QColor("#102A43"))
+        token_format.setFontWeight(int(QFont.Weight.DemiBold))
+        cursor.mergeCharFormat(token_format)
+
+
 def _install_text_email_compare(page) -> None:
-    """Render pasted text and Gmail email in the same Original/Protected compare UI."""
+    """Render pasted text/Gmail as Original vs protected, with category colors."""
     if bool(getattr(page, "_privacygate_text_compare_installed", False)):
         return
 
@@ -213,8 +252,7 @@ def _install_text_email_compare(page) -> None:
         if text_mode():
             protected_stack.hide()
             protected_text.show()
-            result = getattr(page, "current_result", None)
-            protected_text.setPlainText(result.combined_text if result is not None else "")
+            _render_colored_protected_text(page, protected_text)
             page.preview_tabs.setTabVisible(1, True)
             page.comparison_note.setText(
                 "Original text or email on the left. Protected text on the right."
@@ -230,8 +268,6 @@ def _install_text_email_compare(page) -> None:
             if document is not None and document.source_kind in {"pdf", "docx", "xlsx"}:
                 page.preview_tabs.setTabVisible(1, True)
 
-    # Refresh after the existing scan/protect handlers so this view always follows
-    # the same controller state rather than maintaining a second protection flow.
     original_analysis_ready = page._analysis_ready
 
     def analysis_ready(self, payload: object) -> None:
@@ -267,7 +303,7 @@ def _install_text_email_compare(page) -> None:
 
 
 def apply_protect_workflow_visibility_fix(main_window) -> None:
-    """Keep the established file workflow primary and make Compare source-safe."""
+    """Restore the established Protect UX while keeping managed Preflight optional."""
     page = getattr(main_window, "protection_page", None)
     if page is None or bool(getattr(page, "_privacygate_protect_workflow_visibility_fixed", False)):
         return
@@ -279,7 +315,7 @@ def apply_protect_workflow_visibility_fix(main_window) -> None:
 
     page._privacygate_protect_workflow_visibility_fixed = True
 
-    _restore_action_dock_under_documents(page)
+    _restore_dual_action_controls(page)
     _install_source_isolation(page)
     _install_text_email_compare(page)
 
