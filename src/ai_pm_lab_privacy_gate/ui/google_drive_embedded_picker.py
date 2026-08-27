@@ -3,9 +3,11 @@ from __future__ import annotations
 import json
 import os
 import re
+import threading
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
-from PySide6.QtCore import QUrl
+from PySide6.QtCore import QTimer, QUrl
 from PySide6.QtWidgets import QDialog, QLabel, QVBoxLayout
 
 
@@ -77,7 +79,7 @@ def _picker_html(access_token: str, developer_key: str, app_id: str) -> str:
   <style>
     html, body {{ width:100%; height:100%; margin:0; overflow:hidden; background:#f7fafc; font-family:Segoe UI, Arial, sans-serif; }}
     #loading {{ position:fixed; inset:0; display:grid; place-items:center; color:#526c7d; font-size:14px; }}
-    #error {{ display:none; padding:28px; color:#7a2633; white-space:pre-wrap; }}
+    #error {{ display:none; padding:28px; color:#7a2633; white-space:pre-wrap; line-height:1.5; }}
   </style>
 </head>
 <body>
@@ -89,6 +91,7 @@ def _picker_html(access_token: str, developer_key: str, app_id: str) -> str:
     const APP_ID = {app};
     const MIME_TYPES = {mime_types};
     const CALLBACK_PATH = {callback_path};
+    let pickerStarted = false;
 
     function finish(action, ids) {{
       const params = new URLSearchParams();
@@ -117,6 +120,7 @@ def _picker_html(access_token: str, developer_key: str, app_id: str) -> str:
 
     function pickerReady() {{
       try {{
+        pickerStarted = true;
         document.getElementById('loading').style.display = 'none';
         const view = new google.picker.DocsView(google.picker.ViewId.DOCS);
         view.setIncludeFolders(true);
@@ -129,7 +133,7 @@ def _picker_html(access_token: str, developer_key: str, app_id: str) -> str:
           .setOAuthToken(ACCESS_TOKEN)
           .setDeveloperKey(DEVELOPER_KEY)
           .setAppId(APP_ID)
-          .setOrigin(window.location.protocol + '//' + window.location.host)
+          .setOrigin(window.location.origin)
           .setTitle('Choose a file from Google Drive')
           .setCallback(pickerCallback)
           .build();
@@ -141,15 +145,75 @@ def _picker_html(access_token: str, developer_key: str, app_id: str) -> str:
 
     function onGoogleApiLoad() {{
       try {{
-        gapi.load('picker', {{callback: pickerReady, onerror: () => showError('Google Picker API failed to load.')}});
+        if (!window.gapi) {{
+          showError('Google API loader was not initialized.');
+          return;
+        }}
+        gapi.load('picker', {{
+          callback: pickerReady,
+          onerror: () => showError('Google Picker API failed to load.')
+        }});
       }} catch (error) {{
         showError(String(error && error.message ? error.message : error));
       }}
     }}
+
+    window.setTimeout(() => {{
+      if (!pickerStarted) {{
+        showError('Google did not finish loading the Picker. Check the Picker API key restrictions and your network connection, then try again.');
+      }}
+    }}, 15000);
   </script>
   <script async defer src="https://apis.google.com/js/api.js" onload="onGoogleApiLoad()" onerror="showError('Unable to reach Google Picker API.')"></script>
 </body>
 </html>"""
+
+
+def _start_local_picker_server(html_text: str):
+    """Serve Picker HTML from a real loopback origin for Qt WebEngine.
+
+    QWebEngineView.setHtml() uses an internally generated document whose web
+    origin can be opaque even when a base URL is supplied. Google Picker expects
+    a conventional web origin. Binding only to 127.0.0.1 keeps the page local to
+    this PC while giving Google a stable http://127.0.0.1:<port> origin.
+    """
+
+    payload = html_text.encode("utf-8")
+
+    class Handler(BaseHTTPRequestHandler):
+        def do_GET(self):  # noqa: N802
+            path = urlparse(self.path).path
+            if path in {"/", "/index.html"}:
+                self.send_response(200)
+                self.send_header("Content-Type", "text/html; charset=utf-8")
+                self.send_header("Cache-Control", "no-store")
+                self.send_header("Content-Security-Policy", "default-src 'self' https: data: blob:; script-src 'self' 'unsafe-inline' https://apis.google.com https://www.gstatic.com; frame-src https:; connect-src https:; img-src https: data: blob:; style-src 'self' 'unsafe-inline' https:;")
+                self.send_header("Content-Length", str(len(payload)))
+                self.end_headers()
+                self.wfile.write(payload)
+                return
+            # The Picker callback navigation is intercepted by QWebEnginePage,
+            # but return a harmless local response if it ever reaches the server.
+            if path == _CALLBACK_PATH:
+                body = b"Selection received."
+                self.send_response(200)
+                self.send_header("Content-Type", "text/plain; charset=utf-8")
+                self.send_header("Cache-Control", "no-store")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+                return
+            self.send_response(404)
+            self.end_headers()
+
+        def log_message(self, _format, *_args):
+            return
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    origin = f"http://127.0.0.1:{server.server_port}"
+    return server, thread, origin
 
 
 def pick_google_drive_file_ids(parent, service) -> tuple[str, ...]:
@@ -161,7 +225,7 @@ def pick_google_drive_file_ids(parent, service) -> tuple[str, ...]:
     """
     try:
         from PySide6.QtCore import Signal
-        from PySide6.QtWebEngineCore import QWebEnginePage
+        from PySide6.QtWebEngineCore import QWebEnginePage, QWebEngineSettings
         from PySide6.QtWebEngineWidgets import QWebEngineView
     except Exception as exc:
         raise RuntimeError(
@@ -199,6 +263,16 @@ def pick_google_drive_file_ids(parent, service) -> tuple[str, ...]:
                 return False
             return super().acceptNavigationRequest(url, navigation_type, is_main_frame)
 
+        def javaScriptConsoleMessage(self, level, message, line_number, source_id):  # noqa: N802
+            # Keep diagnostics available in the terminal during local testing
+            # without exposing OAuth tokens or document content.
+            safe_message = str(message).replace(access_token, "[token]")
+            print(f"[PrivacyGate Drive Picker] {safe_message} ({source_id}:{line_number})")
+            super().javaScriptConsoleMessage(level, message, line_number, source_id)
+
+    html_text = _picker_html(access_token, developer_key, app_id)
+    server, thread, origin = _start_local_picker_server(html_text)
+
     dialog = QDialog(parent)
     dialog.setWindowTitle("Google Drive — PrivacyGate")
     dialog.setModal(True)
@@ -220,6 +294,10 @@ def pick_google_drive_file_ids(parent, service) -> tuple[str, ...]:
     web = QWebEngineView(dialog)
     page = PickerPage(web)
     web.setPage(page)
+    settings = web.settings()
+    settings.setAttribute(QWebEngineSettings.WebAttribute.JavascriptEnabled, True)
+    settings.setAttribute(QWebEngineSettings.WebAttribute.LocalStorageEnabled, True)
+    settings.setAttribute(QWebEngineSettings.WebAttribute.JavascriptCanOpenWindows, True)
     root.addWidget(web, 1)
 
     selected: dict[str, tuple[str, ...]] = {"ids": ()}
@@ -234,12 +312,22 @@ def pick_google_drive_file_ids(parent, service) -> tuple[str, ...]:
 
     page.selectionReceived.connect(on_selection)
 
-    # A loopback-style origin keeps the embedded page isolated from application
-    # files while still giving Google Picker a conventional web origin.
-    web.setHtml(
-        _picker_html(access_token, developer_key, app_id),
-        QUrl("http://127.0.0.1/"),
-    )
+    def load_failed(ok: bool) -> None:
+        if ok:
+            return
+        note.setText(
+            "Google Drive could not load inside PrivacyGate. Check your network connection and Google Picker API configuration, then close and try again."
+        )
+        note.setStyleSheet("color:#8A3340;font-size:11px;font-weight:700;padding:3px 4px;")
 
-    dialog.exec()
+    web.loadFinished.connect(load_failed)
+    web.load(QUrl(origin + "/"))
+
+    try:
+        dialog.exec()
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=1.0)
+
     return selected["ids"]
