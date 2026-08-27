@@ -9,6 +9,7 @@ from .brand_icons import apply_brand_icons
 from .connected_apps_browse_polish import apply_connected_apps_browse_polish
 from .protect_runtime import install_protect_runtime, apply_protect_runtime
 from .global_loading_runtime import apply_global_loading_runtime
+from .protect_micro_ux import apply_protect_micro_ux
 from .source_catalog_activation import activate_oauth_ready_sources
 from .gmail_browser_route import install_gmail_browser_route
 from .clickup_browser_route import install_clickup_browser_route
@@ -155,6 +156,10 @@ def _main_window_init_with_brand(self, *args, **kwargs) -> None:
     # Restore, Library, connected sources and other page-level busy workflows.
     # It is installed last so it observes the final compatibility callables.
     apply_global_loading_runtime(self)
+
+    # Small post-stability Protect improvements use that same global loading
+    # controller and the existing category palette. No protection semantics move.
+    apply_protect_micro_ux(self)
 
 
 MainWindow.__init__ = _main_window_init_with_brand
