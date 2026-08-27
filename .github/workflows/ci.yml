@@ -2,9 +2,6 @@ name: Windows tests
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - refactor/protect-session-clean
   pull_request:
     branches:
       - feature/privacygate-settings-update-center
