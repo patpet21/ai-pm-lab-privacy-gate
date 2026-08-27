@@ -125,6 +125,14 @@ def install_account_aware_routing() -> None:
         service = _service_from_main_window(main_window)
         if not choose_provider_account(main_window, service, provider, title):
             return
+        if provider == "google_drive":
+            # Native desktop Google Picker must open in the system browser. Route
+            # every in-app Drive entry point through the same least-privilege flow
+            # instead of falling back to the old drive.readonly list/search UI.
+            from ai_pm_lab_privacy_gate.ui.google_drive_picker_ui import _open_google_drive_picker
+
+            _open_google_drive_picker(main_window)
+            return
         previous_open(main_window, provider, title)
 
     connected_apps_browse_polish._open_source_browser = account_aware_open
@@ -133,7 +141,7 @@ def install_account_aware_routing() -> None:
     # The dedicated Apps routes for these providers open their custom browser
     # directly and therefore bypass AppsMultiAccount's generic account menu.
     # Add the same centralized selector there. Google Drive is intentionally not
-    # included: AppsMultiAccount already handles it before the generic browser.
+    # included: AppsMultiAccount already handles it before the Picker route.
     previous_apps_browse = AppsHubPage._browse
 
     def apps_browse(self: AppsHubPage, provider: str, title: str, supported: bool) -> None:
