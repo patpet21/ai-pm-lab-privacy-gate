@@ -71,6 +71,7 @@ from .feature_suite_2026 import apply_feature_suite_2026
 from .feature_suite_runtime import apply_feature_suite_runtime
 from .governance_hardening_2026 import apply_governance_hardening_2026
 from .governance_release_polish_2026 import apply_governance_release_polish_2026
+from .protect_workflow_visibility_fix import apply_protect_workflow_visibility_fix
 
 install_mcp_log_guard()
 install_redesign()
@@ -159,6 +160,9 @@ def _main_window_init_with_brand(self, *args, **kwargs) -> None:
     apply_governance_hardening_2026(self)
     # Apply the final UI polish against the live premium Organization views.
     apply_governance_release_polish_2026(self)
+    # Keep the established Protect/file workflow primary; the managed summary is
+    # now an explicit secondary view instead of replacing the working controls.
+    apply_protect_workflow_visibility_fix(self)
 
 
 MainWindow.__init__ = _main_window_init_with_brand
