@@ -14,12 +14,8 @@ PROVIDER_LABELS = dict(PROVIDERS)
 
 
 def _action_text(provider: str) -> str:
-    if provider == "gmail":
-        return "Import email from Gmail"
-    if provider == "google_drive":
-        return "Import file from Google Drive"
-    label = PROVIDER_LABELS.get(provider, provider.replace("_", " ").title())
-    return f"Browse {label}"
+    """Keep one stable action label; provider identity is shown by the real logo."""
+    return "Browse connected content"
 
 
 def _set_source_icon(bar, provider: str, pixmap) -> None:
@@ -104,11 +100,7 @@ def _refresh_branding(bar) -> None:
         and not bar.store.is_account_available(provider, account_id, workspace_key)
     )
     action = _action_text(provider)
-    bar.browse.setText(
-        f"Approve account & {action[0].lower() + action[1:]}"
-        if needs_approval
-        else action
-    )
+    bar.browse.setText("Approve account & browse" if needs_approval else action)
     bar.browse.setToolTip(
         "Choose a Gmail email and bring its local working copy into Protect."
         if provider == "gmail"
