@@ -166,6 +166,9 @@ def apply_protect_runtime(main_window, stage: str) -> None:
         from .protect_workflow_v2 import apply_protect_workflow_v2
         from .protect_top_area_design import apply_protect_top_area_design
         from .protect_view_experience import apply_protect_view_experience
+        from .protect_privacy_check_persistence import (
+            apply_protect_privacy_check_persistence,
+        )
         from .protect_surface_guard import apply_protect_surface_guard
 
         apply_protect_usability_polish(main_window)
@@ -207,6 +210,11 @@ def apply_protect_runtime(main_window, stage: str) -> None:
         # it only makes SOURCE/VIEW state truthful and renders the active source's
         # protected text consistently.
         apply_protect_view_experience(main_window)
+
+        # Privacy Check belongs to the completed protected session. Keep a stable
+        # third VIEW control after the user opens document/text comparison views;
+        # Clear (or an invalidated session) is the only thing that removes it.
+        apply_protect_privacy_check_persistence(main_window)
 
         # Must be last. It observes the final widget tree rather than trying to
         # guess which intermediate patch may still show a detached legacy child.
