@@ -11,6 +11,7 @@ from .brand_palette import apply_brand_palette
 from .brand_icons import apply_brand_icons
 from .connected_apps_browse_polish import apply_connected_apps_browse_polish
 from .google_drive_picker_ui import apply_google_drive_picker_ui
+from .google_drive_picker_route import install_google_drive_picker_route
 from .protect_source_picker import apply_protect_source_picker
 from .protect_workspace_controls import apply_managed_protect_context
 from .protect_workspace_branding import apply_managed_protect_branding
@@ -84,6 +85,9 @@ install_google_oauth_ui()
 activate_oauth_ready_sources()
 install_apps_catalog_upgrade()
 install_apps_disconnect_layout()
+# Install the Google Drive least-privilege route before multi-account so the
+# existing account chooser/manager delegates the selected account to Picker.
+install_google_drive_picker_route()
 install_apps_multi_account()
 install_gmail_browser_route()
 install_clickup_browser_route()
