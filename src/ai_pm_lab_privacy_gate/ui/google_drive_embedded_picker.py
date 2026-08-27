@@ -104,7 +104,7 @@ def _picker_html(access_token: str, developer_key: str, app_id: str) -> str:
       document.getElementById('loading').style.display = 'none';
       const target = document.getElementById('error');
       target.style.display = 'block';
-      target.textContent = 'Google Drive Picker could not load.\n\n' + message;
+      target.textContent = 'Google Drive Picker could not load: ' + message;
     }}
 
     function pickerCallback(data) {{
