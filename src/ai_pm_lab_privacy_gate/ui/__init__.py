@@ -15,6 +15,7 @@ from .document_pipeline_v2_ui import apply_document_pipeline_v2_ui
 from .protect_session_upgrade import apply_protect_session_upgrade
 from .protect_session_runtime_fix import apply_protect_session_runtime_fix
 from .gmail_package_browser import apply_gmail_package_browser
+from .gmail_package_runtime_fix import apply_gmail_package_runtime_fix
 from .protect_workspace_controls import apply_managed_protect_context
 from .protect_workspace_branding import apply_managed_protect_branding
 from .protect_late_cleanup import apply_protect_late_cleanup
@@ -172,6 +173,7 @@ def _main_window_init_with_brand(self, *args, **kwargs) -> None:
     # Gmail can now pass the email body plus any selected supported attachments
     # into the same local Protect session while still allowing single selection.
     apply_gmail_package_browser(self)
+    apply_gmail_package_runtime_fix(self)
 
 
 MainWindow.__init__ = _main_window_init_with_brand
