@@ -18,9 +18,12 @@ _GOOGLE_EXPORTS = {
         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         ".xlsx",
     ),
-    "application/vnd.google-apps.presentation": ("application/pdf", ".pdf"),
+    "application/vnd.google-apps.presentation": (
+        "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        ".pptx",
+    ),
 }
-_SUPPORTED_SUFFIXES = {".pdf", ".docx", ".xlsx"}
+_SUPPORTED_SUFFIXES = {".pdf", ".docx", ".xlsx", ".pptx", ".txt"}
 
 
 def _safe_filename(name: str) -> str:
@@ -29,19 +32,13 @@ def _safe_filename(name: str) -> str:
 
 
 def materialize_google_drive_item(service: ConnectedAppsService, item: RemoteItem) -> Path:
-    """Download/export one approved Drive item to a managed local working file.
-
-    Nothing is uploaded elsewhere. Native Google Docs/Sheets/Slides are exported
-    to formats already understood by PrivacyGate's local protection pipeline.
-    The returned path is inside PrivacyGate's isolated temporary workspace and is
-    eligible for automatic cleanup after the protection workflow finishes.
-    """
+    """Download/export one approved Drive item to a managed local working file."""
     if item.provider != "google_drive":
         raise ValueError("This importer currently supports Google Drive only.")
     if item.kind == "application/vnd.google-apps.folder":
         raise ValueError("Choose a file, not a folder.")
 
-    token = service._token("google_drive")  # connector-local credential accessor
+    token = service._token("google_drive")
     headers = {"Authorization": f"Bearer {token}"}
     export = _GOOGLE_EXPORTS.get(item.kind)
 
@@ -61,7 +58,7 @@ def materialize_google_drive_item(service: ConnectedAppsService, item: RemoteIte
         if suffix not in _SUPPORTED_SUFFIXES:
             raise ValueError(
                 "PrivacyGate can currently import PDF, Word (.docx), Excel (.xlsx), "
-                "Google Docs, Google Sheets and Google Slides from Drive."
+                "PowerPoint (.pptx), text (.txt), Google Docs, Google Sheets and Google Slides from Drive."
             )
         filename = _safe_filename(item.title)
         response = httpx.get(
