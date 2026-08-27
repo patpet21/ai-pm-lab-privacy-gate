@@ -101,6 +101,7 @@ def apply_protect_runtime(main_window, stage: str) -> None:
         from .protect_source_state_reset import apply_protect_source_state_reset
         from .protect_workflow_v2 import apply_protect_workflow_v2
         from .protect_top_area_design import apply_protect_top_area_design
+        from .protect_view_experience import apply_protect_view_experience
         from .protect_surface_guard import apply_protect_surface_guard
 
         apply_protect_usability_polish(main_window)
@@ -130,6 +131,12 @@ def apply_protect_runtime(main_window, stage: str) -> None:
         # Approved visual hierarchy. Presentation only: the same controllers and
         # original provider logos remain in place underneath this treatment.
         apply_protect_top_area_design(main_window)
+
+        # View/navigation clarity is intentionally layered after the approved
+        # top design: it does not move controls or alter connector/protect logic;
+        # it only makes SOURCE/VIEW state truthful and renders the active source's
+        # protected text consistently.
+        apply_protect_view_experience(main_window)
 
         # Must be last. It observes the final widget tree rather than trying to
         # guess which intermediate patch may still show a detached legacy child.
