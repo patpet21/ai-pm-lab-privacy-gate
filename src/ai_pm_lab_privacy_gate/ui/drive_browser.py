@@ -39,8 +39,6 @@ SUPPORTED_SUFFIXES = {".pdf", ".docx", ".xlsx", ".pptx", ".txt"}
 NAVY = "#202124"
 MUTED = "#5F6368"
 BLUE = "#1A73E8"
-BORDER = "#DADCE0"
-BG = "#F8FAFD"
 
 
 def _kind_label(remote) -> str:
@@ -287,12 +285,11 @@ def open_drive_browser(main_window) -> None:
 
     def load() -> None:
         query = search.text().strip()
+        if query:
+            operation = lambda: service.search_drive_folder(current_folder(), query, 100)
+        else:
+            operation = lambda: service.list_drive_folder(current_folder(), 100)
         try:
-            operation = (
-                lambda: service.search_drive_folder(current_folder(), query, 100)
-                if query
-                else lambda: service.list_drive_folder(current_folder(), 100)
-            )
             rows = _run_busy(
                 dialog,
                 "Loading Google Drive",
