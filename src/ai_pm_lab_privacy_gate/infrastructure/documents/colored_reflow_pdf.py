@@ -99,13 +99,11 @@ def write_colored_reflow_pdf(
             Paragraph(f"Protected copy - source page {page.page_number}", heading)
         )
         offset = 0
-        raw_lines = page.text.replace("\r\n", "\n").replace("\r", "\n").splitlines(
-            keepends=True
-        )
+        raw_lines = page.text.splitlines(keepends=True)
         if not raw_lines and page.text:
             raw_lines = [page.text]
         for raw_line in raw_lines:
-            line = raw_line[:-1] if raw_line.endswith("\n") else raw_line
+            line = raw_line.rstrip("\r\n")
             line_end = offset + len(line)
             if line.strip():
                 markup = _styled_line_markup(
