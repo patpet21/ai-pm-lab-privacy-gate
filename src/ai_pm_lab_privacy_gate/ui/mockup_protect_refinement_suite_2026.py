@@ -20,6 +20,9 @@ from .mockup_protect_compact_workflow_2026 import (
 from .mockup_protect_compact_steps_2026 import (
     apply_mockup_protect_compact_steps_2026,
 )
+from .mockup_protect_manual_sensitive_runtime_fix_2026 import (
+    apply_mockup_protect_manual_sensitive_runtime_fix_2026,
+)
 
 
 def apply_mockup_protect_refinement_suite_2026(main_window) -> None:
@@ -34,3 +37,7 @@ def apply_mockup_protect_refinement_suite_2026(main_window) -> None:
     # Final vertical-space pass: move the four guidance steps + How it works into
     # the Document workspace header and collapse the dedicated full-width step card.
     apply_mockup_protect_compact_steps_2026(main_window)
+    # Safety bridge must be last: manual rules are merged into the authoritative
+    # ProtectSession analysis before the ordinary render, preventing the previous
+    # double-preview regeneration on re-scan.
+    apply_mockup_protect_manual_sensitive_runtime_fix_2026(main_window)
