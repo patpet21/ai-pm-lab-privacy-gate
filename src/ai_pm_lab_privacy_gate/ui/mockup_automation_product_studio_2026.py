@@ -107,33 +107,45 @@ def _metric_card(icon_name: str, value: str, label: str, detail: str, *, tone: s
     }
     accent, soft = tones.get(tone, tones["blue"])
     card = QFrame()
-    card.setMinimumHeight(100)
+    card.setMinimumHeight(98)
     card.setStyleSheet(f"QFrame{{background:{SURFACE};border:1px solid {BORDER};border-radius:13px;}}")
     row = QHBoxLayout(card)
-    row.setContentsMargins(14, 13, 14, 13)
-    row.setSpacing(11)
+    row.setContentsMargins(13, 12, 13, 12)
+    row.setSpacing(10)
 
     bubble = QLabel()
-    bubble.setFixedSize(38, 38)
+    bubble.setFixedSize(36, 36)
     bubble.setAlignment(Qt.AlignmentFlag.AlignCenter)
-    bubble.setPixmap(icon(icon_name, color=accent, size=19).pixmap(19, 19))
-    bubble.setStyleSheet(f"background:{soft};border:none;border-radius:11px;")
+    bubble.setPixmap(icon(icon_name, color=accent, size=18).pixmap(18, 18))
+    bubble.setStyleSheet(f"background:{soft};border:none;border-radius:10px;")
     row.addWidget(bubble, 0, Qt.AlignmentFlag.AlignTop)
 
     copy = QVBoxLayout()
     copy.setSpacing(1)
     number = QLabel(value)
-    number.setStyleSheet(f"color:{INK};font-size:20px;font-weight:950;border:none;background:transparent;")
+    number.setStyleSheet(f"color:{INK};font-size:19px;font-weight:950;border:none;background:transparent;")
     heading = QLabel(label)
-    heading.setStyleSheet(f"color:{INK};font-size:9px;font-weight:900;border:none;background:transparent;")
+    heading.setStyleSheet(f"color:{INK};font-size:8.5px;font-weight:900;border:none;background:transparent;")
     note = QLabel(detail)
     note.setWordWrap(True)
-    note.setStyleSheet(f"color:{MUTED};font-size:7.5px;border:none;background:transparent;")
+    note.setStyleSheet(f"color:{MUTED};font-size:7px;border:none;background:transparent;")
     copy.addWidget(number)
     copy.addWidget(heading)
     copy.addWidget(note)
     row.addLayout(copy, 1)
     return card
+
+
+def _metric_strip(cards: list[QWidget]) -> QWidget:
+    host = QWidget()
+    grid = QGridLayout(host)
+    grid.setContentsMargins(0, 0, 0, 0)
+    grid.setHorizontalSpacing(10)
+    grid.setVerticalSpacing(10)
+    for index, card in enumerate(cards):
+        grid.addWidget(card, 0, index)
+        grid.setColumnStretch(index, 1)
+    return host
 
 
 def _flow_chip(text: str, icon_name: str, *, protected: bool = False, external: bool = False) -> QFrame:
@@ -167,11 +179,11 @@ def _flow_row(source: str, destination: str, source_icon: str = "contact", desti
     row.setSpacing(7)
     row.addWidget(_flow_chip(source, source_icon))
     arrow1 = QLabel("→")
-    arrow1.setStyleSheet(f"color:#98A2B3;font-size:12px;font-weight:900;border:none;")
+    arrow1.setStyleSheet("color:#98A2B3;font-size:12px;font-weight:900;border:none;")
     row.addWidget(arrow1)
     row.addWidget(_flow_chip("PrivacyGate", "protect", protected=True))
     arrow2 = QLabel("→")
-    arrow2.setStyleSheet(f"color:#98A2B3;font-size:12px;font-weight:900;border:none;")
+    arrow2.setStyleSheet("color:#98A2B3;font-size:12px;font-weight:900;border:none;")
     row.addWidget(arrow2)
     row.addWidget(_flow_chip(destination, destination_icon, external=destination not in {"Library", "Local folder"}))
     row.addStretch(1)
@@ -184,7 +196,7 @@ def _detail_item(label: str, value: str, *, value_color: str = SLATE) -> QWidget
     box.setContentsMargins(0, 0, 0, 0)
     box.setSpacing(2)
     key = QLabel(label.upper())
-    key.setStyleSheet(f"color:#98A2B3;font-size:6.5px;font-weight:900;border:none;")
+    key.setStyleSheet("color:#98A2B3;font-size:6.5px;font-weight:900;border:none;")
     val = QLabel(value)
     val.setWordWrap(True)
     val.setStyleSheet(f"color:{value_color};font-size:8px;font-weight:800;border:none;")
@@ -288,7 +300,11 @@ def _automation_card(
     actions.addWidget(
         _small_button(
             pause_label,
-            lambda: _show_preview_action(page, f"{pause_label} automation", "Automation status controls are represented in this UI preview and will be wired to the runtime state store."),
+            lambda: _show_preview_action(
+                page,
+                f"{pause_label} automation",
+                "Automation status controls are represented in this UI preview and will be wired to the runtime state store.",
+            ),
         )
     )
     actions.addStretch(1)
@@ -372,8 +388,8 @@ def _show_builder(page: QWidget, template_name: str = "New automation") -> None:
         ("APPROVAL", "Require human approval for Medium / High", "Low risk can be auto-approved when organization policy explicitly allows it.", "check", False),
         ("THEN", "Send protected copy / create task / save", "Only the protected output is eligible for an approved external destination.", "external", False),
     ]
-    for index, spec in enumerate(steps):
-        flow.addWidget(_step_card(*spec))
+    for index, (stage, title, description, icon_name, privacy) in enumerate(steps):
+        flow.addWidget(_step_card(stage, title, description, icon_name, privacy=privacy))
         if index < len(steps) - 1:
             arrow = QLabel("↓")
             arrow.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -386,7 +402,7 @@ def _show_builder(page: QWidget, template_name: str = "New automation") -> None:
     boundary_row.setContentsMargins(13, 10, 13, 10)
     left = QLabel("ORIGINAL DATA")
     left.setStyleSheet("color:#D0D5DD;font-size:7px;font-weight:900;border:none;background:transparent;")
-    center = QLabel("  🛡  Protected locally by PrivacyGate  ")
+    center = QLabel("Protected locally by PrivacyGate")
     center.setStyleSheet("color:#FFFFFF;font-size:8px;font-weight:950;border:none;background:transparent;")
     right = QLabel("PROTECTED DATA ONLY")
     right.setStyleSheet("color:#B2DDFF;font-size:7px;font-weight:900;border:none;background:transparent;")
@@ -410,13 +426,21 @@ def _show_builder(page: QWidget, template_name: str = "New automation") -> None:
     actions.addWidget(
         _small_button(
             "Save draft",
-            lambda: _show_preview_action(page, "Draft saved", "The final runtime will persist only workflow configuration and metadata here, never the original sensitive payload."),
+            lambda: _show_preview_action(
+                page,
+                "Draft saved",
+                "The final runtime will persist only workflow configuration and metadata here, never the original sensitive payload.",
+            ),
         )
     )
     actions.addWidget(
         _small_button(
             "Activate automation",
-            lambda: _show_preview_action(page, "Activation preview", "Before activation, PrivacyGate will validate connected apps, privacy profile, allowed AI destinations, approval rules and organization policy compatibility."),
+            lambda: _show_preview_action(
+                page,
+                "Activation preview",
+                "Before activation, PrivacyGate will validate connected apps, privacy profile, allowed AI destinations, approval rules and organization policy compatibility.",
+            ),
             primary=True,
         )
     )
@@ -499,8 +523,7 @@ def _advisory_banner(page: QWidget) -> QFrame:
     copy.addWidget(note)
     row.addLayout(copy, 1)
 
-    cta = _small_button("Discuss your workflow", lambda: _safe_contact(page), primary=True)
-    row.addWidget(cta, 0, Qt.AlignmentFlag.AlignVCenter)
+    row.addWidget(_small_button("Discuss your workflow", lambda: _safe_contact(page), primary=True), 0, Qt.AlignmentFlag.AlignVCenter)
     return banner
 
 
@@ -764,8 +787,8 @@ def _runs_tab(page: QWidget) -> QWidget:
         ("18:43:21", "Human approved", "Approval metadata recorded", "green"),
         ("18:43:23", "ClickUp task created", "Protected data only sent to destination", "green"),
     ]
-    for event in events:
-        box.addWidget(_timeline_event(*event))
+    for time_text, event_title, detail, tone in events:
+        box.addWidget(_timeline_event(time_text, event_title, detail, tone=tone))
     body.addWidget(timeline)
     return tab
 
@@ -847,10 +870,39 @@ def _approvals_tab(page: QWidget) -> QWidget:
     box.addWidget(privacy_note)
 
     actions = QHBoxLayout()
-    actions.addWidget(_small_button("Preview protected copy", lambda: _show_preview_action(page, "Protected copy preview", "Production behavior: open the protected artifact only. The original stays local and restore mappings remain outside the approval surface.")))
+    actions.addWidget(
+        _small_button(
+            "Preview protected copy",
+            lambda: _show_preview_action(
+                page,
+                "Protected copy preview",
+                "Production behavior: open the protected artifact only. The original stays local and restore mappings remain outside the approval surface.",
+            ),
+        )
+    )
     actions.addStretch(1)
-    actions.addWidget(_small_button("Reject", lambda: _show_preview_action(page, "Approval rejected", "The production runtime will stop the external handoff and store only the approval decision metadata."), danger=True))
-    actions.addWidget(_small_button("Approve", lambda: _show_preview_action(page, "Approval accepted", "The production runtime will continue only with the protected artifact and the policy-approved destination."), primary=True))
+    actions.addWidget(
+        _small_button(
+            "Reject",
+            lambda: _show_preview_action(
+                page,
+                "Approval rejected",
+                "The production runtime will stop the external handoff and store only the approval decision metadata.",
+            ),
+            danger=True,
+        )
+    )
+    actions.addWidget(
+        _small_button(
+            "Approve",
+            lambda: _show_preview_action(
+                page,
+                "Approval accepted",
+                "The production runtime will continue only with the protected artifact and the policy-approved destination.",
+            ),
+            primary=True,
+        )
+    )
     box.addLayout(actions)
     body.addWidget(queue)
 
@@ -968,17 +1020,16 @@ def _rebuild_automation_product(page: QWidget) -> None:
     )
 
     body.addWidget(_product_hero(page))
-
-    metric_grid = _ResponsiveGrid(
-        [
-            _metric_card("workflow", "3", "Active automations", "Protected workflows currently enabled", tone="blue"),
-            _metric_card("history", "18", "Runs today", "Success, review and blocked outcomes", tone="green"),
-            _metric_card("check", "1", "Waiting approval", "Human review required before handoff", tone="amber"),
-            _metric_card("protect", "0", "Blocked by policy", "No unresolved policy conflicts", tone="green"),
-        ],
-        max_columns=4,
+    body.addWidget(
+        _metric_strip(
+            [
+                _metric_card("workflow", "3", "Active automations", "Protected workflows currently enabled", tone="blue"),
+                _metric_card("history", "18", "Runs today", "Success, review and blocked outcomes", tone="green"),
+                _metric_card("check", "1", "Waiting approval", "Human review required before handoff", tone="amber"),
+                _metric_card("protect", "0", "Blocked by policy", "No unresolved policy conflicts", tone="green"),
+            ]
+        )
     )
-    body.addWidget(metric_grid)
     body.addWidget(_build_tabs(page))
     body.addStretch(1)
 
