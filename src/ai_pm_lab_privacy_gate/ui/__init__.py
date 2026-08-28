@@ -39,6 +39,7 @@ from .organization_workspace_suite_v2 import apply_organization_workspace_suite_
 from .organization_usability_polish import apply_organization_usability_polish
 from .organization_overview_fix import apply_organization_overview_fix
 from .organization_overview_consistency import apply_organization_overview_consistency
+from .organization_apps_safe_routing import apply_organization_apps_safe_routing
 from .contact_workflows_polish import apply_contact_workflows_polish, apply_popup_visual_polish
 from .contact_executive_2026 import apply_contact_executive_2026
 from .dialog_visual_system import apply_dialog_visual_system
@@ -160,6 +161,10 @@ def _main_window_init_with_brand(self, *args, **kwargs) -> None:
     # Small post-stability Protect improvements use that same global loading
     # controller and the existing category palette. No protection semantics move.
     apply_protect_micro_ux(self)
+
+    # Navigation-only repair: resolve the live top-level Apps page after every
+    # runtime page has been created. This does not mutate Team/Organization stacks.
+    apply_organization_apps_safe_routing(self)
 
 
 MainWindow.__init__ = _main_window_init_with_brand
