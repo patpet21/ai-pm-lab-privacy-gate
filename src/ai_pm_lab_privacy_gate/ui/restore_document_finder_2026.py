@@ -11,9 +11,9 @@ restore engine.
 
 import sqlite3
 from dataclasses import dataclass
-from pathlib import Path
 
 from PySide6.QtCore import QSize, Qt
+from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QCheckBox,
@@ -41,8 +41,6 @@ from ai_pm_lab_privacy_gate.ui.mockup_design_foundation_2026 import (
     BLUE,
     BLUE_SOFT,
     BORDER,
-    GREEN,
-    GREEN_SOFT,
     INK,
     MUTED,
     TEAL,
@@ -85,6 +83,7 @@ class OriginalDocumentFinderDialog(PrivacyGateProductDialog):
         self.main_window = main_window
         self._selected_document_id: str | None = None
         self._all_rows: list[_FinderRow] = []
+        self._visible_rows: list[_FinderRow] = []
         self._active_descriptor = self._descriptor()
         self._organization_mode = bool(
             self._active_descriptor is not None and not self._active_descriptor.personal
@@ -105,7 +104,7 @@ class OriginalDocumentFinderDialog(PrivacyGateProductDialog):
                 f"Search reversible documents available locally for {active_name}. "
                 "PrivacyGate ranks likely matches from placeholder tokens without sending content anywhere."
             ),
-            icon_name="library",
+            icon_name="search",
             width=940,
         )
         self.resize(1040, 690)
@@ -162,7 +161,10 @@ class OriginalDocumentFinderDialog(PrivacyGateProductDialog):
             "Search by document name, source, label or profile…"
         )
         self.search.setClearButtonEnabled(True)
-        self.search.addAction(icon("scan", color=BLUE, size=15), QLineEdit.ActionPosition.LeadingPosition)
+        self.search.addAction(
+            icon("search", color=BLUE, size=15),
+            QLineEdit.ActionPosition.LeadingPosition,
+        )
         self.search.setMinimumHeight(38)
         search_row.addWidget(self.search, 1)
 
@@ -295,17 +297,20 @@ class OriginalDocumentFinderDialog(PrivacyGateProductDialog):
             return {}
         placeholders = ",".join("?" for _ in document_ids)
         output: dict[str, set[str]] = {document_id: set() for document_id in document_ids}
+        connection = None
         try:
             connection = sqlite3.connect(self.page.library.db_path)
             rows = connection.execute(
                 f"SELECT document_id, token FROM mappings WHERE document_id IN ({placeholders})",
                 tuple(document_ids),
             ).fetchall()
-            connection.close()
             for document_id, token in rows:
                 output.setdefault(str(document_id), set()).add(str(token))
         except Exception:
             return output
+        finally:
+            if connection is not None:
+                connection.close()
         return output
 
     def _provider_for(self, document, metadata) -> tuple[str, str]:
@@ -484,9 +489,9 @@ class OriginalDocumentFinderDialog(PrivacyGateProductDialog):
                     )
                 if column == 3:
                     if row.likely_match:
-                        item.setForeground(Qt.GlobalColor.darkGreen)
+                        item.setForeground(QColor("#15803D"))
                     elif row.present_tokens and row.matching_tokens == 0:
-                        item.setForeground(Qt.GlobalColor.darkYellow)
+                        item.setForeground(QColor("#B45309"))
                 self.table.setItem(index, column, item)
         self.table.resizeRowsToContents()
         self.result_count.setText(f"{len(rows)} document{'s' if len(rows) != 1 else ''}")
@@ -500,7 +505,7 @@ class OriginalDocumentFinderDialog(PrivacyGateProductDialog):
         if not selected:
             return None
         index = selected[0].row()
-        if index < 0 or index >= len(getattr(self, "_visible_rows", [])):
+        if index < 0 or index >= len(self._visible_rows):
             return None
         return self._visible_rows[index]
 
@@ -573,7 +578,7 @@ class RestoreDocumentFinderController:
         descriptor = self._active_descriptor()
         org_mode = bool(descriptor is not None and not descriptor.personal)
         self.context_badge = QLabel(
-            descriptor.name if org_mode else "Personal Library"
+            str(descriptor.name) if org_mode else "Personal Library"
         )
         self.context_badge.setStyleSheet(
             f"background:{TEAL_SOFT if org_mode else BLUE_SOFT};"
@@ -584,7 +589,7 @@ class RestoreDocumentFinderController:
 
         self.find_button = QPushButton("Find original")
         self.find_button.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.find_button.setIcon(icon("scan", color=BLUE, size=14))
+        self.find_button.setIcon(icon("search", color=BLUE, size=14))
         self.find_button.setIconSize(QSize(14, 14))
         self.find_button.setMinimumHeight(36)
         self.find_button.setMinimumWidth(118)
