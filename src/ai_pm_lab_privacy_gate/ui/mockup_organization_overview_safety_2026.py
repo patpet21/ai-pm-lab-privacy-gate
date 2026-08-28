@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from PySide6.QtCore import Qt
 from PySide6.QtGui import QBrush, QColor
 from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QPushButton, QTableWidgetItem, QVBoxLayout
 
@@ -130,7 +131,6 @@ def _install_seat_billing_feedback_polish_2026() -> None:
 
             self._billing_feedback_detail = detail
             self._billing_feedback_panel = panel
-            # Keep feedback in the same dialog, immediately above its action row.
             self.body.insertWidget(max(0, self.body.count() - 1), panel)
         else:
             detail = getattr(self, "_billing_feedback_detail", None)
@@ -154,18 +154,9 @@ def _install_seat_billing_feedback_polish_2026() -> None:
 
 
 def apply_mockup_organization_overview_safe_2026(main_window):
-    # TeamState is authoritative for the signed-in user's real membership. If an
-    # older/deployed management RPC omits that same row, reconcile it before any
-    # dashboard or Team-page counts are rendered instead of hardcoding a seat.
     install_team_member_consistency_2026()
-
-    # Keep product-grade feedback in the same reusable Add Seats dialog instead
-    # of opening a second, visually disconnected QMessageBox.
     _install_seat_billing_feedback_polish_2026()
 
-    # Patch before construction because OrganizationOverviewFinal renders once in
-    # __init__. This keeps the final dashboard compatible across supported PySide6
-    # builds without moving any organization/business logic.
     OrganizationOverviewFinal._render_risks = _safe_render_risks
     install_organization_overview_polish_2026()
 
@@ -173,7 +164,5 @@ def apply_mockup_organization_overview_safe_2026(main_window):
     if view is not None:
         apply_organization_overview_polish_2026(view)
 
-    # Team/Members is also replaced only at the presentation layer. Existing
-    # TeamPage methods still own invitations, role changes and access mutations.
     apply_mockup_team_members_2026(main_window)
     return view
