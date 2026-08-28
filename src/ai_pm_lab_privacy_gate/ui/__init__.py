@@ -71,6 +71,7 @@ from .governance_release_polish_2026 import apply_governance_release_polish_2026
 from .governance_center_2026 import apply_governance_center_2026
 from .mockup_redesign_shell_2026 import apply_mockup_redesign_shell_2026
 from .mockup_organization_overview_2026 import apply_mockup_organization_overview_2026
+from .mockup_global_visual_system_2026 import apply_mockup_global_visual_system_2026
 
 install_mcp_log_guard()
 install_protect_runtime()
@@ -177,6 +178,11 @@ def _main_window_init_with_brand(self, *args, **kwargs) -> None:
     # Organization Overview mockup layer. This replaces only stack page 0 and
     # reads existing state/activity metadata without changing policy or storage.
     apply_mockup_organization_overview_2026(self)
+
+    # Shared visual system for the lower-risk pages. Governance is a universal
+    # workspace destination in both Personal and Organization; Protect is excluded
+    # from this broad pass and will be restyled separately after the rest is stable.
+    apply_mockup_global_visual_system_2026(self)
 
 
 MainWindow.__init__ = _main_window_init_with_brand
