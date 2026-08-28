@@ -76,6 +76,7 @@ from .mockup_navigation_2026 import apply_mockup_navigation_2026
 from .mockup_mcp_automation_studio_2026 import apply_mockup_mcp_automation_studio_2026
 from .mockup_shell_refinement_2026 import apply_mockup_shell_refinement_2026
 from .mockup_interaction_polish_2026 import apply_mockup_interaction_polish_2026
+from .mockup_personal_workspace_2026 import apply_mockup_personal_workspace_2026
 
 install_mcp_log_guard()
 install_protect_runtime()
@@ -204,6 +205,11 @@ def _main_window_init_with_brand(self, *args, **kwargs) -> None:
     # a true click-to-open/click-to-close toggle and the workspace picker uses
     # clearer Personal/Organization rows with icons, plan/role detail and selection.
     apply_mockup_interaction_polish_2026(self)
+
+    # Personal workspace home mirrors the approved dashboard distribution using
+    # real local Library/activity/connector state. It also adds the colored-icon
+    # sidebar polish while leaving Protect, policies and storage semantics intact.
+    apply_mockup_personal_workspace_2026(self)
 
 
 MainWindow.__init__ = _main_window_init_with_brand
