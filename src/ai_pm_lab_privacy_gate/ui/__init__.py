@@ -155,7 +155,7 @@ def _main_window_init_with_brand(self, *args, **kwargs) -> None:
     apply_workspace_creation_experience(self)
     apply_workspace_refresh_control(self)
     apply_workspace_creation_feedback(self)
-    apply_settings_service_pages_runtime(self)
+    apply_settings_service_pages_2026_runtime(self)
     apply_feature_suite_2026(self)
     apply_feature_suite_runtime(self)
     apply_governance_hardening_2026(self)
