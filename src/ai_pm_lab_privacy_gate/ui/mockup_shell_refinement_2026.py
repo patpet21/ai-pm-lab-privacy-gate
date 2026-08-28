@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from types import MethodType
 
-from PySide6.QtCore import QEvent, QObject, QPoint, QTimer, Qt
+from PySide6.QtCore import QEvent, QObject, QPoint, QSize, QTimer, Qt
 from PySide6.QtGui import QColor, QFont, QIcon, QPainter, QPixmap
 from PySide6.QtWidgets import (
     QFrame,
@@ -140,7 +140,12 @@ def _show_account_popup(sidebar_controller) -> None:
     signout_action.triggered.connect(legacy._sign_out)
 
     sidebar_controller._mockup_account_popup = menu
-    menu.aboutToHide.connect(lambda: QTimer.singleShot(0, lambda: setattr(sidebar_controller, "_mockup_account_popup", None)))
+    menu.aboutToHide.connect(
+        lambda: QTimer.singleShot(
+            0,
+            lambda: setattr(sidebar_controller, "_mockup_account_popup", None),
+        )
+    )
     menu.ensurePolished()
     menu.adjustSize()
     height = menu.sizeHint().height()
@@ -197,7 +202,7 @@ class _ResponsiveShell(QObject):
         name, initials, _email, plan, _org = _account_values(self.main_window)
         button = self.controller.account_button
         button.setIcon(_avatar_icon(initials, 36))
-        button.setIconSize(button.iconSize().expandedTo(button.icon().actualSize(button.iconSize())))
+        button.setIconSize(QSize(36, 36))
         button.setToolTip(f"{name} · {plan}")
         if compact:
             button.setText("")
@@ -255,6 +260,10 @@ def apply_mockup_shell_refinement_2026(main_window) -> None:
     if bool(getattr(main_window, "_privacygate_mockup_shell_refinement_2026", False)):
         return
     main_window._privacygate_mockup_shell_refinement_2026 = True
+
+    # The original desktop shell used a large fixed minimum. The redesign can
+    # safely contract further because navigation and the new studio grids reflow.
+    main_window.setMinimumSize(900, 620)
 
     controller = getattr(main_window, "_privacygate_redesign_sidebar_controller", None)
     if controller is None:
