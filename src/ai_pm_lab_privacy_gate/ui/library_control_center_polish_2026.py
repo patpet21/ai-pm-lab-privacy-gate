@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from PySide6.QtCore import QThreadPool, QTimer
+from PySide6.QtCore import QThreadPool
 from PySide6.QtWidgets import QMessageBox, QPushButton
 
 from ai_pm_lab_privacy_gate.domain.company_policy import PolicyEngine
@@ -197,6 +197,12 @@ def _install_live_policy_check(main_window, page) -> None:
                     "green",
                     f"Current Policy v{active_version} required-protection check passed locally · 0 required residual items · {residual_count} other possible residual finding(s). AI destination rules are still enforced at handoff.",
                 )
+            try:
+                main_window.statusBar().showMessage(
+                    "Organization policy re-check completed locally.", 7000
+                )
+            except Exception:
+                pass
 
         def failed(message: str) -> None:
             QMessageBox.warning(
@@ -209,7 +215,15 @@ def _install_live_policy_check(main_window, page) -> None:
             page._library_policy_recheck_worker_2026 = None
             if loader is not None:
                 loader.end("library.policy-recheck")
-            QTimer.singleShot(0, lambda: _control._update_compliance(page, page._current()))
+            current = page._current()
+            context_now = resolve_library_workspace(page)
+            button.setEnabled(
+                bool(
+                    current is not None
+                    and context_now.managed
+                    and context_now.policy is not None
+                )
+            )
 
         worker.signals.result.connect(ready)
         worker.signals.error.connect(failed)
