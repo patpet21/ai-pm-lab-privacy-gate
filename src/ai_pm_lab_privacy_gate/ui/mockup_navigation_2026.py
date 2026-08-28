@@ -61,7 +61,7 @@ def apply_mockup_navigation_2026(main_window) -> None:
             page_attribute="cloud_automation_page",
         )
         self._nav_button(
-            "Automation", "workflow", lambda: self._open_page("local_automation_page"),
+            "Workflows", "workflow", lambda: self._open_page("local_automation_page"),
             page_attribute="local_automation_page",
         )
         self._nav_button("Activity", "history", self._open_activity)
