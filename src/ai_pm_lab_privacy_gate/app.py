@@ -5,7 +5,7 @@ import os
 import sys
 
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QColor, QPixmap
+from PySide6.QtGui import QColor, QIcon, QPixmap
 from PySide6.QtNetwork import QLocalServer, QLocalSocket
 from PySide6.QtWidgets import QApplication, QSplashScreen
 
@@ -86,6 +86,16 @@ def main() -> int:
     install_app_font(app)
     app.setStyleSheet(APP_STYLE)
 
+    # Set the PrivacyGate application icon before the splash/main window appears.
+    # Source runs otherwise briefly inherit the generic Python/Qt window icon on
+    # Windows even though the packaged executable has the correct embedded icon.
+    icon_path = resource_path("resources", "branding", "privacy-gate.ico")
+    if not icon_path.exists():
+        icon_path = resource_path("resources", "branding", "privacy-gate-icon.png")
+    app_icon = QIcon(str(icon_path)) if icon_path.exists() else QIcon()
+    if not app_icon.isNull():
+        app.setWindowIcon(app_icon)
+
     logo_path = resource_path("resources", "branding", "privacy-gate-logo.png")
     pixmap = QPixmap(str(logo_path)) if logo_path.exists() else QPixmap(560, 260)
     if pixmap.isNull():
@@ -101,6 +111,8 @@ def main() -> int:
     splash: QSplashScreen | None = None
     if not background_start:
         splash = QSplashScreen(pixmap)
+        if not app_icon.isNull():
+            splash.setWindowIcon(app_icon)
         splash.showMessage(
             "Starting local privacy protection…",
             Qt.AlignmentFlag.AlignBottom | Qt.AlignmentFlag.AlignHCenter,
@@ -114,6 +126,8 @@ def main() -> int:
     from ai_pm_lab_privacy_gate.ui.main_window import MainWindow
 
     window = MainWindow()
+    if not app_icon.isNull():
+        window.setWindowIcon(app_icon)
     if not background_start:
         # Open as a normal maximized desktop window (not borderless/F11 full screen)
         # so minimize, restore and close controls stay available. Users can still
