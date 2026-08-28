@@ -57,6 +57,7 @@ from .library_control_center_2026 import (
     apply_library_control_center_2026,
 )
 from .library_control_center_bridges_2026 import install_library_control_center_bridges_2026
+from .library_control_center_polish_2026 import apply_library_control_center_polish_2026
 from .page_split import apply_apps_mcp_split
 from .runtime_fixes import apply_runtime_fixes
 from ai_pm_lab_privacy_gate.infrastructure.policy.multi_workspace_runtime import install_multi_workspace_client
@@ -246,6 +247,7 @@ def _main_window_init_with_brand(self, *args, **kwargs) -> None:
     # Document Control Center: Smart Collections, multi-document actions,
     # metadata-only per-document activity, and Organization policy context.
     apply_library_control_center_2026(self)
+    apply_library_control_center_polish_2026(self)
 
 
 MainWindow.__init__ = _main_window_init_with_brand
