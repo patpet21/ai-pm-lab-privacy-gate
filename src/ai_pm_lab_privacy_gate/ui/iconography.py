@@ -55,6 +55,8 @@ def icon(name: str, *, color: str = INK, size: int = 20) -> QIcon:
     elif name == "scan":
         for a, b in (((3,7),(3,3)),((3,3),(7,3)),((13,3),(17,3)),((17,3),(17,7)),((3,13),(3,17)),((3,17),(7,17)),((13,17),(17,17)),((17,17),(17,13))): painter.drawLine(pt(*a), pt(*b))
         painter.drawEllipse(rc(7, 7, 6, 6)); painter.drawLine(pt(11.5, 11.5), pt(14.2, 14.2))
+    elif name == "search":
+        painter.drawEllipse(rc(4, 4, 9.5, 9.5)); painter.drawLine(pt(12.2, 12.2), pt(17, 17))
     elif name == "clear":
         painter.drawEllipse(rc(3, 3, 14, 14)); painter.drawLine(pt(6, 6), pt(14, 14)); painter.drawLine(pt(14, 6), pt(6, 14))
     elif name == "copy":
@@ -99,21 +101,22 @@ def _icon_for_text(text: str) -> str | None:
         "protect": "protect", "restore": "restore", "history": "history", "templates": "template",
         "settings": "settings", "local library": "library", "library": "library", "reports": "report",
         "document": "document", "paste text": "paste", "compare": "compare", "protected text": "protect",
-        "clear": "clear", "scan": "scan", "scan locally": "scan", "upload": "upload", "upload file": "upload",
-        "upload document": "upload", "save": "save", "save to library": "save", "restore locally": "restore",
+        "clear": "clear", "scan": "scan", "scan locally": "scan", "search": "search", "find original": "search",
+        "upload": "upload", "upload file": "upload", "upload document": "upload", "save": "save", "save to library": "save", "restore locally": "restore",
         "full document view": "expand", "full screen preview": "expand",
     }
     if text in exact:
         return exact[text]
     for needle, key in (
         ("upload", "upload"), ("download", "download"), ("save", "save"), ("copy", "copy"),
-        ("protect", "protect"), ("scan", "scan"), ("restore", "restore"), ("library", "library"),
-        ("clear", "clear"), ("delete", "clear"), ("setting", "settings"), ("history", "history"),
-        ("report", "report"), ("template", "template"), ("workflow", "workflow"), ("automation", "workflow"),
-        ("mcp", "workflow"), ("cloud", "cloud"), ("email", "contact"), ("contact", "contact"),
-        ("chatgpt", "external"), ("website", "external"), ("store", "external"), ("open", "external"),
-        ("full", "expand"), ("paste", "paste"), ("document", "document"), ("file", "document"),
-        ("compare", "compare"), ("quit", "power"), ("check", "check"),
+        ("protect", "protect"), ("scan", "scan"), ("search", "search"), ("find", "search"),
+        ("restore", "restore"), ("library", "library"), ("clear", "clear"), ("delete", "clear"),
+        ("setting", "settings"), ("history", "history"), ("report", "report"), ("template", "template"),
+        ("workflow", "workflow"), ("automation", "workflow"), ("mcp", "workflow"), ("cloud", "cloud"),
+        ("email", "contact"), ("contact", "contact"), ("chatgpt", "external"), ("website", "external"),
+        ("store", "external"), ("open", "external"), ("full", "expand"), ("paste", "paste"),
+        ("document", "document"), ("file", "document"), ("compare", "compare"), ("quit", "power"),
+        ("check", "check"),
     ):
         if needle in text:
             return key
