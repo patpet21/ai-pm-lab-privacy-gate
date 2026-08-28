@@ -14,6 +14,7 @@ from ai_pm_lab_privacy_gate.ui.mockup_organization_overview_polish_2026 import (
     install_organization_overview_polish_2026,
     install_team_member_consistency_2026,
 )
+from ai_pm_lab_privacy_gate.ui.mockup_team_members_2026 import apply_mockup_team_members_2026
 
 
 def _safe_render_risks(
@@ -97,4 +98,8 @@ def apply_mockup_organization_overview_safe_2026(main_window):
     view = apply_mockup_organization_overview_final_2026(main_window)
     if view is not None:
         apply_organization_overview_polish_2026(view)
+
+    # Team/Members is also replaced only at the presentation layer. Existing
+    # TeamPage methods still own invitations, role changes and access mutations.
+    apply_mockup_team_members_2026(main_window)
     return view
