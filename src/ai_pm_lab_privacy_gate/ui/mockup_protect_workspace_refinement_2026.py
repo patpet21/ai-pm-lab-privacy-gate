@@ -22,7 +22,6 @@ from ai_pm_lab_privacy_gate.ui.mockup_design_foundation_2026 import (
     NEUTRAL_SOFT,
     RED,
     RED_SOFT,
-    TEXT,
 )
 
 
@@ -115,9 +114,12 @@ def _refresh_chips(bar) -> None:
     for label, (text, tone) in zip(labels, values):
         _set_chip(label, text, tone)
 
-    # The compact source control deliberately keeps the complete provider name in
-    # its tooltip/dropdown even when the closed selector mostly shows the logo.
-    provider_label = str(bar.source_combo.currentText() or "").strip()
+    provider_index = bar.source_combo.currentIndex()
+    provider_label = (
+        str(bar.source_combo.itemText(provider_index) or "").strip()
+        if provider_index >= 0
+        else ""
+    )
     if provider_label:
         bar.source_combo.setToolTip(f"Connected source: {provider_label}")
     account_label = str(bar.account_combo.currentText() or "").strip()
@@ -137,8 +139,6 @@ def apply_mockup_protect_workspace_refinement_2026(main_window) -> None:
         root.setContentsMargins(12, 7, 12, 8)
         root.setSpacing(5)
 
-    # Remove descriptive copy already explained by the page flow. Keep the title
-    # and field labels, so the row remains self-explanatory.
     for label in bar.findChildren(QLabel):
         text = " ".join(label.text().split())
         if text.startswith("Personal or company context") or text.startswith("Source of the content"):
@@ -154,13 +154,12 @@ def apply_mockup_protect_workspace_refinement_2026(main_window) -> None:
     bar.workspace_combo.setMaximumWidth(270)
     bar.workspace_combo.setMinimumHeight(36)
 
-    # Same real provider combo + same provider icons, just a compact closed control.
-    # Popup rows still retain their provider labels; the narrow closed state naturally
-    # prioritizes logo + dropdown arrow without creating a second selector.
-    bar.source_combo.setMinimumWidth(76)
-    bar.source_combo.setMaximumWidth(88)
+    # The closed selector is intentionally logo-first. Provider names remain fully
+    # readable in the expanded dropdown and in the tooltip.
+    bar.source_combo.setMinimumWidth(68)
+    bar.source_combo.setMaximumWidth(68)
     bar.source_combo.setMinimumHeight(36)
-    bar.source_combo.setIconSize(bar.source_combo.iconSize())
+    bar.source_combo.view().setMinimumWidth(190)
     bar.source_combo.setSizeAdjustPolicy(
         QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon
     )
@@ -169,18 +168,30 @@ def apply_mockup_protect_workspace_refinement_2026(main_window) -> None:
     bar.account_combo.setMinimumWidth(190)
     bar.account_combo.setMaximumWidth(255)
     bar.account_combo.setMinimumHeight(36)
+    bar.account_combo.view().setMinimumWidth(260)
 
-    for combo in (bar.workspace_combo, bar.source_combo, bar.account_combo):
-        combo.setStyleSheet(
-            "QComboBox{background:#FFFFFF;color:#344054;border:1px solid #D0D5DD;"
-            "border-radius:9px;padding:6px 8px;font-size:8.5px;font-weight:700;}"
-            f"QComboBox:hover{{border-color:#C7D7FE;}}"
-            f"QComboBox:focus{{border:1px solid {BLUE};}}"
-            "QComboBox::drop-down{border:none;width:23px;}"
-            "QComboBox QAbstractItemView{background:#FFFFFF;color:#344054;"
-            "border:1px solid #D0D5DD;selection-background-color:#EEF4FF;"
-            "selection-color:#101828;padding:4px;}"
-        )
+    standard_combo_qss = (
+        "QComboBox{background:#FFFFFF;color:#344054;border:1px solid #D0D5DD;"
+        "border-radius:9px;padding:6px 8px;font-size:8.5px;font-weight:700;}"
+        "QComboBox:hover{border-color:#C7D7FE;}"
+        f"QComboBox:focus{{border:1px solid {BLUE};}}"
+        "QComboBox::drop-down{border:none;width:23px;}"
+        "QComboBox QAbstractItemView{background:#FFFFFF;color:#344054;"
+        "border:1px solid #D0D5DD;selection-background-color:#EEF4FF;"
+        "selection-color:#101828;padding:4px;}"
+    )
+    bar.workspace_combo.setStyleSheet(standard_combo_qss)
+    bar.account_combo.setStyleSheet(standard_combo_qss)
+    bar.source_combo.setStyleSheet(
+        "QComboBox{background:#FFFFFF;color:transparent;border:1px solid #D0D5DD;"
+        "border-radius:9px;padding:6px 6px;font-size:8px;font-weight:700;}"
+        "QComboBox:hover{border-color:#C7D7FE;}"
+        f"QComboBox:focus{{border:1px solid {BLUE};}}"
+        "QComboBox::drop-down{border:none;width:22px;}"
+        "QComboBox QAbstractItemView{background:#FFFFFF;color:#344054;"
+        "border:1px solid #D0D5DD;selection-background-color:#EEF4FF;"
+        "selection-color:#101828;padding:4px;}"
+    )
 
     bar.manage.setText("Team access")
     bar.manage.setMinimumHeight(34)
@@ -189,8 +200,6 @@ def apply_mockup_protect_workspace_refinement_2026(main_window) -> None:
     bar.browse.setMinimumWidth(185)
     bar.browse.setMaximumWidth(230)
 
-    # Replace the large policy sentence with four truthful chips computed only from
-    # the state already in memory. No new cloud request or metadata is introduced.
     bar.policy.hide()
     bar.policy.setMaximumWidth(0)
     row = _find_layout(root, bar.browse)
