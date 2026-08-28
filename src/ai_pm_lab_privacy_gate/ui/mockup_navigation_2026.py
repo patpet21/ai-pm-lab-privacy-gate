@@ -57,7 +57,7 @@ def apply_mockup_navigation_2026(main_window) -> None:
                 page_attribute="apps_hub_page",
             )
         self._nav_button(
-            "MCP", "workflow", lambda: self._open_page("cloud_automation_page"),
+            "MCP & AI Direct", "workflow", lambda: self._open_page("cloud_automation_page"),
             page_attribute="cloud_automation_page",
         )
         self._nav_button(
