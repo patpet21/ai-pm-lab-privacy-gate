@@ -1,29 +1,15 @@
 from ai_pm_lab_privacy_gate.application import portable_backup_runtime as _portable_backup_runtime
 
 from .mcp_log_guard import install_mcp_log_guard
-from .redesign import install_redesign
-from .protect_ghost_cleanup import install_protect_ghost_cleanup
-from .protect_quick_actions import install_protect_quick_actions
 from .layout_polish import install_layout_polish
 from .connected_apps_ui import install_connected_apps_ui
 from .google_oauth_ui import install_google_oauth_ui
 from .brand_palette import apply_brand_palette
 from .brand_icons import apply_brand_icons
 from .connected_apps_browse_polish import apply_connected_apps_browse_polish
-from .protect_source_picker import apply_protect_source_picker
-from .document_pipeline_v2_ui import apply_document_pipeline_v2_ui
-from .protect_session_upgrade import apply_protect_session_upgrade
-from .protect_session_runtime_fix import apply_protect_session_runtime_fix
-from .gmail_package_browser import apply_gmail_package_browser
-from .gmail_package_runtime_fix import apply_gmail_package_runtime_fix
-from .gmail_component_session import apply_gmail_component_session
-from .gmail_component_preview_polish import apply_gmail_component_preview_polish
-from .gmail_component_capture_fix import apply_gmail_component_capture_fix
-from .protect_source_state_reset import apply_protect_source_state_reset
-from .protect_workspace_controls import apply_managed_protect_context
-from .protect_workspace_branding import apply_managed_protect_branding
-from .protect_late_cleanup import apply_protect_late_cleanup
-from .protect_usability_polish import apply_protect_usability_polish
+from .protect_runtime import install_protect_runtime, apply_protect_runtime
+from .global_loading_runtime import apply_global_loading_runtime
+from .protect_micro_ux import apply_protect_micro_ux
 from .source_catalog_activation import activate_oauth_ready_sources
 from .gmail_browser_route import install_gmail_browser_route
 from .clickup_browser_route import install_clickup_browser_route
@@ -53,6 +39,7 @@ from .organization_workspace_suite_v2 import apply_organization_workspace_suite_
 from .organization_usability_polish import apply_organization_usability_polish
 from .organization_overview_fix import apply_organization_overview_fix
 from .organization_overview_consistency import apply_organization_overview_consistency
+from .organization_apps_safe_routing import apply_organization_apps_safe_routing
 from .contact_workflows_polish import apply_contact_workflows_polish, apply_popup_visual_polish
 from .contact_executive_2026 import apply_contact_executive_2026
 from .dialog_visual_system import apply_dialog_visual_system
@@ -81,13 +68,10 @@ from .feature_suite_2026 import apply_feature_suite_2026
 from .feature_suite_runtime import apply_feature_suite_runtime
 from .governance_hardening_2026 import apply_governance_hardening_2026
 from .governance_release_polish_2026 import apply_governance_release_polish_2026
-from .protect_workflow_visibility_fix import apply_protect_workflow_visibility_fix
 from .governance_center_2026 import apply_governance_center_2026
 
 install_mcp_log_guard()
-install_redesign()
-install_protect_ghost_cleanup()
-install_protect_quick_actions()
+install_protect_runtime()
 install_layout_polish()
 install_connected_apps_ui()
 install_google_oauth_ui()
@@ -124,7 +108,7 @@ def _main_window_init_with_brand(self, *args, **kwargs) -> None:
     apply_brand_palette(self)
     apply_brand_icons(self)
     apply_connected_apps_browse_polish(self)
-    apply_protect_source_picker(self)
+    apply_protect_runtime(self, "source")
     apply_apps_mcp_split(self)
     apply_business_main_window(self)
     apply_organization_polish(self)
@@ -142,13 +126,12 @@ def _main_window_init_with_brand(self, *args, **kwargs) -> None:
     apply_organization_usability_polish(self)
     apply_organization_overview_fix(self)
     apply_organization_overview_consistency(self)
-    apply_managed_protect_context(self)
-    apply_managed_protect_branding(self)
+    apply_protect_runtime(self, "managed")
     apply_contact_workflows_polish(self)
     apply_contact_executive_2026(self)
     apply_popup_visual_polish(self)
     apply_dialog_visual_system(self)
-    apply_protect_late_cleanup(self)
+    apply_protect_runtime(self, "layout")
     apply_account_sidebar_polish(self)
     apply_account_menu_popup_2026(self)
     apply_workspace_management_ui(self)
@@ -163,30 +146,25 @@ def _main_window_init_with_brand(self, *args, **kwargs) -> None:
     apply_feature_suite_runtime(self)
     apply_governance_hardening_2026(self)
     apply_governance_release_polish_2026(self)
-    apply_protect_workflow_visibility_fix(self)
+    apply_protect_runtime(self, "visibility")
     apply_governance_center_2026(self)
-    apply_protect_usability_polish(self)
-    # Final functional pass: keep every supported file source on one local
-    # import/protect/export path and add the TXT companion export.
-    apply_document_pipeline_v2_ui(self)
-    # Last Protect pass: preserve all previous behavior while enabling a
-    # document + pasted-text session, clearer source review, PPTX drag/drop,
-    # visible fidelity status, and clearer Drive navigation.
-    apply_protect_session_upgrade(self)
-    apply_protect_session_runtime_fix(self)
-    # Gmail package picker still owns remote selection/materialization.
-    apply_gmail_package_browser(self)
-    apply_gmail_package_runtime_fix(self)
-    # Final Gmail Protect pass: preserve body + every selected attachment as
-    # independent native sources with explicit source buttons and previews.
-    apply_gmail_component_session(self)
-    apply_gmail_component_preview_polish(self)
-    # Capture exact body/attachment materialization after every Gmail wrapper,
-    # then build the authoritative source manifest from those real selections.
-    apply_gmail_component_capture_fix(self)
-    # Last state-management pass: a new Drive/local/text source must invalidate
-    # any previous Gmail routing state, and Clear must flush cached renderers.
-    apply_protect_source_state_reset(self)
+    # Final Protect stage: one controlled compatibility boundary for the unified
+    # document pipeline, multi-source sessions, Gmail package sources and state
+    # reset. The surface guard runs last inside this stage.
+    apply_protect_runtime(self, "final")
+
+    # One real-lifetime loading surface for long operations across Protect,
+    # Restore, Library, connected sources and other page-level busy workflows.
+    # It is installed last so it observes the final compatibility callables.
+    apply_global_loading_runtime(self)
+
+    # Small post-stability Protect improvements use that same global loading
+    # controller and the existing category palette. No protection semantics move.
+    apply_protect_micro_ux(self)
+
+    # Navigation-only repair: resolve the live top-level Apps page after every
+    # runtime page has been created. This does not mutate Team/Organization stacks.
+    apply_organization_apps_safe_routing(self)
 
 
 MainWindow.__init__ = _main_window_init_with_brand
