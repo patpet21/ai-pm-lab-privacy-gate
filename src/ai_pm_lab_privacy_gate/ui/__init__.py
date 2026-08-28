@@ -81,6 +81,7 @@ from .mockup_personal_workspace_2026 import apply_mockup_personal_workspace_2026
 from .mockup_personal_workspace_polish_2026 import apply_mockup_personal_workspace_polish_2026
 from .mockup_personal_workspace_final_2026 import apply_mockup_personal_workspace_final_2026
 from .mockup_organization_overview_safety_2026 import apply_mockup_organization_overview_safe_2026
+from .mockup_protect_final_2026 import apply_mockup_protect_final_2026
 
 install_mcp_log_guard()
 install_protect_runtime()
@@ -154,7 +155,7 @@ def _main_window_init_with_brand(self, *args, **kwargs) -> None:
     apply_workspace_creation_experience(self)
     apply_workspace_refresh_control(self)
     apply_workspace_creation_feedback(self)
-    apply_settings_service_pages_2026_runtime(self)
+    apply_settings_service_pages_runtime(self)
     apply_feature_suite_2026(self)
     apply_feature_suite_runtime(self)
     apply_governance_hardening_2026(self)
@@ -184,6 +185,12 @@ def _main_window_init_with_brand(self, *args, **kwargs) -> None:
     # It summarizes real TeamState, policy, device and metadata-only activity data,
     # while all membership/policy/device mutations remain in the existing TeamPage.
     apply_mockup_organization_overview_safe_2026(self)
+
+    # Final Protect presentation layer.  It deliberately reuses the proven
+    # Original/Protected document panels, text editor, preview widgets and all
+    # existing Scan/Review/Save/Download/AI callbacks; only their visual hierarchy
+    # is aligned with the approved 2026 mockups.
+    apply_mockup_protect_final_2026(self)
 
 
 MainWindow.__init__ = _main_window_init_with_brand
