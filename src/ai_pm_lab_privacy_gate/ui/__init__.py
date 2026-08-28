@@ -69,6 +69,7 @@ from .feature_suite_runtime import apply_feature_suite_runtime
 from .governance_hardening_2026 import apply_governance_hardening_2026
 from .governance_release_polish_2026 import apply_governance_release_polish_2026
 from .governance_center_2026 import apply_governance_center_2026
+from .mockup_redesign_shell_2026 import apply_mockup_redesign_shell_2026
 
 install_mcp_log_guard()
 install_protect_runtime()
@@ -165,6 +166,12 @@ def _main_window_init_with_brand(self, *args, **kwargs) -> None:
     # Navigation-only repair: resolve the live top-level Apps page after every
     # runtime page has been created. This does not mutate Team/Organization stacks.
     apply_organization_apps_safe_routing(self)
+
+    # Final visual-only shell. It replaces the visible navigation surface after
+    # every compatibility/runtime layer has finished wiring real page callbacks.
+    # The historic sidebar stays alive but hidden so existing controllers keep
+    # their references and no protection/business semantics are duplicated.
+    apply_mockup_redesign_shell_2026(self)
 
 
 MainWindow.__init__ = _main_window_init_with_brand
