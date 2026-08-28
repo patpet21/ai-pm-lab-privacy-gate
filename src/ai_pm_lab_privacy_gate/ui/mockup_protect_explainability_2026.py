@@ -7,10 +7,10 @@ product-dialog language for concepts that need more than a sentence.
 """
 
 from PySide6.QtCore import QSize, Qt
-from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QLayout, QPushButton, QToolButton
+from PySide6.QtWidgets import QHBoxLayout, QLabel, QLayout, QPushButton, QToolButton
 
 from ai_pm_lab_privacy_gate.ui.iconography import icon
-from ai_pm_lab_privacy_gate.ui.mockup_design_foundation_2026 import BLUE, BLUE_SOFT, BORDER, INK, MUTED
+from ai_pm_lab_privacy_gate.ui.mockup_design_foundation_2026 import BLUE, BLUE_SOFT, INK, MUTED
 from ai_pm_lab_privacy_gate.ui.organization_product_experience_2026 import PrivacyGateProductDialog
 
 
@@ -65,13 +65,21 @@ def _info_button(parent, title: str, subtitle: str, *points: str) -> QToolButton
 
 
 def _attach_info_after_label(page, label_text: str, title: str, subtitle: str, *points: str) -> None:
-    root = getattr(page, "layout", lambda: None)()
     for label in page.findChildren(QLabel):
         if " ".join(label.text().split()).lower() != label_text.lower():
             continue
-        layout = _find_layout(root, label)
+
+        # Labels live inside nested cards (workspace bar, preview card, findings
+        # card), not necessarily in ProtectionPage's direct root layout. Walk up
+        # through parents until the owning box layout is found.
+        layout = None
+        parent = label.parentWidget()
+        while parent is not None and layout is None:
+            layout = _find_layout(parent.layout(), label)
+            parent = parent.parentWidget()
         if layout is None:
             return
+
         key = "_protect_info_" + title.lower().replace(" ", "_").replace("/", "_")
         if getattr(page, key, None) is not None:
             return
