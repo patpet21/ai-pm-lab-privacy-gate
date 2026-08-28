@@ -160,6 +160,7 @@ def apply_protect_runtime(main_window, stage: str) -> None:
         from .gmail_package_browser import apply_gmail_package_browser
         from .gmail_package_runtime_fix import apply_gmail_package_runtime_fix
         from .gmail_component_session import apply_gmail_component_session
+        from .gmail_protect_package_bridge import apply_gmail_protect_package_bridge
         from .gmail_component_preview_polish import apply_gmail_component_preview_polish
         from .gmail_component_capture_fix import apply_gmail_component_capture_fix
         from .protect_source_state_reset import apply_protect_source_state_reset
@@ -185,6 +186,13 @@ def apply_protect_runtime(main_window, stage: str) -> None:
         apply_gmail_package_browser(main_window)
         apply_gmail_package_runtime_fix(main_window)
         apply_gmail_component_session(main_window)
+
+        # First Gmail migration checkpoint: keep the proven Gmail component UI
+        # authoritative, but mirror every selected body/attachment package into
+        # the generic ProtectPackage contract. Automation and manual Protect can
+        # now converge on one source boundary before analysis/protection is moved.
+        apply_gmail_protect_package_bridge(main_window)
+
         apply_gmail_component_preview_polish(main_window)
         apply_gmail_component_capture_fix(main_window)
         apply_protect_source_state_reset(main_window)
