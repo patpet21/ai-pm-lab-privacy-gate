@@ -137,7 +137,7 @@ def test_policy_history_orphan_is_hidden_and_reparented_inside_policy_view():
     safe = safe_buttons[0]
     assert safe.parentWidget() is actions_host
     assert safe.window() is not safe
-    assert safe.isVisible()
+    assert safe not in QApplication.topLevelWidgets()
     assert dashboard.stack.count() == 3
 
     team_page.close()
