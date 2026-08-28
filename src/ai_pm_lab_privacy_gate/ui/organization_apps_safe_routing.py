@@ -143,7 +143,9 @@ def _repair_policy_history_control(main_window) -> None:
         return
     dashboard = getattr(team_page, "_privacygate_premium_dashboard", None)
 
-    # Remove the legacy orphan (and any duplicate outside the visible policy page).
+    # A visible QWidget with no parent becomes its own native top-level window in
+    # Qt. Hide and retire the legacy orphan; no signal disconnection is necessary
+    # because deleteLater() removes the widget and its connections together.
     app = QApplication.instance()
     if app is not None:
         for widget in tuple(app.allWidgets()):
@@ -156,11 +158,7 @@ def _repair_policy_history_control(main_window) -> None:
             except RuntimeError:
                 continue
             if is_top_level:
-                try:
-                    widget.hide()
-                    widget.clicked.disconnect()
-                except (RuntimeError, TypeError):
-                    pass
+                widget.hide()
                 widget.deleteLater()
 
     parent, layout, edit_button = _safe_policy_history_layout(team_page, dashboard)
