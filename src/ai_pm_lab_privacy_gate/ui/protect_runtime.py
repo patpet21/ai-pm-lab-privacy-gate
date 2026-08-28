@@ -186,13 +186,6 @@ def apply_protect_runtime(main_window, stage: str) -> None:
         apply_gmail_package_browser(main_window)
         apply_gmail_package_runtime_fix(main_window)
         apply_gmail_component_session(main_window)
-
-        # First Gmail migration checkpoint: keep the proven Gmail component UI
-        # authoritative, but mirror every selected body/attachment package into
-        # the generic ProtectPackage contract. Automation and manual Protect can
-        # now converge on one source boundary before analysis/protection is moved.
-        apply_gmail_protect_package_bridge(main_window)
-
         apply_gmail_component_preview_polish(main_window)
         apply_gmail_component_capture_fix(main_window)
         apply_protect_source_state_reset(main_window)
@@ -201,6 +194,12 @@ def apply_protect_runtime(main_window, stage: str) -> None:
         # document/session Privacy Check. This intentionally does not reuse the
         # legacy AI Preflight dialog.
         apply_protect_workflow_v2(main_window)
+
+        # First Gmail migration checkpoint: keep the proven Gmail component UI
+        # authoritative, but mirror every selected body/attachment package into
+        # the generic ProtectPackage contract. Install this after workflow-v2 so
+        # its Clear/Scan signal rewiring cannot remove the shadow-state bridge.
+        apply_gmail_protect_package_bridge(main_window)
 
         # Ensure the Privacy Check follows the actual protected-copy completion
         # even while older compatibility signals still hold bound callables from
