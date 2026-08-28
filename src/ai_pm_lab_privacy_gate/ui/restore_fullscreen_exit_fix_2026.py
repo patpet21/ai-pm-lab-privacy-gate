@@ -27,10 +27,18 @@ def _enforce_restore_2026_visibility(page) -> None:
         widget.setMinimumHeight(0)
         widget.setMaximumHeight(0)
 
+    full_button = getattr(page, "full_preview_button", None)
+    focused = bool(full_button is not None and full_button.isChecked())
+
+    # Product-assist/validation belongs to the normal Restore workspace, not the
+    # document-only fullscreen comparison. Restore it immediately on exit.
+    completion_strip = getattr(page, "_restore_completion_strip", None)
+    if completion_strip is not None:
+        completion_strip.setVisible(not focused)
+
     # The legacy fullscreen handler also restores the pre-redesign page margins.
     # Reapply the approved Restore 2026 shell when returning to normal view.
-    full_button = getattr(page, "full_preview_button", None)
-    if full_button is not None and not full_button.isChecked():
+    if not focused:
         outer = getattr(page, "_outer_layout", None)
         if outer is not None:
             outer.setContentsMargins(20, 14, 20, 12)
