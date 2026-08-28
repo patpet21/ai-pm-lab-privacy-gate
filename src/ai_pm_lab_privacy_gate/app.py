@@ -115,7 +115,10 @@ def main() -> int:
 
     window = MainWindow()
     if not background_start:
-        window.show()
+        # Open as a normal maximized desktop window (not borderless/F11 full screen)
+        # so minimize, restore and close controls stay available. Users can still
+        # resize the window afterwards; the redesign shell adapts to narrower widths.
+        window.showMaximized()
         if splash is not None:
             splash.finish(window)
 
