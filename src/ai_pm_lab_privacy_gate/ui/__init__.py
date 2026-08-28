@@ -78,6 +78,7 @@ from .mockup_shell_refinement_2026 import apply_mockup_shell_refinement_2026
 from .mockup_interaction_polish_2026 import apply_mockup_interaction_polish_2026
 from .mockup_personal_workspace_2026 import apply_mockup_personal_workspace_2026
 from .mockup_personal_workspace_polish_2026 import apply_mockup_personal_workspace_polish_2026
+from .mockup_personal_workspace_final_2026 import apply_mockup_personal_workspace_final_2026
 
 install_mcp_log_guard()
 install_protect_runtime()
@@ -157,65 +158,24 @@ def _main_window_init_with_brand(self, *args, **kwargs) -> None:
     apply_governance_release_polish_2026(self)
     apply_protect_runtime(self, "visibility")
     apply_governance_center_2026(self)
-    # Final Protect stage: one controlled compatibility boundary for the unified
-    # document pipeline, multi-source sessions, Gmail package sources and state
-    # reset. The surface guard runs last inside this stage.
     apply_protect_runtime(self, "final")
-
-    # One real-lifetime loading surface for long operations across Protect,
-    # Restore, Library, connected sources and other page-level busy workflows.
-    # It is installed last so it observes the final compatibility callables.
     apply_global_loading_runtime(self)
-
-    # Small post-stability Protect improvements use that same global loading
-    # controller and the existing category palette. No protection semantics move.
     apply_protect_micro_ux(self)
-
-    # Navigation-only repair: resolve the live top-level Apps page after every
-    # runtime page has been created. This does not mutate Team/Organization stacks.
     apply_organization_apps_safe_routing(self)
-
-    # Final visual-only shell. It replaces the visible navigation surface after
-    # every compatibility/runtime layer has finished wiring real page callbacks.
-    # The historic sidebar stays alive but hidden so existing controllers keep
-    # their references and no protection/business semantics are duplicated.
     apply_mockup_redesign_shell_2026(self)
-
-    # Organization Overview mockup layer. This replaces only stack page 0 and
-    # reads existing state/activity metadata without changing policy or storage.
     apply_mockup_organization_overview_2026(self)
-
-    # Shared visual system for the lower-risk pages. Governance is a universal
-    # workspace destination in both Personal and Organization; Protect is excluded
-    # from this broad pass and will be restyled separately after the rest is stable.
     apply_mockup_global_visual_system_2026(self)
-
-    # Final workspace vocabulary: Apps contains providers; MCP is only connection
-    # setup; Automation is the client-workflow studio; Governance stays universal.
     apply_mockup_navigation_2026(self)
-
-    # Rebuild the two legacy ConnectionsPage surfaces visually while preserving
-    # their existing MCP configuration callbacks and local business logic.
     apply_mockup_mcp_automation_studio_2026(self)
-
-    # Last shell pass: ChatGPT-style profile launcher, no permanent local-first
-    # footer card, and adaptive sidebar widths for narrower desktop windows.
     apply_mockup_shell_refinement_2026(self)
-
-    # Tiny interaction polish kept separate from the visual shell: Account becomes
-    # a true click-to-open/click-to-close toggle and the workspace picker uses
-    # clearer Personal/Organization rows with icons, plan/role detail and selection.
     apply_mockup_interaction_polish_2026(self)
-
-    # Personal workspace home mirrors the approved dashboard distribution using
-    # real local Library/activity/connector state. It also adds the colored-icon
-    # sidebar polish while leaving Protect, policies and storage semantics intact.
     apply_mockup_personal_workspace_2026(self)
-
-    # Final Personal Workspace polish: readable typography, tighter privacy layout,
-    # elided long document names and original provider-logo-only connected apps.
-    # Provider logos are clickable while the header keeps the View all action.
     apply_mockup_personal_workspace_polish_2026(self)
+
+    # Last Personal Workspace layer: native OS file-type artwork, compact clickable
+    # provider-logo dock and quick document actions. All actions delegate to the
+    # existing Library/Restore/MCP controllers rather than duplicating semantics.
+    apply_mockup_personal_workspace_final_2026(self)
 
 
 MainWindow.__init__ = _main_window_init_with_brand
