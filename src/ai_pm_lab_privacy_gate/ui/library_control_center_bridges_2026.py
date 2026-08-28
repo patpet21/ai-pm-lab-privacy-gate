@@ -2,6 +2,11 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
+from PySide6.QtWidgets import QMessageBox
+
+from ai_pm_lab_privacy_gate.infrastructure.storage.governance_repository import (
+    DocumentGovernanceRepository,
+)
 from ai_pm_lab_privacy_gate.ui import library_control_center_2026 as _control
 from ai_pm_lab_privacy_gate.ui import library_document_actions_2026 as _actions
 
@@ -59,3 +64,44 @@ def install_library_control_center_bridges_2026() -> None:
                 pass
 
     _control._update_smart_counts = update_smart_counts
+
+
+def apply_library_control_center_bridges_2026(main_window) -> None:
+    """Keep automatic Library -> Restore on the same integrity boundary as manual Restore."""
+    restore_page = getattr(main_window, "restore_page", None)
+    library = getattr(main_window, "library", None)
+    if (
+        restore_page is None
+        or library is None
+        or bool(getattr(restore_page, "_library_auto_restore_integrity_2026", False))
+    ):
+        return
+
+    restore_page._library_auto_restore_integrity_2026 = True
+    repository = DocumentGovernanceRepository(library)
+    previous_restore = restore_page._restore
+
+    def guarded_restore() -> None:
+        document_id = str(restore_page.document_combo.currentData() or "")
+        if document_id:
+            try:
+                result = repository.verify(document_id)
+            except Exception as error:
+                QMessageBox.critical(
+                    restore_page,
+                    "Restore blocked by local integrity check",
+                    f"PrivacyGate could not verify the selected local restore mapping.\n\n{error}",
+                )
+                return
+            if not result.ok:
+                QMessageBox.critical(
+                    restore_page,
+                    "Restore blocked by local integrity check",
+                    result.message,
+                )
+                return
+        previous_restore()
+
+    # Direct Library restore resolves this instance attribute when it starts the
+    # worker, so the one-click flow can stay automatic without bypassing governance.
+    restore_page._restore = guarded_restore
