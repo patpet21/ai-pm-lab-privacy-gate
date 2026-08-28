@@ -9,6 +9,11 @@ from ai_pm_lab_privacy_gate.ui.mockup_organization_overview_final_2026 import (
     _format_when,
     apply_mockup_organization_overview_final_2026,
 )
+from ai_pm_lab_privacy_gate.ui.mockup_organization_overview_polish_2026 import (
+    apply_organization_overview_polish_2026,
+    install_organization_overview_polish_2026,
+    install_team_member_consistency_2026,
+)
 
 
 def _safe_render_risks(
@@ -78,8 +83,18 @@ def _safe_render_risks(
 
 
 def apply_mockup_organization_overview_safe_2026(main_window):
+    # TeamState is authoritative for the signed-in user's real membership. If an
+    # older/deployed management RPC omits that same row, reconcile it before any
+    # dashboard or Team-page counts are rendered instead of hardcoding a seat.
+    install_team_member_consistency_2026()
+
     # Patch before construction because OrganizationOverviewFinal renders once in
     # __init__. This keeps the final dashboard compatible across supported PySide6
     # builds without moving any organization/business logic.
     OrganizationOverviewFinal._render_risks = _safe_render_risks
-    return apply_mockup_organization_overview_final_2026(main_window)
+    install_organization_overview_polish_2026()
+
+    view = apply_mockup_organization_overview_final_2026(main_window)
+    if view is not None:
+        apply_organization_overview_polish_2026(view)
+    return view
