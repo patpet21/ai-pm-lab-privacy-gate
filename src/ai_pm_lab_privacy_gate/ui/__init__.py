@@ -21,6 +21,7 @@ from .account_aware_routing import install_account_aware_routing
 from .automatic_temp_cleanup import install_automatic_temp_cleanup
 from .source_metadata import install_source_metadata
 from .library_save_dialog import install_library_save_dialog
+from .document_workspace_context_runtime import install_document_workspace_context_runtime
 from .privacy_preflight import install_privacy_preflight
 from .business_foundation import install_business_foundation, apply_business_main_window
 from .team_action_recovery import install_team_action_recovery
@@ -84,6 +85,7 @@ from .mockup_organization_overview_safety_2026 import apply_mockup_organization_
 from .mockup_protect_final_2026 import apply_mockup_protect_final_2026
 from .mockup_protect_refinement_suite_2026 import apply_mockup_protect_refinement_suite_2026
 from .mockup_restore_suite_2026 import apply_mockup_restore_suite_2026
+from .restore_document_finder_2026 import apply_restore_document_finder_2026
 
 install_mcp_log_guard()
 install_protect_runtime()
@@ -101,6 +103,7 @@ install_account_aware_routing()
 install_automatic_temp_cleanup()
 install_source_metadata()
 install_library_save_dialog()
+install_document_workspace_context_runtime()
 install_privacy_preflight()
 install_business_foundation()
 install_multi_workspace_client()
@@ -203,6 +206,11 @@ def _main_window_init_with_brand(self, *args, **kwargs) -> None:
     # authoritative, while the 2026 presentation and local text-edit experience
     # are layered on last.
     apply_mockup_restore_suite_2026(self)
+
+    # Workspace-aware original-document finder. It searches local Library/source/
+    # workspace metadata and mapping token names, then delegates the chosen ID back
+    # to RestorePage's existing document combo and DocumentRestoreService.
+    apply_restore_document_finder_2026(self)
 
 
 MainWindow.__init__ = _main_window_init_with_brand
