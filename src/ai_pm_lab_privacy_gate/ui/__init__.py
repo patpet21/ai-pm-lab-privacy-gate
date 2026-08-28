@@ -87,6 +87,7 @@ from .mockup_organization_overview_2026 import apply_mockup_organization_overvie
 from .mockup_global_visual_system_2026 import apply_mockup_global_visual_system_2026
 from .mockup_navigation_2026 import apply_mockup_navigation_2026
 from .mockup_mcp_automation_studio_2026 import apply_mockup_mcp_automation_studio_2026
+from .mockup_automation_product_studio_2026 import apply_mockup_automation_product_studio_2026
 from .mockup_shell_refinement_2026 import apply_mockup_shell_refinement_2026
 from .mockup_interaction_polish_2026 import apply_mockup_interaction_polish_2026
 from .mockup_personal_workspace_2026 import apply_mockup_personal_workspace_2026
@@ -248,6 +249,11 @@ def _main_window_init_with_brand(self, *args, **kwargs) -> None:
     # metadata-only per-document activity, and Organization policy context.
     apply_library_control_center_2026(self)
     apply_library_control_center_polish_2026(self)
+
+    # Product-first Automation Studio: real-product hierarchy, privacy boundary,
+    # guided builder, templates, run history, approvals and a discreet PM-led
+    # AI/automation advisory surface for client discovery.
+    apply_mockup_automation_product_studio_2026(self)
 
 
 MainWindow.__init__ = _main_window_init_with_brand
