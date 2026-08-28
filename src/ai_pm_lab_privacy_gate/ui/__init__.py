@@ -87,6 +87,7 @@ from .mockup_protect_refinement_suite_2026 import apply_mockup_protect_refinemen
 from .mockup_restore_suite_2026 import apply_mockup_restore_suite_2026
 from .restore_document_finder_2026 import apply_restore_document_finder_2026
 from .restore_document_finder_mount_fix_2026 import apply_restore_document_finder_mount_fix_2026
+from .restore_safe_visual_polish_2026 import apply_restore_safe_visual_polish_2026
 
 install_mcp_log_guard()
 install_protect_runtime()
@@ -214,10 +215,11 @@ def _main_window_init_with_brand(self, *args, **kwargs) -> None:
     apply_restore_document_finder_2026(self)
 
     # Keep the last visible Restore command bar owned by the proven controls.
-    # The experimental product-polish controller is intentionally not activated:
-    # it introduced a Qt interaction regression where Upload/Find/Paste/Clear could
-    # stop receiving mouse events. Matching remains available in the Finder itself.
+    # The experimental product-polish controller remains disabled because it caused
+    # a Qt mouse-event regression. The safe layer below only decorates existing
+    # controls and Finder items; it does not reparent or reconnect them.
     apply_restore_document_finder_mount_fix_2026(self)
+    apply_restore_safe_visual_polish_2026(self)
 
 
 MainWindow.__init__ = _main_window_init_with_brand
