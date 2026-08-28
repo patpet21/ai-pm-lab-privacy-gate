@@ -77,6 +77,7 @@ from .mockup_mcp_automation_studio_2026 import apply_mockup_mcp_automation_studi
 from .mockup_shell_refinement_2026 import apply_mockup_shell_refinement_2026
 from .mockup_interaction_polish_2026 import apply_mockup_interaction_polish_2026
 from .mockup_personal_workspace_2026 import apply_mockup_personal_workspace_2026
+from .mockup_personal_workspace_polish_2026 import apply_mockup_personal_workspace_polish_2026
 
 install_mcp_log_guard()
 install_protect_runtime()
@@ -210,6 +211,11 @@ def _main_window_init_with_brand(self, *args, **kwargs) -> None:
     # real local Library/activity/connector state. It also adds the colored-icon
     # sidebar polish while leaving Protect, policies and storage semantics intact.
     apply_mockup_personal_workspace_2026(self)
+
+    # Final Personal Workspace polish: readable typography, tighter privacy layout,
+    # elided long document names and original provider-logo-only connected apps.
+    # Provider logos are clickable while the header keeps the View all action.
+    apply_mockup_personal_workspace_polish_2026(self)
 
 
 MainWindow.__init__ = _main_window_init_with_brand
