@@ -47,6 +47,10 @@ from .contact_executive_2026 import apply_contact_executive_2026
 from .dialog_visual_system import apply_dialog_visual_system
 from .library_source_folders import install_library_source_folders
 from .library_visual_upgrade import install_library_visual_upgrade
+from .mockup_library_suite_2026 import (
+    install_mockup_library_suite_2026,
+    apply_mockup_library_suite_2026,
+)
 from .page_split import apply_apps_mcp_split
 from .runtime_fixes import apply_runtime_fixes
 from ai_pm_lab_privacy_gate.infrastructure.policy.multi_workspace_runtime import install_multi_workspace_client
@@ -118,6 +122,7 @@ install_workspace_action_follow()
 install_managed_protect_experience()
 install_library_source_folders()
 install_library_visual_upgrade()
+install_mockup_library_suite_2026()
 
 from .main_window import MainWindow
 
@@ -220,6 +225,11 @@ def _main_window_init_with_brand(self, *args, **kwargs) -> None:
     # controls and Finder items; it does not reparent or reconnect them.
     apply_restore_document_finder_mount_fix_2026(self)
     apply_restore_safe_visual_polish_2026(self)
+
+    # Final Library presentation/runtime layer. LibraryRepository and all existing
+    # LibraryPage callbacks stay authoritative; this only scopes the same local data
+    # to Personal vs active Organization and never auto-assigns legacy documents.
+    apply_mockup_library_suite_2026(self)
 
 
 MainWindow.__init__ = _main_window_init_with_brand
