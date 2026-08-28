@@ -15,6 +15,7 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
 )
 
+from ai_pm_lab_privacy_gate.domain.company_policy import PolicyEngine
 from ai_pm_lab_privacy_gate.domain.profiles import get_profile
 from ai_pm_lab_privacy_gate.ui.iconography import icon
 from ai_pm_lab_privacy_gate.ui.library_workspace_runtime_2026 import (
@@ -304,6 +305,22 @@ def use_library_document_with_ai(page, destination_key: str) -> None:
     residual = _fresh_residual_scan(page, document)
     if residual is None:
         return
+
+    if context.managed and context.policy is not None:
+        engine = PolicyEngine(context.policy)
+        required_residual = tuple(
+            finding
+            for finding in residual
+            if engine.must_protect(str(getattr(finding, "entity_type", "") or ""))
+        )
+        if required_residual:
+            QMessageBox.warning(
+                page,
+                "Blocked by organization policy",
+                f"{len(required_residual)} company-required sensitive item(s) remain in the protected copy. "
+                "PrivacyGate blocked the AI handoff. Re-protect the source under the active Organization policy first.",
+            )
+            return
 
     source, account, item = _source_details(page, document)
     snapshot = PreflightSnapshot(
