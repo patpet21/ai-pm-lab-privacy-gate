@@ -86,6 +86,7 @@ from .mockup_protect_final_2026 import apply_mockup_protect_final_2026
 from .mockup_protect_refinement_suite_2026 import apply_mockup_protect_refinement_suite_2026
 from .mockup_restore_suite_2026 import apply_mockup_restore_suite_2026
 from .restore_document_finder_2026 import apply_restore_document_finder_2026
+from .restore_document_finder_mount_fix_2026 import apply_restore_document_finder_mount_fix_2026
 
 install_mcp_log_guard()
 install_protect_runtime()
@@ -211,6 +212,11 @@ def _main_window_init_with_brand(self, *args, **kwargs) -> None:
     # workspace metadata and mapping token names, then delegates the chosen ID back
     # to RestorePage's existing document combo and DocumentRestoreService.
     apply_restore_document_finder_2026(self)
+
+    # Windows/Qt can retain ownership of controls in the legacy Restore layout.
+    # Mount one dedicated visible command bar last so Find original cannot be
+    # hidden by an earlier source-row composition.
+    apply_restore_document_finder_mount_fix_2026(self)
 
 
 MainWindow.__init__ = _main_window_init_with_brand
