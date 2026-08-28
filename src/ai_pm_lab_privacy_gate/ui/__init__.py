@@ -51,6 +51,7 @@ from .mockup_library_suite_2026 import (
     install_mockup_library_suite_2026,
     apply_mockup_library_suite_2026,
 )
+from .library_interaction_runtime_2026 import apply_library_interaction_runtime_2026
 from .page_split import apply_apps_mcp_split
 from .runtime_fixes import apply_runtime_fixes
 from ai_pm_lab_privacy_gate.infrastructure.policy.multi_workspace_runtime import install_multi_workspace_client
@@ -230,6 +231,10 @@ def _main_window_init_with_brand(self, *args, **kwargs) -> None:
     # LibraryPage callbacks stay authoritative; this only scopes the same local data
     # to Personal vs active Organization and never auto-assigns legacy documents.
     apply_mockup_library_suite_2026(self)
+
+    # Last Library interaction layer: real connected accounts and provider artwork,
+    # visible workspace-switch loading, and one-click local restore from Library.
+    apply_library_interaction_runtime_2026(self)
 
 
 MainWindow.__init__ = _main_window_init_with_brand
