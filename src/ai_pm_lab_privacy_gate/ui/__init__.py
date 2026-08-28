@@ -75,6 +75,7 @@ from .mockup_global_visual_system_2026 import apply_mockup_global_visual_system_
 from .mockup_navigation_2026 import apply_mockup_navigation_2026
 from .mockup_mcp_automation_studio_2026 import apply_mockup_mcp_automation_studio_2026
 from .mockup_shell_refinement_2026 import apply_mockup_shell_refinement_2026
+from .mockup_interaction_polish_2026 import apply_mockup_interaction_polish_2026
 
 install_mcp_log_guard()
 install_protect_runtime()
@@ -198,6 +199,11 @@ def _main_window_init_with_brand(self, *args, **kwargs) -> None:
     # Last shell pass: ChatGPT-style profile launcher, no permanent local-first
     # footer card, and adaptive sidebar widths for narrower desktop windows.
     apply_mockup_shell_refinement_2026(self)
+
+    # Tiny interaction polish kept separate from the visual shell: Account becomes
+    # a true click-to-open/click-to-close toggle and the workspace picker uses
+    # clearer Personal/Organization rows with icons, plan/role detail and selection.
+    apply_mockup_interaction_polish_2026(self)
 
 
 MainWindow.__init__ = _main_window_init_with_brand
