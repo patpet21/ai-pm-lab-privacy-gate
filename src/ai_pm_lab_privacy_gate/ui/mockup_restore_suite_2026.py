@@ -8,6 +8,7 @@ from .mockup_restore_final_2026 import apply_mockup_restore_final_2026
 from .mockup_restore_edit_2026 import apply_mockup_restore_edit_2026
 from .restore_completion_suite_2026 import apply_restore_completion_suite_2026
 from .restore_completion_safety_2026 import apply_restore_completion_safety_2026
+from .restore_final_stability_2026 import apply_restore_final_stability_2026
 from .restore_fullscreen_exit_fix_2026 import apply_restore_fullscreen_exit_fix_2026
 
 
@@ -22,6 +23,12 @@ def apply_mockup_restore_suite_2026(main_window) -> None:
     # does not replace DocumentRestoreService or persist document content.
     apply_restore_completion_suite_2026(main_window)
     apply_restore_completion_safety_2026(main_window)
+    # Final stability handles two real Windows/PDF edge cases: unique restore-run
+    # output paths avoid QPdfDocument file locks, while older image-based safe PDFs
+    # can be restored from the explicitly selected local Library mapping as a
+    # transparent reflow PDF fallback. It also replaces low-contrast native file
+    # icons with local high-contrast file-type badges; provider logos stay official.
+    apply_restore_final_stability_2026(main_window)
     # The Finder is mounted later in MainWindow.__init__. Bind it after the current
     # Qt construction turn so Review matches reuses that proven controller without
     # changing startup order or reparenting any command-bar control.
