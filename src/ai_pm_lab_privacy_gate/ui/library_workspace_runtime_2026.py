@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+from ai_pm_lab_privacy_gate.domain.company_policy import PolicyEngine
 from ai_pm_lab_privacy_gate.domain.plans import PlanCode, normalize_plan
 from ai_pm_lab_privacy_gate.infrastructure.storage.document_workspace_metadata import (
     DocumentWorkspaceMetadata,
@@ -169,15 +170,11 @@ def ai_destination_allowed(
 ) -> bool | None:
     if context.personal:
         return True
-    policy = context.policy
-    if policy is None:
+    if context.policy is None:
         return None
-    allowed_ai = getattr(policy, "allowed_ai", None)
-    if not isinstance(allowed_ai, dict):
-        return None
-    key = (destination_key or "other").strip().lower()
-    policy_key = "other" if key not in {"chatgpt", "claude"} else key
-    return bool(allowed_ai.get(policy_key, False))
+    # Reuse the same CompanyPolicy semantics as managed Protect, including the
+    # existing fallback from a specific destination to the policy's "other" rule.
+    return PolicyEngine(context.policy).can_use_ai(destination_key)
 
 
 def policy_status_text(context: LibraryWorkspaceContext) -> str:
