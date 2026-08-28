@@ -121,3 +121,10 @@ def apply_mockup_navigation_2026(main_window) -> None:
     controller._sync_checked_state = MethodType(sync_checked, controller)
     controller.rebuild()
     QTimer.singleShot(0, controller._sync_checked_state)
+
+    # The legacy Automation Studio still initializes later in the startup chain.
+    # Apply the privacy-first AI Workflows surface after the event loop starts so
+    # it remains the final visible layer without disturbing existing controllers.
+    from .mockup_ai_workflows_2026 import apply_mockup_ai_workflows_2026
+
+    QTimer.singleShot(0, lambda: apply_mockup_ai_workflows_2026(main_window))
