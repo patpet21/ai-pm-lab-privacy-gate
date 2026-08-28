@@ -7,6 +7,7 @@ from PySide6.QtCore import QTimer
 from .mockup_restore_final_2026 import apply_mockup_restore_final_2026
 from .mockup_restore_edit_2026 import apply_mockup_restore_edit_2026
 from .restore_completion_suite_2026 import apply_restore_completion_suite_2026
+from .restore_completion_safety_2026 import apply_restore_completion_safety_2026
 from .restore_fullscreen_exit_fix_2026 import apply_restore_fullscreen_exit_fix_2026
 
 
@@ -20,6 +21,7 @@ def apply_mockup_restore_suite_2026(main_window) -> None:
     # encrypted local resume metadata and a clearer text-edit working copy. It
     # does not replace DocumentRestoreService or persist document content.
     apply_restore_completion_suite_2026(main_window)
+    apply_restore_completion_safety_2026(main_window)
     # The Finder is mounted later in MainWindow.__init__. Bind it after the current
     # Qt construction turn so Review matches reuses that proven controller without
     # changing startup order or reparenting any command-bar control.
