@@ -70,6 +70,7 @@ from .governance_hardening_2026 import apply_governance_hardening_2026
 from .governance_release_polish_2026 import apply_governance_release_polish_2026
 from .governance_center_2026 import apply_governance_center_2026
 from .mockup_redesign_shell_2026 import apply_mockup_redesign_shell_2026
+from .mockup_organization_overview_2026 import apply_mockup_organization_overview_2026
 
 install_mcp_log_guard()
 install_protect_runtime()
@@ -172,6 +173,10 @@ def _main_window_init_with_brand(self, *args, **kwargs) -> None:
     # The historic sidebar stays alive but hidden so existing controllers keep
     # their references and no protection/business semantics are duplicated.
     apply_mockup_redesign_shell_2026(self)
+
+    # Organization Overview mockup layer. This replaces only stack page 0 and
+    # reads existing state/activity metadata without changing policy or storage.
+    apply_mockup_organization_overview_2026(self)
 
 
 MainWindow.__init__ = _main_window_init_with_brand
