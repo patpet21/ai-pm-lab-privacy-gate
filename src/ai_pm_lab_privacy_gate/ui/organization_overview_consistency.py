@@ -5,6 +5,10 @@ import re
 from PySide6.QtCore import QTimer, Qt
 from PySide6.QtWidgets import QBoxLayout, QLabel, QPushButton, QTableWidget, QWidget
 
+from ai_pm_lab_privacy_gate.ui.organization_apps_routing_fix import (
+    apply_organization_apps_routing_fix,
+)
+
 
 NAVY = "#062B4F"
 INK = "#17384E"
@@ -176,6 +180,11 @@ def apply_organization_overview_consistency(main_window) -> None:
     )
     if dashboard is None:
         return
+
+    # Navigation consistency belongs in the same late Organization pass: ensure
+    # Apps & AI has a real stack page and every route to the top-level Apps hub
+    # resolves the live widget instead of a cached numeric page index.
+    apply_organization_apps_routing_fix(main_window)
 
     def polish() -> None:
         _style_overview(dashboard)
