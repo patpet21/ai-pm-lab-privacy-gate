@@ -87,6 +87,7 @@ from .mockup_protect_refinement_suite_2026 import apply_mockup_protect_refinemen
 from .mockup_restore_suite_2026 import apply_mockup_restore_suite_2026
 from .restore_document_finder_2026 import apply_restore_document_finder_2026
 from .restore_document_finder_mount_fix_2026 import apply_restore_document_finder_mount_fix_2026
+from .restore_finder_product_polish_2026 import apply_restore_finder_product_polish_2026
 
 install_mcp_log_guard()
 install_protect_runtime()
@@ -217,6 +218,11 @@ def _main_window_init_with_brand(self, *args, **kwargs) -> None:
     # Mount one dedicated visible command bar last so Find original cannot be
     # hidden by an earlier source-row composition.
     apply_restore_document_finder_mount_fix_2026(self)
+
+    # Final Restore product layer: reactive local token matching after Upload/Paste,
+    # best-match suggestions, provider/native file artwork, richer selected-original
+    # state and explicit readiness guidance. RestorePage remains authoritative.
+    apply_restore_finder_product_polish_2026(self)
 
 
 MainWindow.__init__ = _main_window_init_with_brand
