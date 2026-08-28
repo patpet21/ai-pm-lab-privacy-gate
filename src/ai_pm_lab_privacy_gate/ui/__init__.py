@@ -79,7 +79,7 @@ from .mockup_interaction_polish_2026 import apply_mockup_interaction_polish_2026
 from .mockup_personal_workspace_2026 import apply_mockup_personal_workspace_2026
 from .mockup_personal_workspace_polish_2026 import apply_mockup_personal_workspace_polish_2026
 from .mockup_personal_workspace_final_2026 import apply_mockup_personal_workspace_final_2026
-from .mockup_organization_overview_final_2026 import apply_mockup_organization_overview_final_2026
+from .mockup_organization_overview_safety_2026 import apply_mockup_organization_overview_safe_2026
 
 install_mcp_log_guard()
 install_protect_runtime()
@@ -181,7 +181,7 @@ def _main_window_init_with_brand(self, *args, **kwargs) -> None:
     # Final Organization Overview built on the reusable 2026 design foundation.
     # It summarizes real TeamState, policy, device and metadata-only activity data,
     # while all membership/policy/device mutations remain in the existing TeamPage.
-    apply_mockup_organization_overview_final_2026(self)
+    apply_mockup_organization_overview_safe_2026(self)
 
 
 MainWindow.__init__ = _main_window_init_with_brand
