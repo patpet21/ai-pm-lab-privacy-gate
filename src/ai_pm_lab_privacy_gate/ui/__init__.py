@@ -24,6 +24,7 @@ from .library_save_dialog import install_library_save_dialog
 from .privacy_preflight import install_privacy_preflight
 from .business_foundation import install_business_foundation, apply_business_main_window
 from .team_action_recovery import install_team_action_recovery
+from .organization_product_experience_2026 import install_organization_product_experience_2026
 from .organization_polish import apply_organization_polish
 from .organization_visual_upgrade import apply_organization_visual_upgrade
 from .premium_organization_rebuild import apply_premium_organization_rebuild
@@ -102,6 +103,7 @@ install_business_foundation()
 install_multi_workspace_client()
 install_multi_workspace_actions()
 install_team_action_recovery()
+install_organization_product_experience_2026()
 install_multi_workspace_experience()
 install_workspace_connector_opt_in()
 install_workspace_action_follow()
