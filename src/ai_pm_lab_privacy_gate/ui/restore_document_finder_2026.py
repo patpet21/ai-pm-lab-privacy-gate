@@ -18,6 +18,7 @@ from PySide6.QtWidgets import (
     QAbstractItemView,
     QCheckBox,
     QComboBox,
+    QDialog,
     QFrame,
     QHBoxLayout,
     QHeaderView,
@@ -58,6 +59,7 @@ class _FinderRow:
     document: object
     provider: str
     provider_label: str
+    account_label: str
     workspace_key: str
     workspace_name: str
     personal: bool | None
@@ -107,7 +109,7 @@ class OriginalDocumentFinderDialog(PrivacyGateProductDialog):
             icon_name="search",
             width=940,
         )
-        self.resize(1040, 690)
+        self.resize(1060, 710)
         self._build_filters()
         self._build_results()
         self.add_notice(
@@ -158,7 +160,7 @@ class OriginalDocumentFinderDialog(PrivacyGateProductDialog):
         search_row.setSpacing(8)
         self.search = QLineEdit()
         self.search.setPlaceholderText(
-            "Search by document name, source, label or profile…"
+            "Search by document name, source, account, label or profile…"
         )
         self.search.setClearButtonEnabled(True)
         self.search.addAction(
@@ -170,26 +172,30 @@ class OriginalDocumentFinderDialog(PrivacyGateProductDialog):
 
         self.scope = QComboBox()
         self.scope.setMinimumHeight(38)
-        self.scope.setMinimumWidth(190)
+        self.scope.setMinimumWidth(200)
         self._populate_scope()
         search_row.addWidget(self.scope)
         root.addLayout(search_row)
 
         filter_row = QHBoxLayout()
-        filter_row.setSpacing(8)
+        filter_row.setSpacing(7)
         self.source_filter = QComboBox()
         self.source_filter.setMinimumHeight(34)
-        self.source_filter.setMinimumWidth(170)
+        self.source_filter.setMinimumWidth(145)
+        self.account_filter = QComboBox()
+        self.account_filter.setMinimumHeight(34)
+        self.account_filter.setMinimumWidth(165)
         self.label_filter = QComboBox()
         self.label_filter.setMinimumHeight(34)
-        self.label_filter.setMinimumWidth(170)
+        self.label_filter.setMinimumWidth(145)
         filter_row.addWidget(QLabel("Source"))
         filter_row.addWidget(self.source_filter)
-        filter_row.addSpacing(8)
+        filter_row.addWidget(QLabel("Account"))
+        filter_row.addWidget(self.account_filter)
         filter_row.addWidget(QLabel("Folder / label"))
         filter_row.addWidget(self.label_filter)
-        filter_row.addSpacing(8)
-        self.include_legacy = QCheckBox("Include legacy local documents")
+        filter_row.addSpacing(5)
+        self.include_legacy = QCheckBox("Include legacy local")
         self.include_legacy.setChecked(True)
         self.include_legacy.setToolTip(
             "Show reversible documents saved before PrivacyGate started tagging Library items with a workspace. They remain local and are not automatically assigned to any organization."
@@ -213,7 +219,8 @@ class OriginalDocumentFinderDialog(PrivacyGateProductDialog):
         self.body.addWidget(shell)
         self.search.textChanged.connect(self._apply_filters)
         self.scope.currentIndexChanged.connect(self._apply_filters)
-        self.source_filter.currentIndexChanged.connect(self._apply_filters)
+        self.source_filter.currentIndexChanged.connect(self._source_changed)
+        self.account_filter.currentIndexChanged.connect(self._apply_filters)
         self.label_filter.currentIndexChanged.connect(self._apply_filters)
         self.include_legacy.toggled.connect(self._apply_filters)
 
@@ -256,9 +263,9 @@ class OriginalDocumentFinderDialog(PrivacyGateProductDialog):
         info.addWidget(hint)
         self.body.addLayout(info)
 
-        self.table = QTableWidget(0, 5)
+        self.table = QTableWidget(0, 6)
         self.table.setHorizontalHeaderLabels(
-            ["Document", "Source", "Workspace", "Restore match", "Updated"]
+            ["Document", "Source", "Account", "Workspace", "Restore match", "Updated"]
         )
         self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
@@ -276,10 +283,8 @@ class OriginalDocumentFinderDialog(PrivacyGateProductDialog):
         )
         header = self.table.horizontalHeader()
         header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
-        header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)
+        for column in range(1, 6):
+            header.setSectionResizeMode(column, QHeaderView.ResizeMode.ResizeToContents)
         self.table.itemSelectionChanged.connect(self._selection_changed)
         self.table.itemDoubleClicked.connect(lambda _item: self._accept_selected())
         self.body.addWidget(self.table, 1)
@@ -313,19 +318,24 @@ class OriginalDocumentFinderDialog(PrivacyGateProductDialog):
                 connection.close()
         return output
 
-    def _provider_for(self, document, metadata) -> tuple[str, str]:
+    def _source_for(self, document, metadata) -> tuple[str, str, str]:
         item = metadata.get(document.document_id)
         if item is not None:
-            return str(item.provider or "local"), str(item.provider_label or item.provider or "Local")
+            provider = str(item.provider or "local")
+            provider_label = str(item.provider_label or item.provider or "Local")
+            account_label = str(item.account_label or "")
+            return provider, provider_label, account_label
         source = str(document.source_name or document.source_kind or "Local")
         lowered = source.lower()
+        parts = [part.strip() for part in source.split(" • ") if part.strip()]
+        account_label = parts[1] if len(parts) >= 3 else ""
         if "gmail" in lowered or "mail" in lowered:
-            return "gmail", "Gmail"
+            return "gmail", "Gmail", account_label
         if "drive" in lowered or "google" in lowered:
-            return "google_drive", "Google Drive"
+            return "google_drive", "Google Drive", account_label
         if document.source_kind == "text":
-            return "paste", "Pasted text"
-        return "local", "Local file"
+            return "paste", "Pasted text", ""
+        return "local", "Local file", ""
 
     def _load_rows(self) -> None:
         documents = [
@@ -345,7 +355,7 @@ class OriginalDocumentFinderDialog(PrivacyGateProductDialog):
 
         rows: list[_FinderRow] = []
         for document in documents:
-            provider, provider_label = self._provider_for(document, source_meta)
+            provider, provider_label, account_label = self._source_for(document, source_meta)
             workspace = workspace_meta.get(document.document_id)
             tokens = tokens_by_document.get(document.document_id, set())
             matching = len(tokens.intersection(present)) if present else 0
@@ -354,6 +364,7 @@ class OriginalDocumentFinderDialog(PrivacyGateProductDialog):
                     document=document,
                     provider=provider,
                     provider_label=provider_label,
+                    account_label=account_label,
                     workspace_key=workspace.workspace_key if workspace else "",
                     workspace_name=workspace.workspace_name if workspace else "Legacy local",
                     personal=workspace.personal if workspace else None,
@@ -379,6 +390,7 @@ class OriginalDocumentFinderDialog(PrivacyGateProductDialog):
         source_index = self.source_filter.findData(current_source)
         self.source_filter.setCurrentIndex(max(0, source_index))
         self.source_filter.blockSignals(False)
+        self._rebuild_account_options()
 
         current_label = self.label_filter.currentData()
         self.label_filter.blockSignals(True)
@@ -398,6 +410,31 @@ class OriginalDocumentFinderDialog(PrivacyGateProductDialog):
         label_index = self.label_filter.findData(current_label)
         self.label_filter.setCurrentIndex(max(0, label_index))
         self.label_filter.blockSignals(False)
+
+    def _rebuild_account_options(self) -> None:
+        source = str(self.source_filter.currentData() or "")
+        previous = str(self.account_filter.currentData() or "")
+        accounts = sorted(
+            {
+                row.account_label
+                for row in self._all_rows
+                if row.account_label and (not source or row.provider == source)
+            },
+            key=str.lower,
+        )
+        self.account_filter.blockSignals(True)
+        self.account_filter.clear()
+        self.account_filter.addItem("All accounts", "")
+        for account in accounts:
+            self.account_filter.addItem(account, account)
+        target = self.account_filter.findData(previous)
+        self.account_filter.setCurrentIndex(max(0, target))
+        self.account_filter.setEnabled(bool(accounts))
+        self.account_filter.blockSignals(False)
+
+    def _source_changed(self, *_args) -> None:
+        self._rebuild_account_options()
+        self._apply_filters()
 
     def _scope_accepts(self, row: _FinderRow) -> bool:
         scope = self.scope.currentData()
@@ -423,6 +460,7 @@ class OriginalDocumentFinderDialog(PrivacyGateProductDialog):
                 str(document.profile_key or ""),
                 " ".join(str(item) for item in getattr(document, "labels", ())),
                 row.provider_label,
+                row.account_label,
                 row.workspace_name,
             ]
         ).lower()
@@ -430,8 +468,11 @@ class OriginalDocumentFinderDialog(PrivacyGateProductDialog):
 
     def _filter_accepts(self, row: _FinderRow) -> bool:
         source = str(self.source_filter.currentData() or "")
+        account = str(self.account_filter.currentData() or "")
         label = str(self.label_filter.currentData() or "")
         if source and row.provider != source:
+            return False
+        if account and row.account_label != account:
             return False
         if label and label not in tuple(str(item) for item in getattr(row.document, "labels", ())):
             return False
@@ -476,6 +517,7 @@ class OriginalDocumentFinderDialog(PrivacyGateProductDialog):
             values = (
                 str(document.title or "Untitled protected document"),
                 row.provider_label,
+                row.account_label or "—",
                 self._workspace_display(row),
                 self._match_display(row),
                 document.updated_at.strftime("%b %d, %Y"),
@@ -487,7 +529,7 @@ class OriginalDocumentFinderDialog(PrivacyGateProductDialog):
                     item.setToolTip(
                         f"{document.source_name} · {document.findings_count} protected finding(s)"
                     )
-                if column == 3:
+                if column == 4:
                     if row.likely_match:
                         item.setForeground(QColor("#15803D"))
                     elif row.present_tokens and row.matching_tokens == 0:
@@ -518,6 +560,7 @@ class OriginalDocumentFinderDialog(PrivacyGateProductDialog):
             return
         document = row.document
         labels = ", ".join(str(item) for item in document.labels) or "No labels"
+        account = f" · {row.account_label}" if row.account_label else ""
         legacy_note = (
             " · Saved before workspace tagging; not assigned to any organization"
             if row.legacy
@@ -525,7 +568,7 @@ class OriginalDocumentFinderDialog(PrivacyGateProductDialog):
         )
         self.detail.setText(
             f"{self._match_display(row)} · {row.token_count} local restore key(s) · "
-            f"{row.provider_label} · {self._workspace_display(row)} · {labels}{legacy_note}"
+            f"{row.provider_label}{account} · {self._workspace_display(row)} · {labels}{legacy_note}"
         )
 
     def _accept_selected(self) -> None:
@@ -566,8 +609,6 @@ class RestoreDocumentFinderController:
         if not isinstance(row, QHBoxLayout):
             return
 
-        # Keep the existing combo alive and authoritative, but hide it from the
-        # redesigned command row. Finder selection writes into this combo.
         self.page.document_combo.hide()
         self.page.document_combo.setMaximumWidth(0)
         for label in command.findChildren(QLabel):
@@ -640,21 +681,17 @@ class RestoreDocumentFinderController:
             f"color:{TEAL if org_mode else BLUE};border:1px solid {'#A5F3FC' if org_mode else '#D6E4FF'};"
             "border-radius:8px;padding:6px 8px;font-size:7.5px;font-weight:900;"
         )
-        # A workspace switch must not silently carry an organization-specific
-        # original selection into another suite. Legacy documents can be chosen
-        # again explicitly from the Finder if needed.
         if self.page.document_combo.currentIndex() > 0:
             self.page.document_combo.setCurrentIndex(0)
         self._update_selection_copy()
 
     def open_finder(self) -> None:
         dialog = OriginalDocumentFinderDialog(self.page, self.main_window)
-        if dialog.exec() != dialog.DialogCode.Accepted:
+        if dialog.exec() != QDialog.DialogCode.Accepted:
             return
         document_id = dialog.selected_document_id
         if not document_id:
             return
-        # Refresh preserves the RestorePage's real mapping eligibility rules.
         self.page.refresh(document_id)
         index = self.page.document_combo.findData(document_id)
         if index >= 0:
