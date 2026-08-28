@@ -18,8 +18,6 @@ from PySide6.QtWidgets import (
 BLUE = "#2563EB"
 INK = "#101828"
 MUTED = "#667085"
-BORDER = "#E4E7EC"
-WHITE = "#FFFFFF"
 
 
 def _avatar_icon(initials: str, size: int = 36) -> QIcon:
@@ -45,12 +43,13 @@ def _account_values(main_window) -> tuple[str, str, str, str, str]:
     if legacy is None:
         return "Account", "PG", "", "PrivacyGate", ""
     try:
-        name = legacy._display_name()
-        initials = legacy._initials()
-        email = legacy.email or ""
-        plan = legacy._plan_line()
-        org = legacy.state.organization_name or ""
-        return name, initials, email, plan, org
+        return (
+            legacy._display_name(),
+            legacy._initials(),
+            legacy.email or "",
+            legacy._plan_line(),
+            legacy.state.organization_name or "",
+        )
     except Exception:
         return "Account", "PG", "", "PrivacyGate", ""
 
@@ -150,18 +149,36 @@ def _show_account_popup(sidebar_controller) -> None:
     menu.adjustSize()
     height = menu.sizeHint().height()
     button = sidebar_controller.account_button
-    global_top_left = button.mapToGlobal(QPoint(0, 0))
-    x = global_top_left.x()
-    y = global_top_left.y() - height - 8
-    menu.popup(QPoint(x, max(8, y)))
+    point = button.mapToGlobal(QPoint(0, 0))
+    menu.popup(QPoint(point.x(), max(8, point.y() - height - 8)))
+
+
+def _polish_mcp_copy(main_window) -> None:
+    page = getattr(main_window, "cloud_automation_page", None)
+    if page is None:
+        return
+    replacements = {
+        "MCP Connections": "MCP & AI Direct Connections",
+        "Connect approved AI clients to protected PrivacyGate data through controlled MCP access. AI providers themselves are managed in Apps; this page is only for MCP connectivity, permissions and client-ready MCP solutions.":
+            "Connect PrivacyGate directly to ChatGPT, Claude and other compatible MCP clients. Apps manages provider accounts; this page manages the secure MCP connection, permissions and client-ready direct AI access.",
+        "Remote MCP": "ChatGPT / Claude via Remote MCP",
+    }
+    for label in page.findChildren(QLabel):
+        current = label.text()
+        replacement = replacements.get(current)
+        if replacement:
+            label.setText(replacement)
+            label.setWordWrap(True)
 
 
 class _ResponsiveShell(QObject):
-    def __init__(self, main_window, controller) -> None:
+    def __init__(self, main_window, controller, toggle_button: QPushButton) -> None:
         super().__init__(main_window)
         self.main_window = main_window
         self.controller = controller
+        self.toggle_button = toggle_button
         self.mode = ""
+        self.manual_mode: str | None = None
         main_window.installEventFilter(self)
 
     def eventFilter(self, watched, event):  # noqa: N802 - Qt API
@@ -169,7 +186,13 @@ class _ResponsiveShell(QObject):
             QTimer.singleShot(0, self.apply)
         return False
 
-    def _remember_text(self, button: QPushButton) -> str:
+    def toggle(self) -> None:
+        collapsed = self.mode in {"compact", "manual-compact"}
+        self.manual_mode = "expanded" if collapsed else "collapsed"
+        self.apply()
+
+    @staticmethod
+    def _full_text(button: QPushButton) -> str:
         stored = button.property("mockupFullText")
         if stored:
             return str(stored)
@@ -177,26 +200,32 @@ class _ResponsiveShell(QObject):
         button.setProperty("mockupFullText", text)
         return text
 
+    def _set_section_labels_visible(self, visible: bool) -> None:
+        for label in self.controller.nav_host.findChildren(QLabel):
+            label.setVisible(visible)
+
     def _restore_navigation(self) -> None:
+        self._set_section_labels_visible(True)
         for button in getattr(self.controller, "_buttons", []):
-            full = self._remember_text(button)
+            full = self._full_text(button)
             button.setText(full)
             button.setToolTip(full.replace("   ▾", "").replace("   ⌃", ""))
             button.show()
 
     def _compact_navigation(self) -> None:
+        self._set_section_labels_visible(False)
         for button in getattr(self.controller, "_buttons", []):
-            full = self._remember_text(button)
+            full = self._full_text(button)
             button.setToolTip(full.replace("   ▾", "").replace("   ⌃", ""))
             if button.objectName() == "RedesignSubNavButton":
                 button.hide()
-            else:
-                if button.isCheckable() and ("Team" in full or "Governance" in full):
-                    try:
-                        button.setChecked(False)
-                    except Exception:
-                        pass
-                button.setText("")
+                continue
+            if button.isCheckable() and "Team" in full:
+                try:
+                    button.setChecked(False)
+                except Exception:
+                    pass
+            button.setText("")
 
     def _update_account(self, compact: bool) -> None:
         name, initials, _email, plan, _org = _account_values(self.main_window)
@@ -211,49 +240,56 @@ class _ResponsiveShell(QObject):
             button.setText(f"{name}\n{plan}")
             button.setMinimumHeight(58)
 
-    def apply(self) -> None:
-        width = int(self.main_window.width())
+    def _apply_compact(self, *, manual: bool) -> None:
         widget = self.controller.widget
         layout = widget.layout()
         workspace = self.controller.workspace_button
         context = self.controller.context_note
+        widget.setFixedWidth(82)
+        if layout is not None:
+            layout.setContentsMargins(8, 10, 8, 10)
+            layout.setSpacing(7)
+        context.hide()
+        workspace.setText("")
+        workspace.setToolTip("Switch workspace")
+        workspace.setMinimumHeight(50)
+        self._compact_navigation()
+        self._update_account(True)
+        self.toggle_button.setText("›")
+        self.toggle_button.setToolTip("Expand sidebar")
+        self.mode = "manual-compact" if manual else "compact"
 
+    def _apply_expanded(self, width: int) -> None:
+        widget = self.controller.widget
+        layout = widget.layout()
+        workspace = self.controller.workspace_button
+        context = self.controller.context_note
+        medium = width < 1320
+        widget.setFixedWidth(238 if medium else 286)
+        if layout is not None:
+            layout.setContentsMargins(10, 12, 10, 12) if medium else layout.setContentsMargins(14, 14, 14, 14)
+            layout.setSpacing(8 if medium else 10)
+        self.controller._update_workspace_copy()
+        context.setVisible(not medium)
+        workspace.setMinimumHeight(56 if medium else 58)
+        self._restore_navigation()
+        self._update_account(False)
+        self.toggle_button.setText("‹")
+        self.toggle_button.setToolTip("Collapse sidebar")
+        self.mode = "medium" if medium else "wide"
+
+    def apply(self) -> None:
+        width = int(self.main_window.width())
+        if self.manual_mode == "collapsed":
+            self._apply_compact(manual=True)
+            return
+        if self.manual_mode == "expanded":
+            self._apply_expanded(width)
+            return
         if width < 1040:
-            mode = "compact"
-            widget.setFixedWidth(82)
-            if layout is not None:
-                layout.setContentsMargins(8, 10, 8, 10)
-                layout.setSpacing(7)
-            context.hide()
-            workspace.setText("")
-            workspace.setToolTip("Switch workspace")
-            workspace.setMinimumHeight(50)
-            self._compact_navigation()
-            self._update_account(True)
-        elif width < 1320:
-            mode = "medium"
-            widget.setFixedWidth(238)
-            if layout is not None:
-                layout.setContentsMargins(10, 12, 10, 12)
-                layout.setSpacing(8)
-            self.controller._update_workspace_copy()
-            context.hide()
-            workspace.setMinimumHeight(56)
-            self._restore_navigation()
-            self._update_account(False)
+            self._apply_compact(manual=False)
         else:
-            mode = "wide"
-            widget.setFixedWidth(286)
-            if layout is not None:
-                layout.setContentsMargins(14, 14, 14, 14)
-                layout.setSpacing(10)
-            self.controller._update_workspace_copy()
-            context.show()
-            workspace.setMinimumHeight(58)
-            self._restore_navigation()
-            self._update_account(False)
-
-        self.mode = mode
+            self._apply_expanded(width)
 
 
 def apply_mockup_shell_refinement_2026(main_window) -> None:
@@ -261,9 +297,8 @@ def apply_mockup_shell_refinement_2026(main_window) -> None:
         return
     main_window._privacygate_mockup_shell_refinement_2026 = True
 
-    # The original desktop shell used a large fixed minimum. The redesign can
-    # safely contract further because navigation and the new studio grids reflow.
     main_window.setMinimumSize(900, 620)
+    _polish_mcp_copy(main_window)
 
     controller = getattr(main_window, "_privacygate_redesign_sidebar_controller", None)
     if controller is None:
@@ -273,6 +308,20 @@ def apply_mockup_shell_refinement_2026(main_window) -> None:
     if status is not None:
         status.hide()
         status.setMaximumHeight(0)
+
+    root = controller.widget.layout()
+    toggle = QPushButton("‹")
+    toggle.setObjectName("MockupSidebarToggle")
+    toggle.setFixedSize(34, 34)
+    toggle.setCursor(Qt.CursorShape.PointingHandCursor)
+    toggle.setToolTip("Collapse sidebar")
+    toggle.setStyleSheet(
+        "QPushButton#MockupSidebarToggle{background:transparent;color:#475467;border:none;border-radius:8px;"
+        "font-size:20px;font-weight:700;}"
+        "QPushButton#MockupSidebarToggle:hover{background:#F2F4F7;color:#101828;}"
+    )
+    if root is not None:
+        root.insertWidget(0, toggle, 0, Qt.AlignmentFlag.AlignRight)
 
     account = controller.account_button
     account.setStyleSheet(
@@ -286,8 +335,9 @@ def apply_mockup_shell_refinement_2026(main_window) -> None:
         pass
     account.clicked.connect(lambda _checked=False: _show_account_popup(controller))
 
-    responsive = _ResponsiveShell(main_window, controller)
+    responsive = _ResponsiveShell(main_window, controller, toggle)
     main_window._privacygate_responsive_shell_2026 = responsive
+    toggle.clicked.connect(lambda _checked=False: responsive.toggle())
 
     original_rebuild = controller.rebuild
 
