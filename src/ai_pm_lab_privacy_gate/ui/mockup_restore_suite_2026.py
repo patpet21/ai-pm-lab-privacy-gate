@@ -10,6 +10,7 @@ from .restore_completion_suite_2026 import apply_restore_completion_suite_2026
 from .restore_completion_safety_2026 import apply_restore_completion_safety_2026
 from .restore_final_stability_2026 import apply_restore_final_stability_2026
 from .restore_fullscreen_exit_fix_2026 import apply_restore_fullscreen_exit_fix_2026
+from .restore_navigation_preview_fix_2026 import apply_restore_navigation_preview_fix_2026
 
 
 def apply_mockup_restore_suite_2026(main_window) -> None:
@@ -45,3 +46,7 @@ def apply_mockup_restore_suite_2026(main_window) -> None:
     # The legacy fullscreen controller tries to reveal its old steps/input cards
     # when exiting. Keep the approved 2026 compact Restore surface authoritative.
     apply_restore_fullscreen_exit_fix_2026(main_window)
+    # Final usability guard: Restore must never become a dead-end after success.
+    # It also keeps file restores on the real format-aware preview and improves
+    # readability for text-only Library/Gmail restores.
+    apply_restore_navigation_preview_fix_2026(main_window)
