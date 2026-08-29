@@ -141,6 +141,18 @@ def _line_for_word(word: OcrWordObservation, line_polygons: tuple[Polygon, ...])
     return best_index
 
 
+def _canonical_line_text(line_text: str, words: tuple[OcrWordObservation, ...]) -> str:
+    """Prefer word-level recognition when geometry is available.
+
+    RapidOCR can return a weak whole-line transcription while its word pass still
+    recovers individual identifiers correctly. Rebuilding the line from those
+    words keeps sensitive values in the text that Presidio analyzes and guarantees
+    that the same tokens have exact pixel boxes for redaction.
+    """
+    word_text = " ".join(word.text.strip() for word in words if word.text.strip()).strip()
+    return word_text or line_text.strip()
+
+
 class RapidOcrEngine:
     """Lazy, local RapidOCR + ONNX Runtime adapter."""
 
@@ -198,19 +210,21 @@ class RapidOcrEngine:
 
         lines: list[OcrLineObservation] = []
         for index, (text, score, polygon) in enumerate(raw_lines):
-            words = sorted(
-                words_by_line[index],
-                key=lambda word: (
-                    min((point[1] for point in word.polygon), default=0.0),
-                    min((point[0] for point in word.polygon), default=0.0),
-                ),
+            words = tuple(
+                sorted(
+                    words_by_line[index],
+                    key=lambda word: (
+                        min((point[1] for point in word.polygon), default=0.0),
+                        min((point[0] for point in word.polygon), default=0.0),
+                    ),
+                )
             )
             lines.append(
                 OcrLineObservation(
-                    text=text,
+                    text=_canonical_line_text(text, words),
                     confidence=score,
                     polygon=polygon,
-                    words=tuple(words),
+                    words=words,
                 )
             )
         return tuple(lines)
