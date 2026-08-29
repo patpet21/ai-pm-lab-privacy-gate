@@ -4,13 +4,19 @@ import argparse
 import hmac
 import json
 import os
+import re
 import secrets
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
 
 from ai_pm_lab_privacy_gate.application.privacy_service import PrivacyGateService
+from ai_pm_lab_privacy_gate.application.protect_session_service import namespace_protection_result
 from ai_pm_lab_privacy_gate.domain.models import Finding
 from ai_pm_lab_privacy_gate.domain.profiles import get_profile
+from ai_pm_lab_privacy_gate.infrastructure.local_api.session_store import (
+    LocalProtectionSessionStore,
+    LocalSessionNotFound,
+)
 from ai_pm_lab_privacy_gate.infrastructure.pii.languages import normalize_document_language
 
 
@@ -19,6 +25,7 @@ DEFAULT_PORT = 8765
 MAX_REQUEST_BYTES = 1_000_000
 MAX_TEXT_CHARS = 250_000
 _ALLOWED_REPLACEMENT_MODES = {"reversible", "redact", "generic", "mask"}
+_SESSION_ID_PATTERN = re.compile(r"^[a-f0-9]{32}$")
 
 
 def _finding_payload(finding: Finding) -> dict[str, object]:
@@ -80,6 +87,17 @@ def _validated_replacement_mode(payload: dict[str, Any]) -> str:
     return str(value)
 
 
+def _validated_session_id(payload: dict[str, Any], *, required: bool = False) -> str | None:
+    value = payload.get("session_id")
+    if value is None:
+        if required:
+            raise ValueError("session_id is required")
+        return None
+    if not isinstance(value, str) or not _SESSION_ID_PATTERN.fullmatch(value):
+        raise ValueError("session_id is invalid")
+    return value
+
+
 class LocalApiHttpServer(ThreadingHTTPServer):
     daemon_threads = True
 
@@ -90,11 +108,17 @@ class LocalApiHttpServer(ThreadingHTTPServer):
         service: PrivacyGateService,
         auth_token: str,
         allowed_origins: tuple[str, ...],
+        session_store: LocalProtectionSessionStore,
     ) -> None:
         self.privacy_service = service
         self.auth_token = auth_token
         self.allowed_origins = frozenset(origin.rstrip("/") for origin in allowed_origins)
+        self.session_store = session_store
         super().__init__(server_address, LocalApiRequestHandler)
+
+    def server_close(self) -> None:
+        self.session_store.clear()
+        super().server_close()
 
 
 class LocalApiRequestHandler(BaseHTTPRequestHandler):
@@ -130,7 +154,7 @@ class LocalApiRequestHandler(BaseHTTPRequestHandler):
         return {
             "Access-Control-Allow-Origin": origin,
             "Access-Control-Allow-Headers": "Authorization, Content-Type",
-            "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+            "Access-Control-Allow-Methods": "GET, POST, DELETE, OPTIONS",
             "Vary": "Origin",
         }
 
@@ -182,8 +206,8 @@ class LocalApiRequestHandler(BaseHTTPRequestHandler):
                 "api_version": "v1",
                 "mode": "local-only",
                 "authentication": "bearer",
-                "can_access_original_pii": False,
-                "can_access_restore_mappings": False,
+                "returns_restore_mappings": False,
+                "can_restore_session_text": True,
                 "can_access_library": False,
             },
         )
@@ -191,7 +215,7 @@ class LocalApiRequestHandler(BaseHTTPRequestHandler):
     def do_POST(self) -> None:  # noqa: N802 - BaseHTTPRequestHandler API
         if self._reject_if_untrusted_transport():
             return
-        if self.path not in {"/v1/analyze", "/v1/protect"}:
+        if self.path not in {"/v1/analyze", "/v1/protect", "/v1/restore"}:
             self._send_json(404, {"error": "not_found"})
             return
         if not self._authorized():
@@ -218,7 +242,15 @@ class LocalApiRequestHandler(BaseHTTPRequestHandler):
             self._send_json(400, {"error": "json_object_required"})
             return
         try:
-            response = self._analyze(payload) if self.path == "/v1/analyze" else self._protect(payload)
+            if self.path == "/v1/analyze":
+                response = self._analyze(payload)
+            elif self.path == "/v1/protect":
+                response = self._protect(payload)
+            else:
+                response = self._restore(payload)
+        except LocalSessionNotFound:
+            self._send_json(404, {"error": "session_not_found"})
+            return
         except (KeyError, ValueError) as error:
             self._send_json(400, {"error": "invalid_request", "message": str(error)})
             return
@@ -226,6 +258,26 @@ class LocalApiRequestHandler(BaseHTTPRequestHandler):
             self._send_json(500, {"error": "local_service_error"})
             return
         self._send_json(200, response)
+
+    def do_DELETE(self) -> None:  # noqa: N802 - BaseHTTPRequestHandler API
+        if self._reject_if_untrusted_transport():
+            return
+        if not self._authorized():
+            self._send_json(401, {"error": "authentication_required"})
+            return
+        prefix = "/v1/sessions/"
+        if not self.path.startswith(prefix):
+            self._send_json(404, {"error": "not_found"})
+            return
+        session_id = self.path[len(prefix) :]
+        if not _SESSION_ID_PATTERN.fullmatch(session_id):
+            self._send_json(400, {"error": "invalid_session_id"})
+            return
+        deleted = self.server.session_store.delete(session_id)
+        if not deleted:
+            self._send_json(404, {"error": "session_not_found"})
+            return
+        self._send_json(200, {"status": "deleted"})
 
     def _analyze(self, payload: dict[str, Any]) -> dict[str, object]:
         text = _validated_text(payload)
@@ -248,6 +300,7 @@ class LocalApiRequestHandler(BaseHTTPRequestHandler):
         language = _validated_language(payload)
         finding_ids = _validated_finding_ids(payload)
         replacement_mode = _validated_replacement_mode(payload)
+        session_id = _validated_session_id(payload)
         document = self.server.privacy_service.document_from_text(text)
         findings = self.server.privacy_service.analyze(
             document,
@@ -268,12 +321,31 @@ class LocalApiRequestHandler(BaseHTTPRequestHandler):
             selected,
             replacement_mode=replacement_mode,
         )
+        if replacement_mode == "reversible" and result.mappings:
+            if session_id is None:
+                session_id = self.server.session_store.create()
+            else:
+                self.server.session_store.touch(session_id)
+            namespace = self.server.session_store.next_namespace(session_id)
+            result = namespace_protection_result(result, namespace)
+            self.server.session_store.add_mappings(session_id, result.mappings)
+        elif session_id is not None:
+            self.server.session_store.touch(session_id)
         return {
             "protected_text": result.combined_text,
             "applied_findings_count": len(result.applied_findings),
             "applied_finding_ids": [item.finding_id for item in result.applied_findings],
             "entity_types": sorted({item.entity_type for item in result.applied_findings}),
+            "session_id": session_id,
         }
+
+    def _restore(self, payload: dict[str, Any]) -> dict[str, object]:
+        text = _validated_text(payload)
+        session_id = _validated_session_id(payload, required=True)
+        assert session_id is not None
+        mappings = self.server.session_store.mappings(session_id)
+        restored = self.server.privacy_service.restore_text(text, mappings)
+        return {"restored_text": restored, "session_id": session_id}
 
 
 def create_local_api_server(
@@ -283,6 +355,7 @@ def create_local_api_server(
     port: int = DEFAULT_PORT,
     auth_token: str | None = None,
     allowed_origins: tuple[str, ...] = (),
+    session_store: LocalProtectionSessionStore | None = None,
 ) -> LocalApiHttpServer:
     """Create the opt-in local bridge. It can never bind to a LAN/WAN interface."""
     normalized_host = host.strip().lower()
@@ -298,6 +371,7 @@ def create_local_api_server(
         service=service or PrivacyGateService(),
         auth_token=token,
         allowed_origins=allowed_origins,
+        session_store=session_store or LocalProtectionSessionStore(),
     )
 
 

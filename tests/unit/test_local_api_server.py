@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 import threading
 from http.client import HTTPConnection
 
@@ -78,8 +79,8 @@ def test_status_is_local_safe_and_does_not_reveal_token(local_api) -> None:
     assert status == 200
     assert payload["status"] == "ready"
     assert payload["mode"] == "local-only"
-    assert payload["can_access_original_pii"] is False
-    assert payload["can_access_restore_mappings"] is False
+    assert payload["returns_restore_mappings"] is False
+    assert payload["can_restore_session_text"] is True
     assert TOKEN not in raw
 
 
@@ -110,7 +111,7 @@ def test_analyze_returns_coordinates_but_not_original_values(local_api) -> None:
     assert EMAIL not in raw
 
 
-def test_protect_uses_existing_privacy_service_and_never_returns_mapping(local_api) -> None:
+def test_protect_creates_namespaced_ram_session_and_never_returns_mapping(local_api) -> None:
     status, payload, raw = request(
         local_api,
         "POST",
@@ -119,11 +120,87 @@ def test_protect_uses_existing_privacy_service_and_never_returns_mapping(local_a
         token=TOKEN,
     )
     assert status == 200
-    assert payload["protected_text"] == "Contact [[PG_EMAIL_ADDRESS_001]]"
+    assert re.fullmatch(r"[a-f0-9]{32}", payload["session_id"])
+    assert re.fullmatch(r"Contact \[\[PG_B[A-F0-9]{8}_T0001_EMAIL_ADDRESS_001\]\]", payload["protected_text"])
     assert payload["applied_findings_count"] == 1
     assert payload["entity_types"] == ["EMAIL_ADDRESS"]
     assert "mapping" not in raw.lower()
     assert EMAIL not in raw
+
+
+def test_restore_returns_original_text_without_exposing_raw_mapping(local_api) -> None:
+    _, protected, _ = request(
+        local_api,
+        "POST",
+        "/v1/protect",
+        {"text": f"Contact {EMAIL}", "profile_key": "property_management"},
+        token=TOKEN,
+    )
+    status, restored, raw = request(
+        local_api,
+        "POST",
+        "/v1/restore",
+        {"session_id": protected["session_id"], "text": f"AI reply: {protected['protected_text']}"},
+        token=TOKEN,
+    )
+    assert status == 200
+    assert restored["restored_text"] == f"AI reply: Contact {EMAIL}"
+    assert set(restored) == {"restored_text", "session_id"}
+    assert "original_text" not in raw
+    assert "mappings" not in raw
+
+
+def test_reusing_session_generates_unique_tokens_per_turn(local_api) -> None:
+    _, first, _ = request(
+        local_api,
+        "POST",
+        "/v1/protect",
+        {"text": f"First {EMAIL}", "profile_key": "property_management"},
+        token=TOKEN,
+    )
+    _, second, _ = request(
+        local_api,
+        "POST",
+        "/v1/protect",
+        {
+            "text": f"Second {EMAIL}",
+            "profile_key": "property_management",
+            "session_id": first["session_id"],
+        },
+        token=TOKEN,
+    )
+    assert second["session_id"] == first["session_id"]
+    assert "_T0001_" in first["protected_text"]
+    assert "_T0002_" in second["protected_text"]
+    assert first["protected_text"] != second["protected_text"]
+
+
+def test_deleted_session_can_no_longer_restore(local_api) -> None:
+    _, protected, _ = request(
+        local_api,
+        "POST",
+        "/v1/protect",
+        {"text": f"Contact {EMAIL}", "profile_key": "property_management"},
+        token=TOKEN,
+    )
+    session_id = protected["session_id"]
+    status, payload, _ = request(
+        local_api,
+        "DELETE",
+        f"/v1/sessions/{session_id}",
+        token=TOKEN,
+    )
+    assert status == 200
+    assert payload["status"] == "deleted"
+    status, payload, _ = request(
+        local_api,
+        "POST",
+        "/v1/restore",
+        {"session_id": session_id, "text": protected["protected_text"]},
+        token=TOKEN,
+    )
+    assert status == 404
+    assert payload["error"] == "session_not_found"
 
 
 def test_browser_origin_is_denied_unless_explicitly_allowed(local_api) -> None:
