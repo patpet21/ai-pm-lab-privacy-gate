@@ -9,7 +9,11 @@ def build_vehicle_recognizers() -> tuple[ItalianContextValueRecognizer, ...]:
     return (
         ItalianContextValueRecognizer(
             entity_type="IT_VEHICLE_PLATE",
-            pattern=r"\b(?:numero\s+)?targa\b\s*(?:(?:n(?:umero)?\.?)\s*)?[:#-]?\s*(?P<value>[A-Z]{2}\s*\d{3}\s*[A-Z]{2})\b",
+            pattern=(
+                r"\b(?:numero\s+)?targa(?:\s+(?:del\s+)?veicolo(?:\s+autorizzato)?)?\b"
+                r"\s*(?:(?:n(?:umero)?\.?)\s*)?[:#-]?\s*"
+                r"(?P<value>[A-Z]{2}\s*\d{3}\s*[A-Z]{2})\b"
+            ),
             score=0.99,
         ),
     )
