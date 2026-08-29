@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from ai_pm_lab_privacy_gate.domain.models import AnalysisDocument, ProtectionResult
+from ai_pm_lab_privacy_gate.infrastructure.documents.image_service import ImageDocumentService
 from ai_pm_lab_privacy_gate.infrastructure.documents.office_service import OfficeDocumentService
 from ai_pm_lab_privacy_gate.infrastructure.documents.pdf_service import PdfDocumentService
 from ai_pm_lab_privacy_gate.infrastructure.documents.pptx_service import PowerPointDocumentService
@@ -12,7 +13,9 @@ from ai_pm_lab_privacy_gate.infrastructure.documents.text_service import TextDoc
 class DocumentPipelineService:
     """Single local router for every document format understood by PrivacyGate."""
 
-    SUPPORTED_SUFFIXES = {".pdf", ".docx", ".xlsx", ".pptx", ".txt"}
+    SUPPORTED_SUFFIXES = {
+        ".pdf", ".docx", ".xlsx", ".pptx", ".txt", ".png", ".jpg", ".jpeg"
+    }
 
     def __init__(
         self,
@@ -20,11 +23,13 @@ class DocumentPipelineService:
         office_service: OfficeDocumentService | None = None,
         powerpoint_service: PowerPointDocumentService | None = None,
         text_service: TextDocumentService | None = None,
+        image_service: ImageDocumentService | None = None,
     ) -> None:
         self.pdf = pdf_service or PdfDocumentService()
         self.office = office_service or OfficeDocumentService()
         self.powerpoint = powerpoint_service or PowerPointDocumentService()
         self.text = text_service or TextDocumentService()
+        self.image = image_service or ImageDocumentService()
 
     def extract(self, path: str | Path) -> AnalysisDocument:
         source = Path(path)
@@ -37,9 +42,11 @@ class DocumentPipelineService:
             return self.powerpoint.extract(source)
         if suffix == ".txt":
             return self.text.extract(source)
+        if suffix in ImageDocumentService.SUPPORTED_SUFFIXES:
+            return self.image.extract(source)
         raise ValueError(
             "Supported document formats are PDF, Word (.docx), Excel (.xlsx), "
-            "PowerPoint (.pptx) and text (.txt)."
+            "PowerPoint (.pptx), text (.txt), PNG and JPG/JPEG images."
         )
 
     def write_protected(
@@ -59,4 +66,6 @@ class DocumentPipelineService:
             return self.powerpoint.write_protected(source_document, result, path)
         if kind in {"txt", "text"}:
             return self.text.write_protected(source_document, result, path)
+        if kind == "image":
+            return self.image.write_protected(source_document, result, path)
         raise ValueError(f"Unsupported source kind: {kind}")

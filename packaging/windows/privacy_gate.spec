@@ -30,6 +30,8 @@ for package in (
     "docx",
     "openpyxl",
     "defusedxml",
+    "rapidocr",
+    "onnxruntime",
 ):
     package_datas, package_binaries, package_hidden = collect_all(package)
     datas += package_datas
@@ -49,6 +51,8 @@ for distribution in (
     "python-docx",
     "openpyxl",
     "defusedxml",
+    "rapidocr",
+    "onnxruntime",
 ):
     try:
         datas += copy_metadata(distribution)

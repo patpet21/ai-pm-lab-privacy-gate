@@ -4,6 +4,8 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 
+from ai_pm_lab_privacy_gate.domain.ocr import OcrPageLayout
+
 
 @dataclass(frozen=True, slots=True)
 class PageContent:
@@ -17,6 +19,7 @@ class AnalysisDocument:
     source_kind: str
     pages: tuple[PageContent, ...]
     source_path: Path | None = None
+    ocr_pages: tuple[OcrPageLayout, ...] = field(default_factory=tuple)
 
     @property
     def has_text(self) -> bool:
