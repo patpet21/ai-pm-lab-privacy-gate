@@ -7,16 +7,27 @@ from typing import Any
 
 from ai_pm_lab_privacy_gate.domain.models import Finding, PageContent
 from ai_pm_lab_privacy_gate.domain.profiles import PrivacyProfile
+from ai_pm_lab_privacy_gate.infrastructure.pii.languages import get_language_config
 
 
 class PresidioPrivacyEngine:
     """Lazy, local-only Presidio adapter shared by every application surface."""
 
-    def __init__(self, model_name: str = "en_core_web_sm") -> None:
-        self._model_name = model_name
+    def __init__(self, model_name: str | None = None, language: str = "en") -> None:
+        language_config = get_language_config(language)
+        self._language = language_config.code
+        self._model_name = model_name or language_config.model_name
         self._analyzer: Any | None = None
         self._anonymizer: Any | None = None
         self._lock = threading.Lock()
+
+    @property
+    def document_language(self) -> str:
+        return self._language
+
+    @property
+    def model_name(self) -> str:
+        return self._model_name
 
     def _ensure_loaded(self) -> tuple[Any, Any]:
         if self._analyzer is not None and self._anonymizer is not None:
@@ -38,11 +49,19 @@ class PresidioPrivacyEngine:
                 )
                 configuration = {
                     "nlp_engine_name": "spacy",
-                    "models": [{"lang_code": "en", "model_name": self._model_name}],
+                    "models": [
+                        {"lang_code": self._language, "model_name": self._model_name}
+                    ],
                 }
                 nlp_engine = NlpEngineProvider(nlp_configuration=configuration).create_engine()
-                analyzer = AnalyzerEngine(nlp_engine=nlp_engine, supported_languages=["en"])
-                install_custom_recognizers(analyzer.registry)
+                analyzer = AnalyzerEngine(
+                    nlp_engine=nlp_engine,
+                    supported_languages=[self._language],
+                )
+                install_custom_recognizers(
+                    analyzer.registry,
+                    languages=(self._language,),
+                )
                 self._analyzer = analyzer
             if self._anonymizer is None:
                 from presidio_anonymizer import AnonymizerEngine
@@ -52,11 +71,22 @@ class PresidioPrivacyEngine:
 
     def analyze_page(self, page: PageContent, profile: PrivacyProfile) -> list[Finding]:
         analyzer, _ = self._ensure_loaded()
-        supported = set(analyzer.get_supported_entities(language="en"))
-        entities = [entity for entity in profile.entities if entity in supported]
+        supported = set(analyzer.get_supported_entities(language=self._language))
+        requested_entities = list(profile.entities)
+        if self._language == "it":
+            from ai_pm_lab_privacy_gate.infrastructure.pii.recognizers.italian import (
+                ITALIAN_ENTITY_TYPES,
+            )
+
+            requested_entities.extend(ITALIAN_ENTITY_TYPES)
+        entities = [
+            entity
+            for entity in dict.fromkeys(requested_entities)
+            if entity in supported
+        ]
         results = analyzer.analyze(
             text=page.text,
-            language="en",
+            language=self._language,
             entities=entities,
             score_threshold=profile.threshold,
         )
