@@ -90,7 +90,7 @@ def _build_mcp_reference(main_window) -> QFrame:
     title.setStyleSheet(f"color:{NAVY};font-size:14px;font-weight:900;border:none;")
     note = QLabel(
         "Your existing Remote MCP and Local MCP connections are managed in MCP AI Direct. "
-        "Settings no longer changes the production MCP port."
+        "This Settings page does not expose or change MCP connection controls."
     )
     note.setWordWrap(True)
     note.setStyleSheet(f"color:{MUTED};font-size:9px;border:none;")
@@ -104,7 +104,7 @@ def _build_mcp_reference(main_window) -> QFrame:
     head.addWidget(status, 0, Qt.AlignmentFlag.AlignTop)
     box.addLayout(head)
 
-    detail = QLabel("Stable Named Tunnel origin: 127.0.0.1:8766 • Protected Library boundary only")
+    detail = QLabel("Protected Library boundary only • originals and restore mappings stay outside MCP")
     detail.setWordWrap(True)
     detail.setStyleSheet(
         "background:#F1FAFA;color:#436677;border:1px solid #D5ECEC;border-radius:9px;"
@@ -232,7 +232,7 @@ def apply_settings_services_cleanup_2026(main_window) -> None:
         mcp.hide()
         settings._privacygate_hidden_mcp_settings_card = mcp
 
-    existing_reference = page_reference = content.findChild(QFrame, "SettingsMcpAiDirectReference")
+    existing_reference = content.findChild(QFrame, "SettingsMcpAiDirectReference")
     if existing_reference is None:
         reference = _build_mcp_reference(main_window)
         body.insertWidget(_find_runtime_index(body), reference)
