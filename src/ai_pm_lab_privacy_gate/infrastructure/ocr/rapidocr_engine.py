@@ -3,13 +3,17 @@ from __future__ import annotations
 from typing import Any
 
 import numpy as np
-from PIL import Image
+from PIL import Image, ImageEnhance, ImageFilter, ImageOps
 
 from ai_pm_lab_privacy_gate.domain.ocr import Polygon
 from ai_pm_lab_privacy_gate.infrastructure.ocr.base import (
     OcrLineObservation,
     OcrWordObservation,
 )
+
+
+_MAX_PREPROCESSED_DIMENSION = 3200
+_MAX_UPSCALE = 2.0
 
 
 def _polygon(value: Any) -> Polygon:
@@ -22,6 +26,44 @@ def _polygon(value: Any) -> Polygon:
     return tuple((float(point[0]), float(point[1])) for point in items)
 
 
+def _scale_polygon(polygon: Polygon, factor: float) -> Polygon:
+    if not polygon or factor == 1.0:
+        return polygon
+    return tuple((point[0] * factor, point[1] * factor) for point in polygon)
+
+
+def _prepare_for_ocr(image: Image.Image) -> tuple[Image.Image, float]:
+    """Normalize a document photo/screenshot before local OCR.
+
+    Photos of screens and camera captures often contain moire, weak contrast and
+    text which is only a few pixels high. RapidOCR performs substantially better
+    when that text is enlarged and contrast-normalized first. The returned scale
+    factor is used to map every OCR polygon back into the original image space so
+    visual redaction still lands on the source pixels.
+    """
+    rgb = image.convert("RGB")
+    width, height = rgb.size
+    largest = max(width, height)
+    if largest <= 0:
+        return rgb, 1.0
+
+    scale = min(_MAX_UPSCALE, _MAX_PREPROCESSED_DIMENSION / float(largest))
+    scale = max(1.0, scale)
+    if scale > 1.05:
+        rgb = rgb.resize(
+            (max(1, round(width * scale)), max(1, round(height * scale))),
+            Image.Resampling.LANCZOS,
+        )
+    else:
+        scale = 1.0
+
+    gray = ImageOps.grayscale(rgb)
+    gray = ImageOps.autocontrast(gray, cutoff=1)
+    gray = ImageEnhance.Contrast(gray).enhance(1.25)
+    gray = gray.filter(ImageFilter.UnsharpMask(radius=1.0, percent=170, threshold=2))
+    return gray.convert("RGB"), scale
+
+
 def _bounds(polygon: Polygon) -> tuple[float, float, float, float] | None:
     if not polygon:
         return None
@@ -30,7 +72,7 @@ def _bounds(polygon: Polygon) -> tuple[float, float, float, float] | None:
     return min(xs), min(ys), max(xs), max(ys)
 
 
-def _word_entries(raw: Any) -> tuple[OcrWordObservation, ...]:
+def _word_entries(raw: Any, coordinate_scale: float = 1.0) -> tuple[OcrWordObservation, ...]:
     """Normalize RapidOCR word_results across flat and older nested shapes."""
     if raw is None:
         return ()
@@ -56,7 +98,7 @@ def _word_entries(raw: Any) -> tuple[OcrWordObservation, ...]:
     words: list[OcrWordObservation] = []
     for word_text, word_score, word_box in candidates:
         cleaned = str(word_text).strip()
-        polygon = _polygon(word_box)
+        polygon = _scale_polygon(_polygon(word_box), coordinate_scale)
         if not cleaned or not polygon:
             continue
         try:
@@ -119,8 +161,10 @@ class RapidOcrEngine:
 
     def read(self, image: Image.Image) -> tuple[OcrLineObservation, ...]:
         engine = self._get_engine()
+        prepared, input_scale = _prepare_for_ocr(image)
+        coordinate_scale = 1.0 / input_scale
         result = engine(
-            np.asarray(image.convert("RGB")),
+            np.asarray(prepared),
             return_word_box=True,
             return_single_char_box=False,
         )
@@ -133,7 +177,7 @@ class RapidOcrEngine:
         raw_lines: list[tuple[str, float, Polygon]] = []
         for box, text, score in zip(boxes, texts, scores):
             cleaned = str(text).strip()
-            polygon = _polygon(box)
+            polygon = _scale_polygon(_polygon(box), coordinate_scale)
             if not cleaned or not polygon:
                 continue
             raw_lines.append((cleaned, float(score), polygon))
@@ -141,7 +185,10 @@ class RapidOcrEngine:
         # RapidOCR 3.x exposes word_results as one flat sequence for the whole
         # page. Older/alternate results may be nested. Normalize first, then map
         # each word back to the OCR line by its pixel centre.
-        page_words = _word_entries(getattr(result, "word_results", None))
+        page_words = _word_entries(
+            getattr(result, "word_results", None),
+            coordinate_scale=coordinate_scale,
+        )
         line_polygons = tuple(item[2] for item in raw_lines)
         words_by_line: list[list[OcrWordObservation]] = [[] for _ in raw_lines]
         for word in page_words:
