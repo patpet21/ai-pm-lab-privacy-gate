@@ -21,6 +21,9 @@ from ai_pm_lab_privacy_gate.infrastructure.pii.recognizers.italian.fiscal import
 from ai_pm_lab_privacy_gate.infrastructure.pii.recognizers.italian.identity_documents import (
     build_identity_document_recognizers,
 )
+from ai_pm_lab_privacy_gate.infrastructure.pii.recognizers.italian.people import (
+    build_person_recognizers,
+)
 from ai_pm_lab_privacy_gate.infrastructure.pii.recognizers.italian.vehicles import (
     build_vehicle_recognizers,
 )
@@ -47,6 +50,7 @@ ITALIAN_ENTITY_TYPES = (
     "IT_CADASTRAL_SUBALTERN",
     "IT_REA_NUMBER",
     "IT_BUSINESS_REGISTER_NUMBER",
+    "PERSON",
     "ORGANIZATION",
 )
 
@@ -62,6 +66,7 @@ def install_italian_recognizers(registry) -> None:  # noqa: ANN001
         *build_vehicle_recognizers(),
         *build_cadastral_recognizers(),
         *build_business_recognizers(),
+        *build_person_recognizers(),
     )
     for recognizer in recognizers:
         registry.add_recognizer(recognizer)
