@@ -29,6 +29,9 @@ from .mockup_protect_review_experience_2026 import (
 from .mockup_protect_review_controls_2026 import (
     apply_mockup_protect_review_controls_2026,
 )
+from .protect_image_review_regression_fix import (
+    apply_protect_image_review_regression_fix,
+)
 
 
 def apply_mockup_protect_refinement_suite_2026(main_window) -> None:
@@ -47,3 +50,6 @@ def apply_mockup_protect_refinement_suite_2026(main_window) -> None:
     apply_mockup_protect_review_experience_2026(main_window)
     # Guaranteed placement for Edit/Remove when the legacy action row is nested.
     apply_mockup_protect_review_controls_2026(main_window)
+    # Image/OCR support extends the engine only. Never let its compatibility
+    # preview hooks hide the established tags/review/manual-sensitive surface.
+    apply_protect_image_review_regression_fix(main_window)
