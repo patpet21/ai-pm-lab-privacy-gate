@@ -30,10 +30,12 @@ def install_protect_runtime() -> None:
     from .redesign import install_redesign
     from .protect_ghost_cleanup import install_protect_ghost_cleanup
     from .protect_quick_actions import install_protect_quick_actions
+    from .protect_document_language import install_protect_document_language
 
     install_redesign()
     install_protect_ghost_cleanup()
     install_protect_quick_actions()
+    install_protect_document_language()
     _INSTALLED = True
 
 
@@ -191,7 +193,7 @@ def apply_protect_runtime(main_window, stage: str) -> None:
         apply_gmail_component_capture_fix(main_window)
         apply_protect_source_state_reset(main_window)
 
-        # Fresh workflow boundary: one Scan & Protect action plus a contextual
+        # Fresh workflow boundary: one Scan + Protect action plus a contextual
         # document/session Privacy Check. This intentionally does not reuse the
         # legacy AI Preflight dialog.
         apply_protect_workflow_v2(main_window)
