@@ -12,7 +12,10 @@ from ai_pm_lab_privacy_gate.infrastructure.connectors.gmail_import import (
     _collect_attachments,
     _collect_text,
 )
-from ai_pm_lab_privacy_gate.infrastructure.connectors.google_drive_import import _GOOGLE_EXPORTS
+from ai_pm_lab_privacy_gate.infrastructure.connectors.google_drive_import import (
+    _GOOGLE_EXPORTS,
+    _SUPPORTED_SUFFIXES as DRIVE_SUPPORTED_SUFFIXES,
+)
 from ai_pm_lab_privacy_gate.infrastructure.documents.document_pipeline import DocumentPipelineService
 from ai_pm_lab_privacy_gate.infrastructure.documents.restore_service import DocumentRestoreService
 
@@ -97,7 +100,13 @@ def test_google_slides_export_to_pptx() -> None:
     assert suffix == ".pptx"
 
 
-def test_gmail_supported_attachments_include_pptx_txt_and_inline_data() -> None:
+def test_google_drive_accepts_image_ocr_v1_formats() -> None:
+    assert {".png", ".jpg", ".jpeg"} <= DRIVE_SUPPORTED_SUFFIXES
+    assert ".heic" not in DRIVE_SUPPORTED_SUFFIXES
+    assert ".tiff" not in DRIVE_SUPPORTED_SUFFIXES
+
+
+def test_gmail_supported_attachments_include_images_pptx_txt_and_inline_data() -> None:
     inline_text = base64.urlsafe_b64encode(b"private attachment text").decode("ascii")
     payload = {
         "mimeType": "multipart/mixed",
@@ -120,9 +129,15 @@ def test_gmail_supported_attachments_include_pptx_txt_and_inline_data() -> None:
                 "partId": "3",
                 "body": {"attachmentId": "A3"},
             },
+            {
+                "filename": "scan.heic",
+                "mimeType": "image/heic",
+                "partId": "4",
+                "body": {"attachmentId": "A4"},
+            },
         ],
     }
     attachments = _collect_attachments(payload)
-    assert [item.filename for item in attachments] == ["deck.pptx", "notes.txt"]
+    assert [item.filename for item in attachments] == ["deck.pptx", "notes.txt", "photo.jpg"]
     assert attachments[1].inline_data == inline_text
     assert _collect_text(payload) == []
