@@ -443,7 +443,14 @@ class LibraryRepository:
                 if not result or result[0] != "ok":
                     raise ValueError("The backup database failed its integrity check.")
             safety_backup = self.create_backup()
-            os.replace(temporary_path, self.db_path)
+            # Replacing an SQLite database file by pathname can fail on Windows
+            # when another recently closed SQLite handle still prevents delete/
+            # rename sharing. Restore through SQLite's backup API instead: this
+            # preserves the database path and lets SQLite coordinate file locks.
+            with closing(sqlite3.connect(temporary_path)) as source_connection, closing(
+                sqlite3.connect(self.db_path)
+            ) as destination_connection:
+                source_connection.backup(destination_connection)
             self._initialize()
             self._synchronize_protected_library()
             return safety_backup
