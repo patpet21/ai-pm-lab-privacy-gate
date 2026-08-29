@@ -9,41 +9,70 @@ from ai_pm_lab_privacy_gate.domain.models import AnalysisDocument, Finding
 
 _NER_ENTITIES = {"PERSON", "ORGANIZATION", "LOCATION"}
 
-# xx_ent_wiki_sm is a deliberately small multilingual baseline. It is useful for
-# names/places/organisations, but on form-like Italian documents it can classify
-# field labels as entities. These are structural/privacy vocabulary, not values.
+# xx_ent_wiki_sm is intentionally a compact multilingual baseline. It is useful
+# for natural names and places, but it is not precise enough to trust every raw
+# PER/ORG/LOC prediction in form-like Italian business documents. The rules below
+# are therefore precision-first: deterministic Italian recognizers keep priority,
+# while obvious headings, field labels and UI/instruction language are suppressed.
 _BLOCKED_EXACT = {
     "appendice a",
     "campo",
     "cap",
+    "carta",
     "categorie",
     "centralino",
     "codice fiscale",
+    "completamente fittizi",
+    "dati",
     "documento sintetico di test",
     "foglio",
+    "iban",
     "imprese",
     "italiano",
     "location",
     "mappale",
     "organization",
     "particella",
+    "pec",
     "person",
+    "privacy check",
     "provincia",
+    "rea",
     "registro imprese",
     "sezione",
     "sezione catastale",
     "subalterno",
+    "synthetic",
     "synthetic test data only",
     "targa",
     "targa veicolo",
     "telefono",
+    "test",
     "valore sintetico",
 }
 _BLOCKED_PREFIXES = (
     "appendice ",
     "categorie che ",
     "document language",
+    "procedura consigliata",
     "synthetic test ",
+)
+_INSTRUCTION_FIRST_WORDS = {
+    "aprire",
+    "caricare",
+    "controllare",
+    "eseguire",
+    "generare",
+    "lasciare",
+    "salvare",
+    "scaricare",
+    "selezionare",
+    "usare",
+    "verificare",
+}
+_LEGAL_SUFFIX_RE = re.compile(
+    r"(?:\bs\.?\s*r\.?\s*l\.?\b|\bs\.?\s*p\.?\s*a\.?\b|\bsnc\b|\bsas\b)",
+    re.IGNORECASE,
 )
 
 
@@ -52,8 +81,12 @@ def _normalise_label(value: str) -> str:
     return value.strip(" \t\r\n:;,.()[]{}–—-")
 
 
+def _alpha_words(value: str) -> list[str]:
+    return re.findall(r"[A-Za-zÀ-ÖØ-öø-ÿ'’]+", value)
+
+
 def is_italian_ner_false_positive(entity_type: str, value: str) -> bool:
-    """Reject obvious form/document labels produced by the compact NER model."""
+    """Return True for high-confidence structural mistakes from generic NER."""
     if entity_type not in _NER_ENTITIES:
         return False
     clean = _normalise_label(value)
@@ -63,23 +96,54 @@ def is_italian_ner_false_positive(entity_type: str, value: str) -> bool:
         return True
     if "privacygate" in clean or "documento sintetico" in clean:
         return True
-    if entity_type == "LOCATION" and re.fullmatch(r"[A-Z]?\d+[A-Z0-9]*", value.strip(), re.I):
-        # Cadastral/reference codes are handled by deterministic recognizers.
+
+    words = _alpha_words(value)
+    if entity_type in {"PERSON", "ORGANIZATION"} and len(words) < 2:
+        # Single-word PER/ORG predictions are the dominant source of damage from
+        # xx_ent_wiki_sm on forms (e.g. Test, REA, PEC, Carta, Ferri). Explicit
+        # Italian role/company recognizers recover the important contextual cases.
         return True
-    if entity_type == "PERSON" and clean in {
-        "codice fiscale",
-        "foglio",
-        "telefono",
-        "targa",
-    }:
+
+    if entity_type == "ORGANIZATION":
+        first = clean.split(" ", 1)[0]
+        if first in _INSTRUCTION_FIRST_WORDS:
+            return True
+        letters = "".join(char for char in value if char.isalpha())
+        if letters and letters.isupper() and not _LEGAL_SUFFIX_RE.search(value):
+            # Reject heading-like all-caps phrases such as COMPLETAMENTE FITTIZI.
+            return True
+        if clean.startswith(("privacy check", "scan & protect", "scan and protect")):
+            return True
+
+    if entity_type == "LOCATION" and re.fullmatch(
+        r"[A-Z]?\d+[A-Z0-9]*", value.strip(), re.IGNORECASE
+    ):
+        # Cadastral/reference codes are handled by deterministic recognizers.
         return True
     return False
 
 
+def _is_compact_ner_result(result: Any) -> bool:
+    """Distinguish spaCy NER output from PrivacyGate deterministic recognizers."""
+    metadata = getattr(result, "recognition_metadata", None) or {}
+    recognizer_name = str(
+        metadata.get("recognizer_name")
+        or metadata.get("recognizer_identifier")
+        or ""
+    ).casefold()
+    # Unit-test stand-ins may omit metadata; treat those as generic NER. Real
+    # Pattern/ItalianContextValue recognizers publish their recognizer name and
+    # must never be discarded by the precision filter.
+    return not recognizer_name or "spacy" in recognizer_name or "nlp" in recognizer_name
+
+
 def filter_italian_ner_results(text: str, results: Iterable[Any]) -> list[Any]:
-    """Filter only obvious generic-NER mistakes; deterministic entities are untouched."""
+    """Filter compact-model mistakes while leaving deterministic results intact."""
     filtered: list[Any] = []
     for result in results:
+        if not _is_compact_ner_result(result):
+            filtered.append(result)
+            continue
         value = text[result.start : result.end]
         if is_italian_ner_false_positive(str(result.entity_type), value):
             continue
@@ -91,13 +155,13 @@ _ADJACENT_FIELDS: tuple[tuple[str, frozenset[str], re.Pattern[str], float], ...]
     (
         "IT_CADASTRAL_MUNICIPAL_CODE",
         frozenset({"comune catastale", "codice catastale", "codice comune"}),
-        re.compile(r"[A-Z0-9]{4,5}", re.I),
+        re.compile(r"[A-Z0-9]{4,5}", re.IGNORECASE),
         0.995,
     ),
     (
         "IT_CADASTRAL_SECTION",
         frozenset({"sezione", "sezione catastale", "sezione urbana"}),
-        re.compile(r"[A-Z0-9]{1,4}", re.I),
+        re.compile(r"[A-Z0-9]{1,4}", re.IGNORECASE),
         0.99,
     ),
     (
@@ -115,7 +179,7 @@ _ADJACENT_FIELDS: tuple[tuple[str, frozenset[str], re.Pattern[str], float], ...]
     (
         "IT_CADASTRAL_SUBALTERN",
         frozenset({"subalterno", "sub"}),
-        re.compile(r"[A-Z0-9]{1,6}", re.I),
+        re.compile(r"[A-Z0-9]{1,6}", re.IGNORECASE),
         0.995,
     ),
     (
@@ -178,13 +242,7 @@ def propagate_known_ner_values(
     document: AnalysisDocument,
     findings: Iterable[Finding],
 ) -> tuple[Finding, ...]:
-    """Protect repeated PERSON/ORG/LOCATION values consistently across segments.
-
-    A compact NER model can recognize ``Milano`` in one sentence and miss the
-    same city in a short causale. Once a value has been confidently recognized in
-    this document, every exact standalone occurrence is privacy-equivalent and is
-    therefore surfaced for review as well.
-    """
+    """Protect repeated PERSON/ORG/LOCATION values consistently across segments."""
     base = list(findings)
     existing = {(item.page_number, item.start, item.end) for item in base}
     seeds: dict[tuple[str, str], Finding] = {}
