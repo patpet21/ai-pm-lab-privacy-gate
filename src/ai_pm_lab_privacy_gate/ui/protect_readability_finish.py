@@ -13,6 +13,8 @@ from types import MethodType
 from PySide6.QtCore import QTimer
 from PySide6.QtWidgets import QLabel, QLineEdit, QPushButton, QWidget
 
+from ai_pm_lab_privacy_gate.ui.global_typography_2026 import apply_global_typography_2026
+
 
 _FONT_SIZE_RE = re.compile(r"font-size\s*:\s*(\d+(?:\.\d+)?)px", re.IGNORECASE)
 
@@ -157,7 +159,12 @@ def _wrap_findings_population(page) -> None:
 
 
 def apply_protect_readability_finish(main_window) -> None:
-    """Apply the approved small readability increase only inside Protect review."""
+    """Apply the approved Protect finish and install the same scale app-wide."""
+    # Protect was the visual pilot. Once approved, the same micro-font mapping is
+    # installed globally here so every existing and late-created surface (including
+    # the redesigned sidebar and dialogs) follows one 0.5 typography baseline.
+    apply_global_typography_2026(main_window)
+
     page = getattr(main_window, "protection_page", None)
     if page is None or getattr(page, "_privacygate_readability_finish", False):
         return
