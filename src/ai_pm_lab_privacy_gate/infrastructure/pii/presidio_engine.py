@@ -128,13 +128,19 @@ class PresidioPrivacyEngine:
                 for result in results
                 if not any(result.start < end and start < result.end for start, end in token_spans)
             ]
+        if self._language == "it":
+            from ai_pm_lab_privacy_gate.infrastructure.pii.recognizers.italian.guardrails import (
+                filter_italian_ner_results,
+            )
+
+            results = filter_italian_ner_results(page.text, results)
         resolved = self._without_overlaps(results)
         return [self._to_finding(page, result, index) for index, result in enumerate(resolved)]
 
     @staticmethod
     def _without_overlaps(results: list[Any]) -> list[Any]:
         """Prefer high-confidence contextual IDs over generic numeric guesses."""
-        accepted: list[RecognizerResult] = []
+        accepted: list[Any] = []
         for candidate in sorted(
             results,
             key=lambda item: (-item.score, -(item.end - item.start), item.start),
@@ -168,7 +174,7 @@ class PresidioPrivacyEngine:
         return anonymizer.anonymize(text=text, analyzer_results=results, operators=operators).text
 
     @staticmethod
-    def _to_finding(page: PageContent, result: RecognizerResult, index: int) -> Finding:
+    def _to_finding(page: PageContent, result: Any, index: int) -> Finding:
         radius = 34
         left = max(0, result.start - radius)
         right = min(len(page.text), result.end + radius)
