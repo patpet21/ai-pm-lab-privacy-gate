@@ -138,7 +138,10 @@ def main() -> int:
         local_api.apply_preferences(window.preferences.load())
         window.settings_page.refresh_local_api_status()
 
-    window.settings_page.preferences_changed.connect(apply_local_api_preferences)
+    # Only Local Privacy Bridge changes should start/stop/reconfigure the bridge.
+    # Desktop and MCP settings still share the same local preferences file, but no
+    # longer trigger LocalApiManager lifecycle work.
+    window.settings_page.local_api_preferences_changed.connect(apply_local_api_preferences)
     install_local_privacy_bridge_settings(window)
     apply_local_api_preferences()
     app.aboutToQuit.connect(local_api.stop)
