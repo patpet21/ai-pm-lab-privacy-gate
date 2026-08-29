@@ -6,10 +6,21 @@ from ai_pm_lab_privacy_gate.infrastructure.pii.recognizers.italian.contextual im
 
 
 _SEPARATOR = r"\s*(?:(?:n(?:umero)?\.?|no\.?)\s*)?[:#-]?\s*"
+
+# ItalianContextValueRecognizer compiles patterns with IGNORECASE because most
+# contextual labels should be case-insensitive. Company-name tokens are different:
+# allowing IGNORECASE here lets a match walk backwards through ordinary prose
+# (for example ``Ferri presso gli uffici di Aurora ... S.r.l.``). Disable the
+# inherited flag only for the legal company value so every name token must really
+# begin with an uppercase letter, while accepting common casing variants of the
+# legal suffix itself.
 _ORGANIZATION_WITH_LEGAL_SUFFIX = (
     r"(?<![\wÀ-ÖØ-öø-ÿ])"
-    r"(?:[A-ZÀ-ÖØ-Þ][\wÀ-ÖØ-öø-ÿ'’&.-]*\s+){1,8}"
-    r"(?:S\.?\s*[Rr]\.?\s*[Ll]\.?|S\.?\s*[Pp]\.?\s*[Aa]\.?|SNC|SAS)"
+    r"(?-i:"
+    r"(?:[A-ZÀ-ÖØ-Þ][A-Za-zÀ-ÖØ-öø-ÿ'’&.-]*\s+){1,8}"
+    r"(?:[Ss]\.?\s*[Rr]\.?\s*[Ll]\.?|[Ss]\.?\s*[Pp]\.?\s*[Aa]\.?|"
+    r"[Ss][Nn][Cc]|[Ss][Aa][Ss])"
+    r")"
     r"(?=\s|[,;:]|\.?$)"
 )
 
@@ -17,11 +28,8 @@ _ORGANIZATION_WITH_LEGAL_SUFFIX = (
 def build_business_recognizers() -> tuple[ItalianContextValueRecognizer, ...]:
     return (
         # Use PrivacyGate's Python-regex recognizer rather than Presidio's generic
-        # PatternRecognizer here. In the real DOCX regression fixture the compact
-        # multilingual NER classified the company as PERSON while the generic
-        # pattern route did not surface the legal-suffix match. This deterministic
-        # recognizer returns the complete company name and therefore wins overlap
-        # resolution with a deliberately higher score.
+        # PatternRecognizer here. The case-sensitive company-value group prevents
+        # lowercase surrounding prose from being swallowed into the organization.
         ItalianContextValueRecognizer(
             entity_type="ORGANIZATION",
             pattern=rf"(?P<value>{_ORGANIZATION_WITH_LEGAL_SUFFIX})",
