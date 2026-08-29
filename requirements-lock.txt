@@ -103,3 +103,4 @@ winrt-Windows.Foundation==3.2.1; sys_platform == 'win32'
 winrt-Windows.Foundation.Collections==3.2.1; sys_platform == 'win32'
 winrt-Windows.Services.Store==3.2.1; sys_platform == 'win32'
 wrapt==2.3.0
+xx_ent_wiki_sm @ https://github.com/explosion/spacy-models/releases/download/xx_ent_wiki_sm-3.8.0/xx_ent_wiki_sm-3.8.0-py3-none-any.whl#sha256=6f3c4b853852ea9e9d2dc76cc950dddb10a7e4c42d813308caefe6c5e8be2f0a

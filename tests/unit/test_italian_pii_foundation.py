@@ -29,7 +29,7 @@ class _RecordingRegistry:
 def test_language_config_keeps_english_default_and_exposes_italian() -> None:
     assert normalize_document_language(None) == "en"
     assert normalize_document_language("Italiano") == "it"
-    assert get_language_config("it").model_name == "it_core_news_sm"
+    assert get_language_config("it").model_name == "xx_ent_wiki_sm"
 
     engine = PresidioPrivacyEngine()
     assert engine.document_language == "en"
@@ -37,7 +37,7 @@ def test_language_config_keeps_english_default_and_exposes_italian() -> None:
 
     italian_engine = PresidioPrivacyEngine(language="it")
     assert italian_engine.document_language == "it"
-    assert italian_engine.model_name == "it_core_news_sm"
+    assert italian_engine.model_name == "xx_ent_wiki_sm"
 
 
 def test_italian_registry_isolated_from_english_installers() -> None:

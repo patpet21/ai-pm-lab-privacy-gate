@@ -11,6 +11,7 @@ AI PM LAB Privacy Gate is distributed under the MIT License. Its Windows package
 | Microsoft Presidio Anonymizer | 2.2.364 | MIT | https://github.com/microsoft/presidio |
 | spaCy | 3.8.15 | MIT | https://github.com/explosion/spaCy |
 | spaCy `en_core_web_sm` model | 3.8.0 | MIT | https://github.com/explosion/spacy-models |
+| spaCy `xx_ent_wiki_sm` multilingual NER model | 3.8.0 | MIT; WikiNER training source CC BY 4.0 | https://github.com/explosion/spacy-models |
 | pypdf | 6.15.0 | BSD-3-Clause | https://github.com/py-pdf/pypdf |
 | pdfplumber | 0.11.10 | MIT | https://github.com/jsvine/pdfplumber |
 | pdfminer.six | 20260107 | MIT | https://github.com/pdfminer/pdfminer.six |

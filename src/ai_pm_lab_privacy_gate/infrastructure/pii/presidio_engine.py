@@ -1,8 +1,9 @@
 from __future__ import annotations
 
-import threading
 import re
+import threading
 from collections.abc import Iterable
+from pathlib import Path
 from typing import Any
 
 from ai_pm_lab_privacy_gate.domain.models import Finding, PageContent
@@ -34,6 +35,7 @@ class PresidioPrivacyEngine:
             return self._analyzer, self._anonymizer
         with self._lock:
             if self._analyzer is None:
+                import spacy
                 import tldextract
                 from presidio_analyzer import AnalyzerEngine
                 from presidio_analyzer.nlp_engine import NlpEngineProvider
@@ -41,18 +43,41 @@ class PresidioPrivacyEngine:
                     install_custom_recognizers,
                 )
 
+                # Presidio can download a missing spaCy model automatically. PrivacyGate
+                # must remain local-only, so fail clearly instead of making a network call.
+                if not (
+                    spacy.util.is_package(self._model_name)
+                    or Path(self._model_name).exists()
+                ):
+                    raise RuntimeError(
+                        f"Local NLP model {self._model_name!r} is not installed. "
+                        "PrivacyGate does not download NLP models at runtime."
+                    )
+
                 # Presidio's email recognizer normally lets tldextract refresh
                 # the suffix list online. Use its bundled snapshot so the first
                 # scan remains local-only.
                 tldextract.extract = tldextract.TLDExtract(
                     suffix_list_urls=(), cache_dir=None
                 )
-                configuration = {
+                configuration: dict[str, Any] = {
                     "nlp_engine_name": "spacy",
                     "models": [
                         {"lang_code": self._language, "model_name": self._model_name}
                     ],
                 }
+                if self._language == "it":
+                    # xx_ent_wiki_sm exposes PER / ORG / LOC / MISC. Keep only the
+                    # privacy-relevant labels and map them onto Presidio entities.
+                    configuration["ner_model_configuration"] = {
+                        "model_to_presidio_entity_mapping": {
+                            "PER": "PERSON",
+                            "ORG": "ORGANIZATION",
+                            "LOC": "LOCATION",
+                        },
+                        "labels_to_ignore": ["MISC"],
+                        "default_score": 0.85,
+                    }
                 nlp_engine = NlpEngineProvider(nlp_configuration=configuration).create_engine()
                 analyzer = AnalyzerEngine(
                     nlp_engine=nlp_engine,

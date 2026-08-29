@@ -22,7 +22,10 @@ _LANGUAGE_ALIASES = {
 
 LANGUAGE_CONFIGS: dict[str, PiiLanguageConfig] = {
     "en": PiiLanguageConfig(code="en", label="English", model_name="en_core_web_sm"),
-    "it": PiiLanguageConfig(code="it", label="Italiano", model_name="it_core_news_sm"),
+    # Use the small MIT multilingual NER model as the distributable Italian
+    # baseline. The official it_core_news_sm 3.8.0 model is CC BY-NC-SA 3.0,
+    # so it is intentionally not bundled in PrivacyGate releases.
+    "it": PiiLanguageConfig(code="it", label="Italiano", model_name="xx_ent_wiki_sm"),
 }
 
 
