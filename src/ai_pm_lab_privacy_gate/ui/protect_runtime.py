@@ -161,7 +161,7 @@ def apply_protect_runtime(main_window, stage: str) -> None:
         from .local_protect_session_runtime import apply_local_protect_session_runtime
         from .gmail_package_browser import apply_gmail_package_browser
         from .gmail_package_runtime_fix import apply_gmail_package_runtime_fix
-        from .gmail_component_session import apply_gmail_component_session
+        from .gmail_component_session import _DOCUMENT_KINDS, apply_gmail_component_session
         from .gmail_protect_package_bridge import apply_gmail_protect_package_bridge
         from .gmail_component_preview_polish import apply_gmail_component_preview_polish
         from .gmail_component_capture_fix import apply_gmail_component_capture_fix
@@ -188,6 +188,10 @@ def apply_protect_runtime(main_window, stage: str) -> None:
 
         apply_gmail_package_browser(main_window)
         apply_gmail_package_runtime_fix(main_window)
+        # Image attachments use the same shared document comparison lane as PDF,
+        # Word, Excel and PowerPoint. Keep the capability declaration at this
+        # orchestration boundary instead of adding another Gmail-only preview.
+        _DOCUMENT_KINDS.add("image")
         apply_gmail_component_session(main_window)
         apply_gmail_component_preview_polish(main_window)
         apply_gmail_component_capture_fix(main_window)
