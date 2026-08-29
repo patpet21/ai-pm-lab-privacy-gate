@@ -89,10 +89,31 @@ class PrivacyGateService:
             raise ValueError(
                 "No selectable text was found. Scanned/image-only PDFs are not supported in this build."
             )
-        engine = self._pii_engine_for(language)
+        code = normalize_document_language(language or self._document_language)
+        engine = self._pii_engine_for(code)
         findings: list[Finding] = []
         for page in document.pages:
             findings.extend(engine.analyze_page(page, profile))
+
+        if code == "it":
+            from ai_pm_lab_privacy_gate.infrastructure.pii.recognizers.italian.guardrails import (
+                adjacent_segment_findings,
+                propagate_known_ner_values,
+            )
+
+            # Word tables and spreadsheet-style content often split a field label
+            # and its value into separate editable segments. Keep those segments
+            # independent for safe write-back, but recover deterministic context
+            # across adjacent cells/paragraphs here.
+            findings.extend(adjacent_segment_findings(document))
+
+            # Once a PERSON/ORG/LOCATION value is recognized in this document,
+            # surface every exact standalone occurrence. This prevents a short
+            # causale/footer from leaking the same city or name simply because the
+            # compact multilingual model classified one occurrence but not another.
+            findings = list(propagate_known_ner_values(document, findings))
+            return self._without_overlaps(tuple(findings))
+
         return tuple(findings)
 
     def protect(
