@@ -59,6 +59,54 @@ def test_text_analysis_and_selective_protection(tmp_path: Path):
     assert output.read_text(encoding="utf-8") == result.combined_text
 
 
+def test_language_switch_uses_lazy_cached_engine(monkeypatch):
+    import ai_pm_lab_privacy_gate.application.privacy_service as privacy_module
+
+    created: list[str] = []
+
+    class LanguageEngine:
+        def __init__(self, language: str = "en") -> None:
+            self.document_language = language
+            created.append(language)
+
+        def analyze_page(self, page, profile):
+            marker = "Mario Rossi"
+            start = page.text.index(marker)
+            return [
+                Finding(
+                    finding_id=f"{self.document_language}-{start}",
+                    entity_type="PERSON",
+                    text=marker,
+                    start=start,
+                    end=start + len(marker),
+                    score=0.99,
+                    page_number=page.page_number,
+                    context=page.text,
+                )
+            ]
+
+    monkeypatch.setattr(privacy_module, "PresidioPrivacyEngine", LanguageEngine)
+    service = privacy_module.PrivacyGateService()
+    document = service.document_from_text("Cliente Mario Rossi")
+    profile = get_profile("general_business")
+
+    assert service.document_language == "en"
+    assert created == ["en"]
+
+    service.set_document_language("Italiano")
+    assert service.document_language == "it"
+    assert created == ["en"]  # selecting a language does not eagerly load its model
+
+    italian = service.analyze(document, profile)
+    assert italian[0].finding_id.startswith("it-")
+    assert created == ["en", "it"]
+
+    service.set_document_language("English")
+    english = service.analyze(document, profile)
+    assert english[0].finding_id.startswith("en-")
+    assert created == ["en", "it"]  # existing engine is reused
+
+
 def test_mask_mode_keeps_only_last_four_alphanumeric_characters():
     service = PrivacyGateService()
     text = "SSN 123-45-6789"
