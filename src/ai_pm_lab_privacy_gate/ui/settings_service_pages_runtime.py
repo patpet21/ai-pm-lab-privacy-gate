@@ -103,8 +103,9 @@ def _detach_local_bridge_for_redesign(main_window) -> QFrame | None:
     """Keep the original SettingsPage bridge card alive while the old layout is replaced.
 
     The base 2026 service-page builder clears controls that it does not explicitly
-    reparent. Local Privacy Bridge was added after that builder, so preserve the
-    existing card before the clear instead of creating a second set of controls.
+    reparent. Local Privacy Bridge was added after that builder, so move the existing
+    card through a temporary Qt layout before the clear instead of creating a second
+    set of controls. QLayout.addWidget() formally removes it from its previous layout.
     """
     settings = getattr(main_window, "settings_page", None)
     if settings is None or bool(getattr(settings, "_privacygate_dedicated_service_pages_2026", False)):
@@ -112,8 +113,13 @@ def _detach_local_bridge_for_redesign(main_window) -> QFrame | None:
     card = _find_card(settings, "Local Privacy Bridge")
     if card is None:
         return None
-    card.setParent(main_window)
-    card.hide()
+
+    holder = QWidget(main_window)
+    holder.hide()
+    holder_layout = QVBoxLayout(holder)
+    holder_layout.setContentsMargins(0, 0, 0, 0)
+    holder_layout.addWidget(card)
+    settings._privacygate_local_bridge_holder = holder
     return card
 
 
@@ -136,18 +142,18 @@ def _mount_local_bridge_in_services(settings, card: QFrame | None) -> None:
         widget = body.itemAt(index).widget()
         if not isinstance(widget, QWidget):
             continue
-        if _find_card(widget, "Local MCP service") is not None:
-            insertion_index = index
-            break
-        if any(
-            label.text().strip() == "PrivacyGate runtime services"
-            for label in widget.findChildren(QLabel)
-        ):
+        headings = {label.text().strip() for label in widget.findChildren(QLabel)}
+        if "Local MCP service" in headings or "PrivacyGate runtime services" in headings:
             insertion_index = index
             break
     body.insertWidget(max(0, insertion_index), card)
     card.show()
     settings.local_privacy_bridge_service_card = card
+
+    holder = getattr(settings, "_privacygate_local_bridge_holder", None)
+    if isinstance(holder, QWidget):
+        holder.deleteLater()
+        settings._privacygate_local_bridge_holder = None
 
 
 def _decorate_service_navigation(settings) -> None:
