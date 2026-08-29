@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from typing import TYPE_CHECKING
 
 from PySide6.QtCore import Qt, Signal
@@ -37,6 +38,7 @@ WHITE = "#FFFFFF"
 
 class SettingsPage(QWidget):
     preferences_changed = Signal()
+    local_api_preferences_changed = Signal()
 
     def __init__(self, data_dir, local_api_manager: LocalApiManager | None = None) -> None:
         super().__init__()
@@ -368,50 +370,120 @@ class SettingsPage(QWidget):
         self.local_api_status.setStyleSheet(f"color:{color};font-size:8px;font-weight:750;")
 
     def _save(self) -> None:
+        """Persist only the preference groups that actually changed.
+
+        The redesigned Settings UI has separate Device, Services and Quick Settings
+        save actions. They intentionally share this one persistence path, but an
+        unrelated save must never validate, restart or mention another service.
+        """
+        current = self.store.load()
+
         close_behavior = next(value for value, radio in self.close_radios.items() if radio.isChecked())
+        device_changed = close_behavior != current.close_behavior
+
         port_mode = "automatic" if self.auto_port.isChecked() else "manual"
         port = self._port_value()
-        if port_mode == "manual":
-            if port is None:
-                QMessageBox.warning(self, "Invalid port", "Enter a port between 1024 and 65535.")
-                return
-            if not is_port_available(port):
-                QMessageBox.warning(self, "Port unavailable", f"Port {port} is already in use. Choose another port.")
-                return
-        else:
-            port = self.prefs.manual_port
+        if port_mode == "automatic":
+            port = current.manual_port
+        mcp_changed = (
+            port_mode != current.port_mode
+            or (port_mode == "manual" and port is not None and int(port) != int(current.manual_port))
+        )
 
         local_api_enabled = self.local_api_enabled.isChecked()
-        local_api_port = self._local_api_port_value()
-        if local_api_enabled and local_api_port is None:
-            QMessageBox.warning(
-                self,
-                "Invalid bridge port",
-                "Enter a Local Privacy Bridge port between 1024 and 65535.",
-            )
-            return
-        if local_api_port is None:
-            local_api_port = self.prefs.local_api_port
-        if local_api_enabled and port_mode == "manual" and int(port) == int(local_api_port):
-            QMessageBox.warning(
-                self,
-                "Port conflict",
-                "Local MCP and Local Privacy Bridge must use different ports.",
-            )
+        parsed_local_api_port = self._local_api_port_value()
+        local_api_port = (
+            int(parsed_local_api_port)
+            if parsed_local_api_port is not None
+            else int(current.local_api_port)
+        )
+        bridge_changed = (
+            local_api_enabled != current.local_api_enabled
+            or local_api_port != int(current.local_api_port)
+        )
+
+        # Validate only the service whose controls changed. This prevents a Device
+        # save from showing MCP/Bridge port warnings and prevents Quick Settings from
+        # validating untouched Local Privacy Bridge controls.
+        if mcp_changed and port_mode == "manual":
+            if port is None:
+                QMessageBox.warning(self, "Invalid MCP port", "Enter an MCP port between 1024 and 65535.")
+                return
+            if local_api_enabled and int(port) == int(local_api_port):
+                QMessageBox.warning(
+                    self,
+                    "Port conflict",
+                    "Local MCP and Local Privacy Bridge must use different ports.",
+                )
+                return
+            if not is_port_available(int(port)):
+                QMessageBox.warning(
+                    self,
+                    "MCP port unavailable",
+                    f"Port {port} is already in use. Choose another MCP port.",
+                )
+                return
+
+        if bridge_changed:
+            if local_api_enabled and parsed_local_api_port is None:
+                QMessageBox.warning(
+                    self,
+                    "Invalid bridge port",
+                    "Enter a Local Privacy Bridge port between 1024 and 65535.",
+                )
+                return
+            effective_mcp_port = int(port) if port_mode == "manual" and port is not None else int(current.manual_port)
+            if local_api_enabled and port_mode == "manual" and effective_mcp_port == int(local_api_port):
+                QMessageBox.warning(
+                    self,
+                    "Port conflict",
+                    "Local MCP and Local Privacy Bridge must use different ports.",
+                )
+                return
+
+        if not device_changed and not mcp_changed and not bridge_changed:
+            QMessageBox.information(self, "No changes", "There are no unsaved settings changes.")
             return
 
-        self.prefs = AppPreferences(
-            close_behavior=close_behavior,
-            port_mode=port_mode,
-            manual_port=int(port),
-            local_api_enabled=local_api_enabled,
-            local_api_port=int(local_api_port),
-        )
-        self.store.save(self.prefs)
+        updated: AppPreferences = current
+        if device_changed:
+            updated = replace(updated, close_behavior=close_behavior)
+        if mcp_changed:
+            updated = replace(
+                updated,
+                port_mode=port_mode,
+                manual_port=int(port) if port is not None else int(current.manual_port),
+            )
+        if bridge_changed:
+            updated = replace(
+                updated,
+                local_api_enabled=local_api_enabled,
+                local_api_port=int(local_api_port),
+            )
+
+        self.prefs = updated
+        self.store.save(updated)
         self.preferences_changed.emit()
-        self.refresh_local_api_status()
-        QMessageBox.information(
-            self,
-            "Settings saved",
-            "Settings saved locally. Local Privacy Bridge changes apply immediately; MCP port changes take effect the next time the MCP service starts.",
-        )
+        if bridge_changed:
+            self.local_api_preferences_changed.emit()
+            self.refresh_local_api_status()
+
+        service_changed = mcp_changed or bridge_changed
+        if device_changed and not service_changed:
+            title = "Device settings saved"
+            message = "Desktop behavior saved locally on this device."
+        elif service_changed and not device_changed:
+            title = "Service settings saved"
+            if bridge_changed and mcp_changed:
+                message = (
+                    "Service settings saved locally. Local Privacy Bridge changes apply immediately; "
+                    "MCP port changes take effect the next time the MCP service starts."
+                )
+            elif bridge_changed:
+                message = "Local Privacy Bridge settings saved locally and applied immediately."
+            else:
+                message = "Local MCP settings saved locally. Port changes take effect the next time the MCP service starts."
+        else:
+            title = "Quick settings saved"
+            message = "Desktop and MCP quick settings saved locally. MCP changes take effect the next time the MCP service starts."
+        QMessageBox.information(self, title, message)
