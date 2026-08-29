@@ -21,6 +21,7 @@ def test_italian_ner_guardrails_reject_form_labels_from_real_fixture() -> None:
         ("PERSON", "Foglio"),
         ("PERSON", "Synthetic"),
         ("PERSON", "Test"),
+        ("PERSON", "Aurora Gestioni Immobiliari S.r.l."),
         ("LOCATION", "Campo"),
         ("LOCATION", "Particella"),
         ("LOCATION", "Mappale"),
@@ -60,7 +61,7 @@ def test_precision_filter_only_removes_compact_ner_not_deterministic_results() -
         entity_type="ORGANIZATION",
         start=12,
         end=len(text),
-        recognition_metadata={"recognizer_name": "PatternRecognizer"},
+        recognition_metadata={"recognizer_name": "ItalianContextValueRecognizer"},
     )
 
     filtered = filter_italian_ner_results(text, (generic_single, deterministic_org))
