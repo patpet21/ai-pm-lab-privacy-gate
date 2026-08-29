@@ -54,6 +54,9 @@ def test_italian_address_fields_require_plausible_context() -> None:
     assert _values(recognizers, text, "IT_POSTAL_CODE") == ["00184"]
     assert _values(recognizers, text, "IT_PROVINCE") == ["RM"]
 
+    inline = "Via Alessandro Manzoni 24, 20121 Milano (MI)"
+    assert "20121" in _values(recognizers, inline, "IT_POSTAL_CODE")
+
     unrelated = "Numero pratica 00184"
     assert _values(recognizers, unrelated, "IT_POSTAL_CODE") == []
 
@@ -75,6 +78,11 @@ def test_italian_identity_documents_are_contextual() -> None:
 def test_italian_vehicle_plate_requires_vehicle_context() -> None:
     recognizers = build_vehicle_recognizers()
     assert _values(recognizers, "Targa: AB123CD", "IT_VEHICLE_PLATE") == ["AB123CD"]
+    assert _values(
+        recognizers,
+        "Targa veicolo autorizzato: AB123CD",
+        "IT_VEHICLE_PLATE",
+    ) == ["AB123CD"]
     assert _values(recognizers, "Ordine AB123CD", "IT_VEHICLE_PLATE") == []
 
 
@@ -95,10 +103,17 @@ def test_italian_cadastral_fields_are_separate_findings() -> None:
     assert _values(recognizers, text, "IT_CADASTRAL_SUBALTERN") == ["7"]
 
 
-def test_italian_business_identifiers_require_labels() -> None:
+def test_italian_business_identifiers_and_legal_entity() -> None:
     recognizers = build_business_recognizers()
-    text = "R.E.A. n. RM-123456\nRegistro Imprese n. RM123456789"
+    text = (
+        "Società: Aurora Gestioni Immobiliari S.r.l.\n"
+        "R.E.A. n. RM-123456\n"
+        "Registro Imprese n. RM123456789"
+    )
 
+    assert _values(recognizers, text, "ORGANIZATION") == [
+        "Aurora Gestioni Immobiliari S.r.l."
+    ]
     assert _values(recognizers, text, "IT_REA_NUMBER") == ["RM-123456"]
     assert _values(recognizers, text, "IT_BUSINESS_REGISTER_NUMBER") == ["RM123456789"]
     assert _values(recognizers, "Pratica RM-123456", "IT_REA_NUMBER") == []
