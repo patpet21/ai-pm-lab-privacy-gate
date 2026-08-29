@@ -34,13 +34,13 @@ _FONT_SIZE_RE = re.compile(r"font-size\s*:\s*(\d+(?:\.\d+)?)px", re.IGNORECASE)
 def _pilot_font_size(value: float) -> float:
     """Map legacy micro type to a compact but readable Protect scale."""
     if value <= 8:
-        return 11
+        return 11.0
     if value <= 9:
-        return 12
+        return 12.0
     if value <= 11:
-        return 13
+        return 13.0
     if value <= 13:
-        return 14
+        return 14.0
     return value
 
 
