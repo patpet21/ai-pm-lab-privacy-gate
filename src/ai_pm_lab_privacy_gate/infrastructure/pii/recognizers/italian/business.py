@@ -7,13 +7,6 @@ from ai_pm_lab_privacy_gate.infrastructure.pii.recognizers.italian.contextual im
 
 _SEPARATOR = r"\s*(?:(?:n(?:umero)?\.?|no\.?)\s*)?[:#-]?\s*"
 
-# ItalianContextValueRecognizer compiles patterns with IGNORECASE because most
-# contextual labels should be case-insensitive. Company-name tokens are different:
-# allowing IGNORECASE here lets a match walk backwards through ordinary prose
-# (for example ``Ferri presso gli uffici di Aurora ... S.r.l.``). Disable the
-# inherited flag only for the legal company value so every name token must really
-# begin with an uppercase letter, while accepting common casing variants of the
-# legal suffix itself.
 _ORGANIZATION_WITH_LEGAL_SUFFIX = (
     r"(?<![\wÀ-ÖØ-öø-ÿ])"
     r"(?-i:"
@@ -25,11 +18,13 @@ _ORGANIZATION_WITH_LEGAL_SUFFIX = (
 )
 
 
+def _looks_like_registry_number(value: str) -> bool:
+    compact = "".join(char for char in value if char.isalnum())
+    return len(compact) >= 6 and any(char.isdigit() for char in compact)
+
+
 def build_business_recognizers() -> tuple[ItalianContextValueRecognizer, ...]:
     return (
-        # Use PrivacyGate's Python-regex recognizer rather than Presidio's generic
-        # PatternRecognizer here. The case-sensitive company-value group prevents
-        # lowercase surrounding prose from being swallowed into the organization.
         ItalianContextValueRecognizer(
             entity_type="ORGANIZATION",
             pattern=rf"(?P<value>{_ORGANIZATION_WITH_LEGAL_SUFFIX})",
@@ -44,5 +39,6 @@ def build_business_recognizers() -> tuple[ItalianContextValueRecognizer, ...]:
             entity_type="IT_BUSINESS_REGISTER_NUMBER",
             pattern=rf"\b(?:numero\s+)?registro\s+(?:delle\s+)?imprese\b{_SEPARATOR}(?P<value>[A-Z0-9][A-Z0-9./-]{{5,20}})\b",
             score=0.975,
+            validator=_looks_like_registry_number,
         ),
     )
