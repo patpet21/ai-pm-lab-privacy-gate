@@ -8,9 +8,8 @@ This module applies the same readability floor across the whole application,
 including the redesigned sidebar, cards, controls, badges, dialogs and tables.
 
 Presentation only: no geometry, spacing, navigation or business behavior is changed.
-The runtime also watches widgets created/restyled later so workspace switches,
-dialogs and lazy product surfaces keep the same typography without page-specific
-patches.
+The runtime also watches widgets created later and reapplies the scale when pages are
+revisited so workspace switches, dialogs and lazy product surfaces stay consistent.
 """
 
 import re
@@ -178,12 +177,16 @@ def _apply_widget(widget: QWidget) -> None:
             upgraded = _scaled_style_sheet(style)
             if upgraded != style:
                 widget.setStyleSheet(upgraded)
-            widget._privacygate_global_typography_style = upgraded
 
     _apply_role_floor(widget)
 
     if isinstance(widget, QTableView):
         _apply_table_floor(widget)
+
+    # Cache the final local QSS after role/table additions. This keeps the one-pass
+    # Protect mapping stable across the queued startup sweeps instead of repeatedly
+    # promoting 11 -> 13 -> 14 on our own generated stylesheet.
+    widget._privacygate_global_typography_style = widget.styleSheet()
 
 
 def _apply_tree(root: QWidget) -> None:
@@ -197,18 +200,13 @@ def _apply_tree(root: QWidget) -> None:
 
 
 class _GlobalTypographyFilter(QObject):
-    """Keep late-created/restyled Qt surfaces on the same visual scale."""
+    """Keep late-created Qt surfaces on the same visual scale."""
 
     def eventFilter(self, watched, event) -> bool:  # noqa: N802 - Qt API
         if not isinstance(watched, QWidget):
             return False
-        event_type = event.type()
-        if event_type in {QEvent.Type.Show, QEvent.Type.Polish}:
+        if event.type() in {QEvent.Type.Show, QEvent.Type.Polish}:
             QTimer.singleShot(0, lambda widget=watched: _apply_tree(widget))
-        elif event_type == QEvent.Type.StyleChange:
-            # Local compatibility/product layers often restyle an already-visible
-            # widget. Re-run only that widget; the idempotent cache prevents loops.
-            QTimer.singleShot(0, lambda widget=watched: _apply_widget(widget))
         return False
 
 
@@ -228,7 +226,7 @@ def apply_global_typography_2026(main_window) -> None:
     _apply_tree(main_window)
 
     # Startup has several intentionally layered 2026 surfaces. These passes catch
-    # same-turn/queued rebuilds while the event filter owns all later changes.
+    # same-turn/queued rebuilds while the event filter owns all later Show/Polish.
     QTimer.singleShot(0, lambda: _apply_tree(main_window))
     QTimer.singleShot(180, lambda: _apply_tree(main_window))
     QTimer.singleShot(650, lambda: _apply_tree(main_window))
