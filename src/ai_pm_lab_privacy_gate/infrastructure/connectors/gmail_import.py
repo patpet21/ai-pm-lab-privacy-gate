@@ -15,7 +15,9 @@ from ai_pm_lab_privacy_gate.infrastructure.security.temporary_workspace import (
 from .service import ConnectedAppsService, RemoteItem
 
 
-SUPPORTED_ATTACHMENT_SUFFIXES = {".pdf", ".docx", ".xlsx", ".pptx", ".txt"}
+SUPPORTED_ATTACHMENT_SUFFIXES = {
+    ".pdf", ".docx", ".xlsx", ".pptx", ".txt", ".png", ".jpg", ".jpeg"
+}
 
 
 @dataclass(frozen=True, slots=True)
