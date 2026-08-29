@@ -9,21 +9,30 @@ _ID_VALUE = r"[A-Z0-9][A-Z0-9./-]{4,15}"
 _SEPARATOR = r"\s*(?:(?:n(?:umero)?\.?|no\.?)\s*)?[:#-]?\s*"
 
 
+def _looks_like_document_number(value: str) -> bool:
+    """Reject prose accidentally captured after identity-document labels."""
+    compact = "".join(char for char in value if char.isalnum())
+    return len(compact) >= 5 and any(char.isdigit() for char in compact)
+
+
 def build_identity_document_recognizers() -> tuple[ItalianContextValueRecognizer, ...]:
     return (
         ItalianContextValueRecognizer(
             entity_type="IT_ID_CARD",
             pattern=rf"\b(?:carta\s+d['’]?identit[aà]|carta\s+identit[aà]|cie)\b{_SEPARATOR}(?P<value>{_ID_VALUE})\b",
             score=0.99,
+            validator=_looks_like_document_number,
         ),
         ItalianContextValueRecognizer(
             entity_type="IT_PASSPORT",
             pattern=rf"\bpassaporto\b{_SEPARATOR}(?P<value>{_ID_VALUE})\b",
             score=0.99,
+            validator=_looks_like_document_number,
         ),
         ItalianContextValueRecognizer(
             entity_type="IT_DRIVER_LICENSE",
             pattern=rf"\bpatente(?:\s+di\s+guida)?\b{_SEPARATOR}(?P<value>{_ID_VALUE})\b",
             score=0.99,
+            validator=_looks_like_document_number,
         ),
     )
