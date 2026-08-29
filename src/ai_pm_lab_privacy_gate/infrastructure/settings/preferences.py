@@ -9,8 +9,10 @@ from pathlib import Path
 @dataclass(slots=True)
 class AppPreferences:
     close_behavior: str = "ask"  # ask | background | quit
-    port_mode: str = "automatic"  # automatic | manual
+    port_mode: str = "automatic"  # automatic | manual (MCP)
     manual_port: int = 8766
+    local_api_enabled: bool = False
+    local_api_port: int = 8765
 
 
 class PreferencesStore:
@@ -31,6 +33,14 @@ class PreferencesStore:
             port = int(payload.get("manual_port", 8766))
             if 1024 <= port <= 65535:
                 prefs.manual_port = port
+        except (TypeError, ValueError):
+            pass
+        if isinstance(payload.get("local_api_enabled"), bool):
+            prefs.local_api_enabled = payload["local_api_enabled"]
+        try:
+            local_api_port = int(payload.get("local_api_port", 8765))
+            if 1024 <= local_api_port <= 65535:
+                prefs.local_api_port = local_api_port
         except (TypeError, ValueError):
             pass
         return prefs

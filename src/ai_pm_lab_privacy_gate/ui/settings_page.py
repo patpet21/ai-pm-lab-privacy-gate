@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QButtonGroup,
+    QCheckBox,
     QFrame,
     QHBoxLayout,
     QLabel,
@@ -21,6 +24,9 @@ from ai_pm_lab_privacy_gate.infrastructure.settings.preferences import (
 )
 from ai_pm_lab_privacy_gate.ui.iconography import icon
 
+if TYPE_CHECKING:
+    from ai_pm_lab_privacy_gate.infrastructure.local_api.manager import LocalApiManager
+
 NAVY = "#062B4F"
 TEAL = "#0B7F89"
 MUTED = "#61798A"
@@ -32,10 +38,11 @@ WHITE = "#FFFFFF"
 class SettingsPage(QWidget):
     preferences_changed = Signal()
 
-    def __init__(self, data_dir) -> None:
+    def __init__(self, data_dir, local_api_manager: LocalApiManager | None = None) -> None:
         super().__init__()
         self.store = PreferencesStore(data_dir)
         self.prefs = self.store.load()
+        self.local_api_manager = local_api_manager
         self.setObjectName("PremiumSettingsPage")
 
         root = QVBoxLayout(self)
@@ -63,6 +70,7 @@ class SettingsPage(QWidget):
         left = QVBoxLayout()
         left.setSpacing(16)
         left.addWidget(self._build_close_card())
+        left.addWidget(self._build_local_api_card())
         left.addWidget(self._build_privacy_card())
         left.addStretch(1)
         body.addLayout(left, 1)
@@ -94,11 +102,12 @@ class SettingsPage(QWidget):
         self.setStyleSheet(
             "QWidget#PremiumSettingsPage{background:#F7FAFC;}"
             "QWidget#PremiumSettingsPage QLabel{background:transparent;border:none;}"
-            "QRadioButton{color:#17384E;font-size:10px;font-weight:700;padding:7px 4px;spacing:9px;}"
+            "QRadioButton,QCheckBox{color:#17384E;font-size:10px;font-weight:700;padding:7px 4px;spacing:9px;}"
             "QRadioButton::indicator{width:18px;height:18px;border-radius:9px;border:2px solid #91A9B9;background:white;}"
             "QRadioButton::indicator:checked{border:6px solid #0B7F89;background:white;}"
             "QLineEdit{background:white;color:#17384E;border:1px solid #C9D7E0;border-radius:9px;padding:9px 10px;}"
         )
+        self.refresh_local_api_status()
 
     def _card(self) -> QFrame:
         frame = QFrame(objectName="SettingsPremiumCard")
@@ -149,8 +158,8 @@ class SettingsPage(QWidget):
         self.close_radios: dict[str, QRadioButton] = {}
         for value, label, detail in (
             ("ask", "Ask me every time", "Choose background or quit whenever you close the app."),
-            ("background", "Keep running in background", "Useful when MCP connections should remain available."),
-            ("quit", "Quit PrivacyGate", "Stop the desktop app and local MCP services."),
+            ("background", "Keep running in background", "Useful when MCP or the Local Privacy Bridge should stay available."),
+            ("quit", "Quit PrivacyGate", "Stop the desktop app and its local services."),
         ):
             row = QFrame()
             row.setStyleSheet("QFrame{background:#FBFDFE;border:1px solid #EEF2F4;border-radius:10px;}")
@@ -165,6 +174,48 @@ class SettingsPage(QWidget):
             row_layout.addWidget(radio)
             row_layout.addWidget(detail_label)
             layout.addWidget(row)
+        return card
+
+    def _build_local_api_card(self) -> QFrame:
+        card = self._card()
+        layout = QVBoxLayout(card)
+        layout.setContentsMargins(18, 14, 18, 14)
+        layout.setSpacing(8)
+        layout.addWidget(
+            self._card_header(
+                "Local Privacy Bridge",
+                "Local text protection for approved browser and automation integrations.",
+                "protect",
+            )
+        )
+        self.local_api_enabled = QCheckBox("Enable Local Privacy Bridge")
+        self.local_api_enabled.setChecked(self.prefs.local_api_enabled)
+        layout.addWidget(self.local_api_enabled)
+
+        row = QHBoxLayout()
+        row.setSpacing(8)
+        port_label = QLabel("Bridge port")
+        port_label.setStyleSheet(f"color:{NAVY};font-size:10px;font-weight:700;")
+        self.local_api_port_input = QLineEdit(str(self.prefs.local_api_port))
+        self.local_api_port_input.setPlaceholderText("8765")
+        self.local_api_port_input.setMaximumWidth(120)
+        row.addWidget(port_label)
+        row.addWidget(self.local_api_port_input)
+        row.addStretch(1)
+        layout.addLayout(row)
+
+        note = QLabel(
+            "Off by default. When enabled, the bridge listens only on this device (127.0.0.1). "
+            "Reversible browser-session mappings stay in memory and are cleared when PrivacyGate quits."
+        )
+        note.setWordWrap(True)
+        note.setStyleSheet(f"color:{MUTED};font-size:8px;")
+        layout.addWidget(note)
+        self.local_api_status = QLabel("")
+        self.local_api_status.setWordWrap(True)
+        layout.addWidget(self.local_api_status)
+        self.local_api_enabled.toggled.connect(self._sync_local_api_controls)
+        self._sync_local_api_controls()
         return card
 
     def _build_mcp_card(self) -> QFrame:
@@ -265,9 +316,19 @@ class SettingsPage(QWidget):
         if not enabled:
             self.port_status.setText("PrivacyGate will select a free local port automatically at service startup.")
 
+    def _sync_local_api_controls(self) -> None:
+        self.local_api_port_input.setEnabled(self.local_api_enabled.isChecked())
+
     def _port_value(self) -> int | None:
         try:
             value = int(self.port_input.text().strip())
+        except ValueError:
+            return None
+        return value if 1024 <= value <= 65535 else None
+
+    def _local_api_port_value(self) -> int | None:
+        try:
+            value = int(self.local_api_port_input.text().strip())
         except ValueError:
             return None
         return value if 1024 <= value <= 65535 else None
@@ -284,6 +345,28 @@ class SettingsPage(QWidget):
             self.port_status.setText(f"Port {port} is already in use.")
             self.port_status.setStyleSheet("color:#B54747;font-size:9px;font-weight:750;")
 
+    def refresh_local_api_status(self) -> None:
+        if self.local_api_manager is None:
+            if self.local_api_enabled.isChecked():
+                text = "Saved locally. The bridge starts with PrivacyGate after this setting is applied."
+                color = MUTED
+            else:
+                text = "Status: Off"
+                color = MUTED
+        else:
+            status = self.local_api_manager.status
+            if status.state == "online":
+                text = f"Status: Running locally on 127.0.0.1:{status.port} ✓"
+                color = "#23824B"
+            elif status.state == "error":
+                text = f"Status: Could not start on this device — {status.error}"
+                color = "#B54747"
+            else:
+                text = "Status: Off"
+                color = MUTED
+        self.local_api_status.setText(text)
+        self.local_api_status.setStyleSheet(f"color:{color};font-size:8px;font-weight:750;")
+
     def _save(self) -> None:
         close_behavior = next(value for value, radio in self.close_radios.items() if radio.isChecked())
         port_mode = "automatic" if self.auto_port.isChecked() else "manual"
@@ -297,15 +380,38 @@ class SettingsPage(QWidget):
                 return
         else:
             port = self.prefs.manual_port
+
+        local_api_enabled = self.local_api_enabled.isChecked()
+        local_api_port = self._local_api_port_value()
+        if local_api_enabled and local_api_port is None:
+            QMessageBox.warning(
+                self,
+                "Invalid bridge port",
+                "Enter a Local Privacy Bridge port between 1024 and 65535.",
+            )
+            return
+        if local_api_port is None:
+            local_api_port = self.prefs.local_api_port
+        if local_api_enabled and port_mode == "manual" and int(port) == int(local_api_port):
+            QMessageBox.warning(
+                self,
+                "Port conflict",
+                "Local MCP and Local Privacy Bridge must use different ports.",
+            )
+            return
+
         self.prefs = AppPreferences(
             close_behavior=close_behavior,
             port_mode=port_mode,
             manual_port=int(port),
+            local_api_enabled=local_api_enabled,
+            local_api_port=int(local_api_port),
         )
         self.store.save(self.prefs)
         self.preferences_changed.emit()
+        self.refresh_local_api_status()
         QMessageBox.information(
             self,
             "Settings saved",
-            "Settings saved locally. MCP port changes take effect the next time the MCP service starts.",
+            "Settings saved locally. Local Privacy Bridge changes apply immediately; MCP port changes take effect the next time the MCP service starts.",
         )
