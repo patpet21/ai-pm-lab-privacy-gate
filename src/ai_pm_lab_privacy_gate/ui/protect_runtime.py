@@ -170,6 +170,7 @@ def apply_protect_runtime(main_window, stage: str) -> None:
         from .protect_privacy_check_persistence import (
             apply_protect_privacy_check_persistence,
         )
+        from .protect_readability_finish import apply_protect_readability_finish
         from .protect_surface_guard import apply_protect_surface_guard
 
         apply_protect_usability_polish(main_window)
@@ -222,6 +223,10 @@ def apply_protect_runtime(main_window, stage: str) -> None:
         # third VIEW control after the user opens document/text comparison views;
         # Clear (or an invalidated session) is the only thing that removes it.
         apply_protect_privacy_check_persistence(main_window)
+
+        # Final readability polish for dense review controls and the findings
+        # table. Presentation only; behavior and layout structure remain intact.
+        apply_protect_readability_finish(main_window)
 
         # Must be last. It observes the final widget tree rather than trying to
         # guess which intermediate patch may still show a detached legacy child.
