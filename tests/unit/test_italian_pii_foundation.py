@@ -5,6 +5,7 @@ from ai_pm_lab_privacy_gate.infrastructure.pii.languages import (
     normalize_document_language,
 )
 from ai_pm_lab_privacy_gate.infrastructure.pii.presidio_engine import PresidioPrivacyEngine
+from ai_pm_lab_privacy_gate.infrastructure.pii.recognizers.italian import ITALIAN_ENTITY_TYPES
 from ai_pm_lab_privacy_gate.infrastructure.pii.recognizers.italian.financial import (
     is_valid_italian_iban,
 )
@@ -48,7 +49,7 @@ def test_italian_registry_isolated_from_english_installers() -> None:
         for recognizer in registry.recognizers
         for entity in recognizer.supported_entities
     }
-    assert entities == {"IT_FISCAL_CODE", "IT_VAT_NUMBER", "IBAN_CODE"}
+    assert entities == set(ITALIAN_ENTITY_TYPES)
     assert all(recognizer.supported_language == "it" for recognizer in registry.recognizers)
 
 
