@@ -18,13 +18,17 @@ _BLOCKED_EXACT = {
     "appendice a",
     "campo",
     "cap",
+    "cart",
     "carta",
     "categorie",
     "centralino",
     "codice fiscale",
     "completamente fittizi",
     "dati",
+    "dati catastali",
+    "documenti di identità",
     "documento sintetico di test",
+    "enable editing",
     "foglio",
     "iban",
     "imprese",
@@ -36,6 +40,8 @@ _BLOCKED_EXACT = {
     "pec",
     "person",
     "privacy check",
+    "procedura consigliata di test",
+    "protected view",
     "provincia",
     "rea",
     "registro imprese",
@@ -74,6 +80,7 @@ _LEGAL_SUFFIX_RE = re.compile(
     r"(?:\bs\.?\s*r\.?\s*l\.?\b|\bs\.?\s*p\.?\s*a\.?\b|\bsnc\b|\bsas\b)",
     re.IGNORECASE,
 )
+_SCHEMA_TOKEN_RE = re.compile(r"^[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+$")
 
 
 def _normalise_label(value: str) -> str:
@@ -89,6 +96,11 @@ def is_italian_ner_false_positive(entity_type: str, value: str) -> bool:
     """Return True for high-confidence structural mistakes from generic NER."""
     if entity_type not in _NER_ENTITIES:
         return False
+    raw = value.strip().strip(" :;,.()[]{}")
+    if _SCHEMA_TOKEN_RE.fullmatch(raw):
+        # PrivacyGate/category schema names such as IT_FISCAL_CODE,
+        # STREET_ADDRESS or POSTAL_CODE are labels, never document values.
+        return True
     clean = _normalise_label(value)
     if not clean:
         return True
@@ -106,8 +118,8 @@ def is_italian_ner_false_positive(entity_type: str, value: str) -> bool:
     words = _alpha_words(value)
     if entity_type in {"PERSON", "ORGANIZATION"} and len(words) < 2:
         # Single-word PER/ORG predictions are the dominant source of damage from
-        # xx_ent_wiki_sm on forms (e.g. Test, REA, PEC, Carta, Ferri). Explicit
-        # Italian role/company recognizers recover the important contextual cases.
+        # xx_ent_wiki_sm on forms. Explicit Italian role/company recognizers
+        # recover the important contextual cases.
         return True
 
     if entity_type == "ORGANIZATION":
@@ -116,7 +128,6 @@ def is_italian_ner_false_positive(entity_type: str, value: str) -> bool:
             return True
         letters = "".join(char for char in value if char.isalpha())
         if letters and letters.isupper() and not _LEGAL_SUFFIX_RE.search(value):
-            # Reject heading-like all-caps phrases such as COMPLETAMENTE FITTIZI.
             return True
         if clean.startswith(("privacy check", "scan & protect", "scan and protect")):
             return True
@@ -137,9 +148,6 @@ def _is_compact_ner_result(result: Any) -> bool:
         or metadata.get("recognizer_identifier")
         or ""
     ).casefold()
-    # Unit-test stand-ins may omit metadata; treat those as generic NER. Real
-    # Pattern/ItalianContextValue recognizers publish their recognizer name and
-    # must never be discarded by the precision filter.
     return not recognizer_name or "spacy" in recognizer_name or "nlp" in recognizer_name
 
 
@@ -204,14 +212,7 @@ _ADJACENT_FIELDS: tuple[tuple[str, frozenset[str], re.Pattern[str], float], ...]
 
 
 def adjacent_segment_findings(document: AnalysisDocument) -> tuple[Finding, ...]:
-    """Recognize label/value pairs split across adjacent Word/Excel segments.
-
-    OfficeDocumentService intentionally keeps each editable paragraph/cell as an
-    independent segment so protected values can be written back without damaging
-    layout. Tables therefore often expose ``Foglio`` and ``123`` as two adjacent
-    segments. This helper adds deterministic context without merging those
-    segments or changing their offsets.
-    """
+    """Recognize label/value pairs split across adjacent Word/Excel segments."""
     pages = tuple(document.pages)
     additions: list[Finding] = []
     for index in range(1, len(pages)):
