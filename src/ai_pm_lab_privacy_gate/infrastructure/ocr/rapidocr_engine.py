@@ -22,13 +22,85 @@ def _polygon(value: Any) -> Polygon:
     return tuple((float(point[0]), float(point[1])) for point in items)
 
 
-class RapidOcrEngine:
-    """Lazy, local RapidOCR + ONNX Runtime adapter.
+def _bounds(polygon: Polygon) -> tuple[float, float, float, float] | None:
+    if not polygon:
+        return None
+    xs = [point[0] for point in polygon]
+    ys = [point[1] for point in polygon]
+    return min(xs), min(ys), max(xs), max(ys)
 
-    RapidOCR's PP-OCRv6 small model is multilingual (including English and
-    Italian). The heavy OCR runtime is imported and initialized only when an
-    image is actually scanned, so normal PrivacyGate startup remains unchanged.
-    """
+
+def _word_entries(raw: Any) -> tuple[OcrWordObservation, ...]:
+    """Normalize RapidOCR word_results across flat and older nested shapes."""
+    if raw is None:
+        return ()
+    try:
+        items = list(raw)
+    except TypeError:
+        return ()
+
+    candidates: list[Any] = []
+    for item in items:
+        if isinstance(item, (list, tuple)) and len(item) == 3 and isinstance(item[0], str):
+            candidates.append(item)
+            continue
+        if isinstance(item, (list, tuple)):
+            for nested in item:
+                if (
+                    isinstance(nested, (list, tuple))
+                    and len(nested) == 3
+                    and isinstance(nested[0], str)
+                ):
+                    candidates.append(nested)
+
+    words: list[OcrWordObservation] = []
+    for word_text, word_score, word_box in candidates:
+        cleaned = str(word_text).strip()
+        polygon = _polygon(word_box)
+        if not cleaned or not polygon:
+            continue
+        try:
+            confidence = float(word_score)
+        except (TypeError, ValueError):
+            confidence = 0.0
+        words.append(
+            OcrWordObservation(
+                text=cleaned,
+                confidence=confidence,
+                polygon=polygon,
+            )
+        )
+    return tuple(words)
+
+
+def _line_for_word(word: OcrWordObservation, line_polygons: tuple[Polygon, ...]) -> int | None:
+    word_bounds = _bounds(word.polygon)
+    if word_bounds is None:
+        return None
+    wx1, wy1, wx2, wy2 = word_bounds
+    cx = (wx1 + wx2) / 2.0
+    cy = (wy1 + wy2) / 2.0
+
+    best_index: int | None = None
+    best_score = float("inf")
+    for index, polygon in enumerate(line_polygons):
+        line_bounds = _bounds(polygon)
+        if line_bounds is None:
+            continue
+        lx1, ly1, lx2, ly2 = line_bounds
+        margin_y = max(3.0, (ly2 - ly1) * 0.35)
+        margin_x = max(3.0, (lx2 - lx1) * 0.03)
+        if lx1 - margin_x <= cx <= lx2 + margin_x and ly1 - margin_y <= cy <= ly2 + margin_y:
+            line_cy = (ly1 + ly2) / 2.0
+            score = abs(cy - line_cy)
+            if score < best_score:
+                best_score = score
+                best_index = index
+    return best_index
+
+
+class RapidOcrEngine:
+    """Lazy, local RapidOCR + ONNX Runtime adapter."""
 
     def __init__(self) -> None:
         self._engine: Any | None = None
@@ -55,39 +127,42 @@ class RapidOcrEngine:
         boxes = getattr(result, "boxes", None)
         texts = getattr(result, "txts", None)
         scores = getattr(result, "scores", None)
-        word_results = getattr(result, "word_results", None)
         if boxes is None or texts is None or scores is None:
             return ()
 
-        lines: list[OcrLineObservation] = []
-        for index, (box, text, score) in enumerate(zip(boxes, texts, scores)):
+        raw_lines: list[tuple[str, float, Polygon]] = []
+        for box, text, score in zip(boxes, texts, scores):
             cleaned = str(text).strip()
-            if not cleaned:
+            polygon = _polygon(box)
+            if not cleaned or not polygon:
                 continue
-            raw_words = ()
-            if word_results is not None and index < len(word_results):
-                raw_words = word_results[index] or ()
-            words: list[OcrWordObservation] = []
-            for item in raw_words:
-                if not isinstance(item, (list, tuple)) or len(item) != 3:
-                    continue
-                word_text, word_score, word_box = item
-                word_cleaned = str(word_text).strip()
-                polygon = _polygon(word_box)
-                if not word_cleaned or not polygon:
-                    continue
-                words.append(
-                    OcrWordObservation(
-                        text=word_cleaned,
-                        confidence=float(word_score),
-                        polygon=polygon,
-                    )
-                )
+            raw_lines.append((cleaned, float(score), polygon))
+
+        # RapidOCR 3.x exposes word_results as one flat sequence for the whole
+        # page. Older/alternate results may be nested. Normalize first, then map
+        # each word back to the OCR line by its pixel centre.
+        page_words = _word_entries(getattr(result, "word_results", None))
+        line_polygons = tuple(item[2] for item in raw_lines)
+        words_by_line: list[list[OcrWordObservation]] = [[] for _ in raw_lines]
+        for word in page_words:
+            line_index = _line_for_word(word, line_polygons)
+            if line_index is not None:
+                words_by_line[line_index].append(word)
+
+        lines: list[OcrLineObservation] = []
+        for index, (text, score, polygon) in enumerate(raw_lines):
+            words = sorted(
+                words_by_line[index],
+                key=lambda word: (
+                    min((point[1] for point in word.polygon), default=0.0),
+                    min((point[0] for point in word.polygon), default=0.0),
+                ),
+            )
             lines.append(
                 OcrLineObservation(
-                    text=cleaned,
-                    confidence=float(score),
-                    polygon=_polygon(box),
+                    text=text,
+                    confidence=score,
+                    polygon=polygon,
                     words=tuple(words),
                 )
             )
