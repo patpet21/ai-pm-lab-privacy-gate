@@ -121,15 +121,6 @@ def main() -> int:
         splash.show()
         app.processEvents()
 
-    # The provisioned production Named Tunnel has one fixed loopback origin. Keep
-    # it independent from general Settings so a UI preference can never interrupt
-    # an already-connected MCP client.
-    from ai_pm_lab_privacy_gate.infrastructure.mcp.production_guard import (
-        install_production_mcp_port_guard,
-    )
-
-    install_production_mcp_port_guard()
-
     # Import the full UI only after the user can see immediate startup feedback.
     # Presidio itself remains lazy and is loaded on the first analysis.
     from ai_pm_lab_privacy_gate.infrastructure.local_api.manager import LocalApiManager
@@ -143,10 +134,8 @@ def main() -> int:
     window.local_api_manager = local_api
     window.settings_page.local_api_manager = local_api
 
-    # Final ownership pass after all redesign layers: Services owns only the Local
-    # Privacy Bridge controls; the existing MCP configuration remains in MCP AI
-    # Direct. This also rescues the canonical Bridge card from older deferred-delete
-    # layout passes without creating a second control set.
+    # Keep the Settings ownership cleanup UI-only. The existing MCP runtime,
+    # account, tunnel and device connection paths are left untouched.
     apply_settings_services_cleanup_2026(window)
 
     def apply_local_api_preferences() -> None:
