@@ -4,10 +4,10 @@ import ctypes
 import os
 import sys
 
-from PySide6.QtCore import Qt
-from PySide6.QtGui import QColor, QIcon, QPixmap
+from PySide6.QtCore import QTimer, Qt
+from PySide6.QtGui import QColor, QIcon, QPainter, QPixmap
 from PySide6.QtNetwork import QLocalServer, QLocalSocket
-from PySide6.QtWidgets import QApplication, QSplashScreen
+from PySide6.QtWidgets import QApplication, QLabel, QProgressBar, QSplashScreen, QVBoxLayout
 
 
 INSTANCE_SERVER_NAME = "AI_PM_LAB_Privacy_Gate_0_4"
@@ -55,6 +55,65 @@ def _packaged_smoke_test() -> int:
     return 0 if required <= found and "jane.smith@example.com" not in protected else 2
 
 
+def _startup_splash(logo_path, app_icon: QIcon) -> tuple[QSplashScreen, QLabel, QLabel]:
+    """Create one persistent startup surface with live busy feedback."""
+    logo = QPixmap(str(logo_path)) if logo_path.exists() else QPixmap(560, 260)
+    if logo.isNull():
+        logo = QPixmap(560, 260)
+        logo.fill(QColor("#ffffff"))
+    else:
+        logo = logo.scaled(
+            520,
+            280,
+            Qt.AspectRatioMode.KeepAspectRatio,
+            Qt.TransformationMode.SmoothTransformation,
+        )
+
+    # Add dedicated space below the existing brand artwork instead of drawing
+    # startup controls over it.
+    width = max(560, logo.width() + 40)
+    canvas = QPixmap(width, logo.height() + 130)
+    canvas.fill(QColor("#ffffff"))
+    painter = QPainter(canvas)
+    painter.drawPixmap((width - logo.width()) // 2, 8, logo)
+    painter.end()
+
+    splash = QSplashScreen(canvas)
+    if not app_icon.isNull():
+        splash.setWindowIcon(app_icon)
+
+    layout = QVBoxLayout(splash)
+    layout.setContentsMargins(46, 20, 46, 22)
+    layout.setSpacing(8)
+    layout.addStretch(1)
+
+    status = QLabel("Starting local privacy protection…", splash)
+    status.setAlignment(Qt.AlignmentFlag.AlignCenter)
+    status.setStyleSheet(
+        "QLabel{background:transparent;color:#06243C;font-size:14px;font-weight:800;}"
+    )
+    layout.addWidget(status)
+
+    progress = QProgressBar(splash)
+    progress.setRange(0, 0)
+    progress.setTextVisible(False)
+    progress.setFixedHeight(7)
+    progress.setStyleSheet(
+        "QProgressBar{background:#E7EEF2;border:0;border-radius:3px;}"
+        "QProgressBar::chunk{background:#0B7F89;border-radius:3px;}"
+    )
+    layout.addWidget(progress)
+
+    hint = QLabel("PrivacyGate is starting. The app will open shortly.", splash)
+    hint.setAlignment(Qt.AlignmentFlag.AlignCenter)
+    hint.setStyleSheet(
+        "QLabel{background:transparent;color:#61798A;font-size:11px;font-weight:600;}"
+    )
+    layout.addWidget(hint)
+
+    return splash, status, hint
+
+
 def main() -> int:
     if os.environ.get("PRIVACY_GATE_SMOKE_TEST") == "1":
         return _packaged_smoke_test()
@@ -96,39 +155,34 @@ def main() -> int:
     if not app_icon.isNull():
         app.setWindowIcon(app_icon)
 
-    logo_path = resource_path("resources", "branding", "privacy-gate-logo.png")
-    pixmap = QPixmap(str(logo_path)) if logo_path.exists() else QPixmap(560, 260)
-    if pixmap.isNull():
-        pixmap = QPixmap(560, 260)
-        pixmap.fill(QColor("#f4f7fb"))
-    else:
-        pixmap = pixmap.scaled(
-            560,
-            300,
-            Qt.AspectRatioMode.KeepAspectRatio,
-            Qt.TransformationMode.SmoothTransformation,
-        )
     splash: QSplashScreen | None = None
+    splash_status: QLabel | None = None
+    splash_hint: QLabel | None = None
     if not background_start:
-        splash = QSplashScreen(pixmap)
-        if not app_icon.isNull():
-            splash.setWindowIcon(app_icon)
-        splash.showMessage(
-            "Starting local privacy protection…",
-            Qt.AlignmentFlag.AlignBottom | Qt.AlignmentFlag.AlignHCenter,
-            QColor("#06243c"),
-        )
+        logo_path = resource_path("resources", "branding", "privacy-gate-logo.png")
+        splash, splash_status, splash_hint = _startup_splash(logo_path, app_icon)
         splash.show()
+        app.processEvents()
+
+    def update_startup(message: str, hint: str | None = None) -> None:
+        if splash is None:
+            return
+        if splash_status is not None:
+            splash_status.setText(message)
+        if hint is not None and splash_hint is not None:
+            splash_hint.setText(hint)
         app.processEvents()
 
     # Import the full UI only after the user can see immediate startup feedback.
     # Presidio itself remains lazy and is loaded on the first analysis.
+    update_startup("Loading PrivacyGate interface…")
     from ai_pm_lab_privacy_gate.infrastructure.local_api.manager import LocalApiManager
     from ai_pm_lab_privacy_gate.ui.main_window import MainWindow
     from ai_pm_lab_privacy_gate.ui.settings_services_cleanup_2026 import (
         apply_settings_services_cleanup_2026,
     )
 
+    update_startup("Preparing your workspace…")
     window = MainWindow()
     local_api = LocalApiManager(window.service, window.library.data_dir)
     window.local_api_manager = local_api
@@ -146,18 +200,12 @@ def main() -> int:
     # Desktop and MCP settings still share the same local preferences file, but no
     # longer trigger LocalApiManager lifecycle work.
     window.settings_page.local_api_preferences_changed.connect(apply_local_api_preferences)
+    update_startup("Starting local services…")
     apply_local_api_preferences()
     app.aboutToQuit.connect(local_api.stop)
 
     if not app_icon.isNull():
         window.setWindowIcon(app_icon)
-    if not background_start:
-        # Open as a normal maximized desktop window (not borderless/F11 full screen)
-        # so minimize, restore and close controls stay available. Users can still
-        # resize the window afterwards; the redesign shell adapts to narrower widths.
-        window.showMaximized()
-        if splash is not None:
-            splash.finish(window)
 
     if instance_server is not None:
         def show_existing_window() -> None:
@@ -172,6 +220,25 @@ def main() -> int:
                 connection.disconnectFromServer()
 
         instance_server.newConnection.connect(show_existing_window)
+
+    if not background_start:
+        update_startup(
+            "Opening PrivacyGate…",
+            "The app will open shortly. You do not need to click the icon again.",
+        )
+
+        # Let the real Qt event loop start before dismissing the splash. This keeps
+        # startup feedback visible through the complete synchronous initialization
+        # path and avoids the previous gap where the splash vanished just before the
+        # main window became interactive.
+        def reveal_main_window() -> None:
+            window.showMaximized()
+            window.raise_()
+            window.activateWindow()
+            if splash is not None:
+                splash.finish(window)
+
+        QTimer.singleShot(0, reveal_main_window)
 
     return app.exec()
 
