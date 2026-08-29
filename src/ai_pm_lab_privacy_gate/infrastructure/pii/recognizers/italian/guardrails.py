@@ -9,9 +9,9 @@ from ai_pm_lab_privacy_gate.domain.models import AnalysisDocument, Finding
 
 _NER_ENTITIES = {"PERSON", "ORGANIZATION", "LOCATION"}
 
-# xx_ent_wiki_sm is a deliberately small multilingual baseline.  It is useful for
+# xx_ent_wiki_sm is a deliberately small multilingual baseline. It is useful for
 # names/places/organisations, but on form-like Italian documents it can classify
-# field labels as entities.  These are structural/privacy vocabulary, not values.
+# field labels as entities. These are structural/privacy vocabulary, not values.
 _BLOCKED_EXACT = {
     "appendice a",
     "campo",
@@ -30,8 +30,10 @@ _BLOCKED_EXACT = {
     "person",
     "provincia",
     "registro imprese",
+    "sezione",
     "sezione catastale",
     "subalterno",
+    "synthetic test data only",
     "targa",
     "targa veicolo",
     "telefono",
@@ -41,6 +43,7 @@ _BLOCKED_PREFIXES = (
     "appendice ",
     "categorie che ",
     "document language",
+    "synthetic test ",
 )
 
 
@@ -135,8 +138,8 @@ def adjacent_segment_findings(document: AnalysisDocument) -> tuple[Finding, ...]
 
     OfficeDocumentService intentionally keeps each editable paragraph/cell as an
     independent segment so protected values can be written back without damaging
-    layout.  Tables therefore often expose ``Foglio`` and ``123`` as two adjacent
-    segments.  This helper adds deterministic context without merging those
+    layout. Tables therefore often expose ``Foglio`` and ``123`` as two adjacent
+    segments. This helper adds deterministic context without merging those
     segments or changing their offsets.
     """
     pages = tuple(document.pages)
@@ -183,10 +186,7 @@ def propagate_known_ner_values(
     therefore surfaced for review as well.
     """
     base = list(findings)
-    existing = {
-        (item.page_number, item.start, item.end)
-        for item in base
-    }
+    existing = {(item.page_number, item.start, item.end) for item in base}
     seeds: dict[tuple[str, str], Finding] = {}
     for item in base:
         if item.entity_type not in _NER_ENTITIES:
