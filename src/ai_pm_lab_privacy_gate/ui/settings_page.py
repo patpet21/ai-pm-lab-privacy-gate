@@ -382,24 +382,38 @@ class SettingsPage(QWidget):
         device_changed = close_behavior != current.close_behavior
 
         port_mode = "automatic" if self.auto_port.isChecked() else "manual"
+        raw_port = self.port_input.text().strip()
         port = self._port_value()
         if port_mode == "automatic":
             port = current.manual_port
-        mcp_changed = (
-            port_mode != current.port_mode
-            or (port_mode == "manual" and port is not None and int(port) != int(current.manual_port))
-        )
+            mcp_changed = port_mode != current.port_mode
+        else:
+            mcp_changed = (
+                port_mode != current.port_mode
+                or port is None
+                and raw_port != str(current.manual_port)
+                or port is not None
+                and int(port) != int(current.manual_port)
+            )
 
         local_api_enabled = self.local_api_enabled.isChecked()
+        raw_local_api_port = self.local_api_port_input.text().strip()
         parsed_local_api_port = self._local_api_port_value()
         local_api_port = (
             int(parsed_local_api_port)
             if parsed_local_api_port is not None
             else int(current.local_api_port)
         )
+        bridge_enabled_changed = local_api_enabled != current.local_api_enabled
+        bridge_port_text_changed = raw_local_api_port != str(current.local_api_port)
+        bridge_port_changed = (
+            parsed_local_api_port is not None
+            and int(parsed_local_api_port) != int(current.local_api_port)
+        )
         bridge_changed = (
-            local_api_enabled != current.local_api_enabled
-            or local_api_port != int(current.local_api_port)
+            bridge_enabled_changed
+            or bridge_port_changed
+            or (local_api_enabled and bridge_port_text_changed)
         )
 
         # Validate only the service whose controls changed. This prevents a Device
