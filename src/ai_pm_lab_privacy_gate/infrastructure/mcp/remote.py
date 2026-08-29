@@ -30,6 +30,13 @@ from ai_pm_lab_privacy_gate.infrastructure.auth.supabase_account import (
 )
 
 
+# The currently provisioned production Named Tunnel points to this loopback origin.
+# User-selectable ports remain available for DEV/temporary MCP. Moving PROD to a
+# different origin requires an atomic provisioning/tunnel update, not a generic
+# Settings preference change.
+PRODUCTION_MCP_LOOPBACK_PORT = 8766
+
+
 @dataclass(frozen=True)
 class RemoteMcpStatus:
     state: str = "stopped"
@@ -66,9 +73,16 @@ class RemoteMcpManager:
         selected_mode = mode or self.identity_store.connection_mode()
         if selected_mode is ConnectionMode.LOCAL:
             raise ValueError("Local-only mode does not create a remote tunnel")
-        if self.status.state in {"starting", "online", "reconnecting"}:
+        if self.status.state in {"starting", "online", "external", "reconnecting"}:
             return
         self.stop()
+
+        # Source/test runs can coexist with a packaged or older PrivacyGate process.
+        # If that process already owns the valid production MCP loopback endpoint,
+        # do not spawn a second server or report a false reconnecting state.
+        if selected_mode is ConnectionMode.PROD_NAMED and self._adopt_existing_production_service():
+            return
+
         self._open_log()
         self._stop_event = threading.Event()
         self._append_log(f"starting mode={selected_mode.value}")
@@ -97,6 +111,42 @@ class RemoteMcpManager:
         self._append_log("stopped")
         self._close_log()
 
+    def _adopt_existing_production_service(self) -> bool:
+        configuration = self.provisioning_store.load()
+        if configuration is None:
+            return False
+        try:
+            configuration.validate()
+        except Exception:
+            return False
+        if not self._mcp_endpoint_is_alive(PRODUCTION_MCP_LOOPBACK_PORT, "/mcp"):
+            return False
+        self._set_status(
+            RemoteMcpStatus(
+                state="external",
+                mode=ConnectionMode.PROD_NAMED.value,
+                public_url=configuration.mcp_url,
+                local_port=PRODUCTION_MCP_LOOPBACK_PORT,
+            )
+        )
+        return True
+
+    @staticmethod
+    def _mcp_endpoint_is_alive(port: int, path: str) -> bool:
+        try:
+            response = httpx.get(
+                f"http://127.0.0.1:{int(port)}{path}",
+                headers={"Accept": "application/json, text/event-stream"},
+                timeout=1.25,
+                follow_redirects=False,
+            )
+        except httpx.HTTPError:
+            return False
+        # A protected MCP endpoint commonly answers an unauthenticated probe with
+        # 400/401/405/406. Any normal HTTP response here is enough to distinguish
+        # PrivacyGate's service from a refused/closed loopback port.
+        return 100 <= response.status_code < 600
+
     def _supervise(self, mode: ConnectionMode, stop_event: threading.Event) -> None:
         retry_delay = 1.0
         while not stop_event.is_set():
@@ -113,6 +163,10 @@ class RemoteMcpManager:
                     return
                 if mode is ConnectionMode.DEV_QUICK:
                     self._set_status(RemoteMcpStatus(state="error", mode=mode.value, error=str(error)))
+                    return
+                # Another PrivacyGate instance may have come online while this
+                # supervisor was retrying. Prefer the healthy existing endpoint.
+                if mode is ConnectionMode.PROD_NAMED and self._adopt_existing_production_service():
                     return
                 self._set_status(
                     RemoteMcpStatus(
@@ -185,7 +239,7 @@ class RemoteMcpManager:
             "--token-audience", SUPABASE_TOKEN_AUDIENCE,
             "--expected-subject", account_user_id,
         ]
-        return self._preferred_port(), "/mcp", NamedTunnelProvider(
+        return PRODUCTION_MCP_LOOPBACK_PORT, "/mcp", NamedTunnelProvider(
             configuration, self.provisioning_store, self._log_handle
         ), auth_args
 
