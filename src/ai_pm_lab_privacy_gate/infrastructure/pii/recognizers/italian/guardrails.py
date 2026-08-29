@@ -97,6 +97,12 @@ def is_italian_ner_false_positive(entity_type: str, value: str) -> bool:
     if "privacygate" in clean or "documento sintetico" in clean:
         return True
 
+    # A legal company suffix is strong deterministic evidence that the span is a
+    # business entity, never a person's name. The dedicated organization
+    # recognizer owns these values with higher confidence.
+    if entity_type == "PERSON" and _LEGAL_SUFFIX_RE.search(value):
+        return True
+
     words = _alpha_words(value)
     if entity_type in {"PERSON", "ORGANIZATION"} and len(words) < 2:
         # Single-word PER/ORG predictions are the dominant source of damage from
