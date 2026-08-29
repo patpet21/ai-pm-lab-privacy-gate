@@ -3,6 +3,9 @@ from __future__ import annotations
 from ai_pm_lab_privacy_gate.infrastructure.pii.recognizers.italian.addresses import (
     build_address_recognizers,
 )
+from ai_pm_lab_privacy_gate.infrastructure.pii.recognizers.italian.amounts import (
+    build_amount_recognizers,
+)
 from ai_pm_lab_privacy_gate.infrastructure.pii.recognizers.italian.business import (
     build_business_recognizers,
 )
@@ -11,6 +14,9 @@ from ai_pm_lab_privacy_gate.infrastructure.pii.recognizers.italian.cadastral imp
 )
 from ai_pm_lab_privacy_gate.infrastructure.pii.recognizers.italian.contacts import (
     build_contact_recognizers,
+)
+from ai_pm_lab_privacy_gate.infrastructure.pii.recognizers.italian.dates import (
+    build_date_recognizers,
 )
 from ai_pm_lab_privacy_gate.infrastructure.pii.recognizers.italian.financial import (
     build_financial_recognizers,
@@ -29,6 +35,10 @@ from ai_pm_lab_privacy_gate.infrastructure.pii.recognizers.italian.vehicles impo
 )
 
 
+# Italian-specific entities which must be requested in addition to the selected
+# product profile. Recognizers which reuse existing cross-language profile types
+# (for example DATE_OF_BIRTH or RENT_AMOUNT) are registered below but intentionally
+# are not added here, so the current profile/scope semantics remain authoritative.
 ITALIAN_ENTITY_TYPES = (
     "IT_FISCAL_CODE",
     "IT_VAT_NUMBER",
@@ -56,7 +66,7 @@ ITALIAN_ENTITY_TYPES = (
 
 
 def install_italian_recognizers(registry) -> None:  # noqa: ANN001
-    """Install deterministic recognizers that are safe to run without an NLP model."""
+    """Install local Italian recognizers without changing product scope semantics."""
     recognizers = (
         *build_fiscal_recognizers(),
         *build_financial_recognizers(),
@@ -67,6 +77,8 @@ def install_italian_recognizers(registry) -> None:  # noqa: ANN001
         *build_cadastral_recognizers(),
         *build_business_recognizers(),
         *build_person_recognizers(),
+        *build_date_recognizers(),
+        *build_amount_recognizers(),
     )
     for recognizer in recognizers:
         registry.add_recognizer(recognizer)
