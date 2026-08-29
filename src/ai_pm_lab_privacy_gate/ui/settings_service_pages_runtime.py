@@ -99,33 +99,51 @@ def _find_card(settings: QWidget, heading: str) -> QFrame | None:
     return None
 
 
-def _detach_local_bridge_for_redesign(main_window) -> QFrame | None:
-    """Keep the original SettingsPage bridge card alive while the old layout is replaced.
+def _canonical_settings_card(settings: QWidget, control_name: str, heading: str) -> QFrame | None:
+    """Resolve a real SettingsPremiumCard from one of its canonical controls.
 
-    The base 2026 service-page builder clears controls that it does not explicitly
-    reparent. Local Privacy Bridge was added after that builder, so move the existing
-    card through a temporary Qt layout before the clear instead of creating a second
-    set of controls. QLayout.addWidget() formally removes it from its previous layout.
+    Heading-based discovery is kept only as a compatibility fallback. Walking up
+    from the control avoids accidentally selecting an ancestor frame when multiple
+    service cards live in the same Settings tree.
+    """
+    control = getattr(settings, control_name, None)
+    current = control if isinstance(control, QWidget) else None
+    while current is not None and current is not settings:
+        if isinstance(current, QFrame) and current.objectName() == "SettingsPremiumCard":
+            return current
+        current = current.parentWidget()
+    return _find_card(settings, heading)
+
+
+def _detach_service_cards_for_redesign(main_window) -> tuple[QFrame | None, QFrame | None]:
+    """Preserve the canonical Bridge and MCP cards while the legacy layout is cleared.
+
+    Both services already own real controls in SettingsPage. Detach those exact
+    cards before the dedicated-page builder runs, then mount the same widgets into
+    Services afterwards. This keeps one control set, one preference model and no
+    duplicate UI implementation.
     """
     settings = getattr(main_window, "settings_page", None)
     if settings is None or bool(getattr(settings, "_privacygate_dedicated_service_pages_2026", False)):
-        return None
-    card = _find_card(settings, "Local Privacy Bridge")
-    if card is None:
-        return None
+        return None, None
 
-    holder = QWidget(main_window)
-    holder.hide()
-    holder_layout = QVBoxLayout(holder)
-    holder_layout.setContentsMargins(0, 0, 0, 0)
-    holder_layout.addWidget(card)
-    settings._privacygate_local_bridge_holder = holder
-    return card
+    bridge = _canonical_settings_card(settings, "local_api_enabled", "Local Privacy Bridge")
+    mcp = _canonical_settings_card(settings, "auto_port", "Local MCP service")
+    seen: set[int] = set()
+    for card in (bridge, mcp):
+        if not isinstance(card, QFrame) or id(card) in seen:
+            continue
+        seen.add(id(card))
+        card.hide()
+        card.setParent(None)
+    return bridge, mcp
 
 
-def _mount_local_bridge_in_services(settings, card: QFrame | None) -> None:
-    if card is None:
-        return
+def _mount_service_cards(
+    settings,
+    bridge: QFrame | None,
+    mcp: QFrame | None,
+) -> None:
     pages = getattr(settings, "settings_service_pages", None)
     services_page = pages.get("services") if isinstance(pages, dict) else None
     if not isinstance(services_page, QWidget):
@@ -135,25 +153,27 @@ def _mount_local_bridge_in_services(settings, card: QFrame | None) -> None:
     if not isinstance(body, QVBoxLayout):
         return
 
-    # Place the original Bridge card before the MCP/runtime controls. The widget's
-    # existing checkbox, port field and status label remain the single live controls.
+    # Insert the canonical controls immediately before the runtime-links surface.
     insertion_index = min(2, body.count())
     for index in range(body.count()):
         widget = body.itemAt(index).widget()
         if not isinstance(widget, QWidget):
             continue
         headings = {label.text().strip() for label in widget.findChildren(QLabel)}
-        if "Local MCP service" in headings or "PrivacyGate runtime services" in headings:
+        if "PrivacyGate runtime services" in headings:
             insertion_index = index
             break
-    body.insertWidget(max(0, insertion_index), card)
-    card.show()
-    settings.local_privacy_bridge_service_card = card
 
-    holder = getattr(settings, "_privacygate_local_bridge_holder", None)
-    if isinstance(holder, QWidget):
-        holder.deleteLater()
-        settings._privacygate_local_bridge_holder = None
+    for attribute, card in (
+        ("local_privacy_bridge_service_card", bridge),
+        ("local_mcp_service_card", mcp),
+    ):
+        if not isinstance(card, QFrame):
+            continue
+        body.insertWidget(max(0, insertion_index), card)
+        card.show()
+        setattr(settings, attribute, card)
+        insertion_index += 1
 
 
 def _decorate_service_navigation(settings) -> None:
@@ -467,7 +487,7 @@ def _compact_hub_cards(settings) -> None:
 def apply_settings_service_pages_2026_runtime(main_window) -> None:
     """Apply the dedicated service shell with Windows-safe navigation and general controls."""
     WorkspaceFilesPage._refresh_table = _safe_refresh_table
-    local_bridge_card = _detach_local_bridge_for_redesign(main_window)
+    bridge_card, mcp_card = _detach_service_cards_for_redesign(main_window)
     _apply_service_pages(main_window)
 
     settings = getattr(main_window, "settings_page", None)
@@ -486,7 +506,7 @@ def apply_settings_service_pages_2026_runtime(main_window) -> None:
 
     if settings is None:
         return
-    _mount_local_bridge_in_services(settings, local_bridge_card)
+    _mount_service_cards(settings, bridge_card, mcp_card)
     _decorate_service_navigation(settings)
     _compact_hub_cards(settings)
     _install_general_quick_settings(main_window, settings)
