@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from presidio_analyzer import Pattern, PatternRecognizer
-
 from ai_pm_lab_privacy_gate.infrastructure.pii.recognizers.italian.contextual import (
     ItalianContextValueRecognizer,
 )
@@ -16,18 +14,18 @@ _ORGANIZATION_WITH_LEGAL_SUFFIX = (
 )
 
 
-def build_business_recognizers() -> tuple[object, ...]:
+def build_business_recognizers() -> tuple[ItalianContextValueRecognizer, ...]:
     return (
-        PatternRecognizer(
-            supported_entity="ORGANIZATION",
-            supported_language="it",
-            patterns=[
-                Pattern(
-                    "italian_organization_legal_suffix",
-                    _ORGANIZATION_WITH_LEGAL_SUFFIX,
-                    0.985,
-                )
-            ],
+        # Use PrivacyGate's Python-regex recognizer rather than Presidio's generic
+        # PatternRecognizer here. In the real DOCX regression fixture the compact
+        # multilingual NER classified the company as PERSON while the generic
+        # pattern route did not surface the legal-suffix match. This deterministic
+        # recognizer returns the complete company name and therefore wins overlap
+        # resolution with a deliberately higher score.
+        ItalianContextValueRecognizer(
+            entity_type="ORGANIZATION",
+            pattern=rf"(?P<value>{_ORGANIZATION_WITH_LEGAL_SUFFIX})",
+            score=0.998,
         ),
         ItalianContextValueRecognizer(
             entity_type="IT_REA_NUMBER",
