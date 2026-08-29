@@ -33,6 +33,12 @@ class ImageDocumentService:
             image = ImageOps.exif_transpose(opened).convert("RGB")
         lines = self.ocr.read(image)
         text, regions = self._layout_text(lines)
+        if not text.strip():
+            raise ValueError(
+                "No readable printed text was found in this image. Try a clearer screenshot or photo, "
+                "better lighting, less perspective distortion, or a higher-resolution copy. "
+                "Handwriting is not supported in this image OCR version."
+            )
         layout = OcrPageLayout(
             page_number=1,
             width=image.width,
