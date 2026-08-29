@@ -16,6 +16,7 @@ from ai_pm_lab_privacy_gate.domain.profiles import PrivacyProfile
 from ai_pm_lab_privacy_gate.infrastructure.documents.document_pipeline import DocumentPipelineService
 from ai_pm_lab_privacy_gate.infrastructure.documents.office_service import OfficeDocumentService
 from ai_pm_lab_privacy_gate.infrastructure.documents.pdf_service import PdfDocumentService
+from ai_pm_lab_privacy_gate.infrastructure.pii.languages import normalize_document_language
 from ai_pm_lab_privacy_gate.infrastructure.pii.presidio_engine import PresidioPrivacyEngine
 
 
@@ -29,13 +30,41 @@ class PrivacyGateService:
         office_service: OfficeDocumentService | None = None,
         document_pipeline: DocumentPipelineService | None = None,
     ) -> None:
-        self._pii = pii_engine or PresidioPrivacyEngine()
+        initial_language = normalize_document_language(
+            getattr(pii_engine, "document_language", None)
+        )
+        self._document_language = initial_language
+        self._pii_engines: dict[str, PresidioPrivacyEngine] = {}
+        if pii_engine is not None:
+            self._pii_engines[initial_language] = pii_engine
+        else:
+            self._pii_engines[initial_language] = PresidioPrivacyEngine(
+                language=initial_language
+            )
         self._pipeline = document_pipeline or DocumentPipelineService(
             pdf_service=pdf_service,
             office_service=office_service,
         )
         self._pdf = self._pipeline.pdf
         self._office = self._pipeline.office
+
+    @property
+    def document_language(self) -> str:
+        """Language used when callers do not supply one explicitly."""
+        return self._document_language
+
+    def set_document_language(self, language: str | None) -> str:
+        """Select the local detector language without loading its model eagerly."""
+        self._document_language = normalize_document_language(language)
+        return self._document_language
+
+    def _pii_engine_for(self, language: str | None = None) -> PresidioPrivacyEngine:
+        code = normalize_document_language(language or self._document_language)
+        engine = self._pii_engines.get(code)
+        if engine is None:
+            engine = PresidioPrivacyEngine(language=code)
+            self._pii_engines[code] = engine
+        return engine
 
     def document_from_text(self, text: str) -> AnalysisDocument:
         return AnalysisDocument(
@@ -49,14 +78,21 @@ class PrivacyGateService:
     def document_from_file(self, path: str | Path) -> AnalysisDocument:
         return self._pipeline.extract(path)
 
-    def analyze(self, document: AnalysisDocument, profile: PrivacyProfile) -> tuple[Finding, ...]:
+    def analyze(
+        self,
+        document: AnalysisDocument,
+        profile: PrivacyProfile,
+        *,
+        language: str | None = None,
+    ) -> tuple[Finding, ...]:
         if not document.has_text:
             raise ValueError(
                 "No selectable text was found. Scanned/image-only PDFs are not supported in this build."
             )
+        engine = self._pii_engine_for(language)
         findings: list[Finding] = []
         for page in document.pages:
-            findings.extend(self._pii.analyze_page(page, profile))
+            findings.extend(engine.analyze_page(page, profile))
         return tuple(findings)
 
     def protect(
@@ -144,12 +180,14 @@ class PrivacyGateService:
         self,
         result: ProtectionResult,
         profile: PrivacyProfile,
+        *,
+        language: str | None = None,
     ) -> tuple[Finding, ...]:
         protected_document = AnalysisDocument(
             source_kind="protected",
             pages=result.protected_pages,
         )
-        return self.analyze(protected_document, profile)
+        return self.analyze(protected_document, profile, language=language)
 
     @staticmethod
     def _mask_value(value: str) -> str:
