@@ -34,6 +34,11 @@ class FakeOcrEngine:
         )
 
 
+class EmptyOcrEngine:
+    def read(self, _image: Image.Image):
+        return ()
+
+
 def _finding(document, value: str, entity_type: str) -> Finding:
     page = document.pages[0]
     start = page.text.index(value)
@@ -109,3 +114,18 @@ def test_image_redaction_fails_closed_when_selected_value_has_no_geometry(tmp_pa
         assert "OCR layout" in str(exc)
     else:
         raise AssertionError("Image export must fail closed without OCR geometry")
+
+
+def test_image_ocr_reports_clear_message_when_no_printed_text_is_found(tmp_path: Path) -> None:
+    source = tmp_path / "blank.png"
+    Image.new("RGB", (320, 180), "white").save(source)
+    image_service = ImageDocumentService(ocr_engine=EmptyOcrEngine())
+
+    try:
+        image_service.extract(source)
+    except ValueError as exc:
+        message = str(exc)
+        assert "No readable printed text" in message
+        assert "Handwriting is not supported" in message
+    else:
+        raise AssertionError("Blank images must not enter the PII detector as empty documents")
