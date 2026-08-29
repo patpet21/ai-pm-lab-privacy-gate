@@ -34,6 +34,8 @@ MUTED = "#61798A"
 BORDER = "#DCE5EA"
 BG = "#F7FAFC"
 WHITE = "#FFFFFF"
+GREEN = "#23824B"
+RED = "#B54747"
 
 
 class SettingsPage(QWidget):
@@ -183,13 +185,26 @@ class SettingsPage(QWidget):
         layout = QVBoxLayout(card)
         layout.setContentsMargins(18, 14, 18, 14)
         layout.setSpacing(8)
-        layout.addWidget(
+
+        header_row = QHBoxLayout()
+        header_row.setSpacing(10)
+        header_row.addWidget(
             self._card_header(
                 "Local Privacy Bridge",
-                "Local text protection for approved browser and automation integrations.",
+                "Protect text locally for browser and approved automation integrations before it leaves this device.",
                 "protect",
-            )
+            ),
+            1,
         )
+        self.local_api_state_badge = QLabel("OFF")
+        self.local_api_state_badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.local_api_state_badge.setStyleSheet(
+            "background:#EEF3F7;color:#062B4F;border:1px solid #D8E2E9;border-radius:9px;"
+            "padding:5px 9px;font-size:8px;font-weight:900;letter-spacing:.4px;"
+        )
+        header_row.addWidget(self.local_api_state_badge, 0, Qt.AlignmentFlag.AlignTop)
+        layout.addLayout(header_row)
+
         self.local_api_enabled = QCheckBox("Enable Local Privacy Bridge")
         self.local_api_enabled.setChecked(self.prefs.local_api_enabled)
         layout.addWidget(self.local_api_enabled)
@@ -201,21 +216,39 @@ class SettingsPage(QWidget):
         self.local_api_port_input = QLineEdit(str(self.prefs.local_api_port))
         self.local_api_port_input.setPlaceholderText("8765")
         self.local_api_port_input.setMaximumWidth(120)
+        self.local_api_check_button = QPushButton("Check port")
+        self.local_api_check_button.setIcon(icon("check", color=NAVY, size=16))
+        self.local_api_check_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.local_api_check_button.setStyleSheet(
+            "QPushButton{background:white;color:#17384E;border:1px solid #C9D7E0;border-radius:9px;"
+            "padding:8px 12px;font-weight:750;}QPushButton:hover{background:#F2FAFA;border-color:#95C8CC;}"
+        )
+        self.local_api_check_button.clicked.connect(self._check_local_api_port)
         row.addWidget(port_label)
         row.addWidget(self.local_api_port_input)
+        row.addWidget(self.local_api_check_button)
         row.addStretch(1)
         layout.addLayout(row)
 
-        note = QLabel(
-            "Off by default. When enabled, the bridge listens only on this device (127.0.0.1). "
-            "Reversible browser-session mappings stay in memory and are cleared when PrivacyGate quits."
-        )
-        note.setWordWrap(True)
-        note.setStyleSheet(f"color:{MUTED};font-size:8px;")
-        layout.addWidget(note)
+        self.local_api_port_status = QLabel("")
+        self.local_api_port_status.setWordWrap(True)
+        self.local_api_port_status.setStyleSheet(f"color:{MUTED};font-size:8px;")
+        layout.addWidget(self.local_api_port_status)
+
         self.local_api_status = QLabel("")
         self.local_api_status.setWordWrap(True)
         layout.addWidget(self.local_api_status)
+
+        note = QLabel(
+            "Local-only boundary: 127.0.0.1 • browser-session mappings stay in memory • "
+            "mappings are cleared when PrivacyGate quits."
+        )
+        note.setWordWrap(True)
+        note.setStyleSheet(
+            "background:#F1FAFA;color:#31576A;border:1px solid #D5ECEC;border-radius:10px;"
+            "padding:8px 9px;font-size:8px;font-weight:700;"
+        )
+        layout.addWidget(note)
         self.local_api_enabled.toggled.connect(self._sync_local_api_controls)
         self._sync_local_api_controls()
         return card
@@ -319,7 +352,11 @@ class SettingsPage(QWidget):
             self.port_status.setText("PrivacyGate will select a free local port automatically at service startup.")
 
     def _sync_local_api_controls(self) -> None:
-        self.local_api_port_input.setEnabled(self.local_api_enabled.isChecked())
+        enabled = self.local_api_enabled.isChecked()
+        self.local_api_port_input.setEnabled(enabled)
+        self.local_api_check_button.setEnabled(enabled)
+        if not enabled:
+            self.local_api_port_status.clear()
 
     def _port_value(self) -> int | None:
         try:
@@ -347,25 +384,61 @@ class SettingsPage(QWidget):
             self.port_status.setText(f"Port {port} is already in use.")
             self.port_status.setStyleSheet("color:#B54747;font-size:9px;font-weight:750;")
 
+    def _check_local_api_port(self) -> None:
+        port = self._local_api_port_value()
+        if port is None:
+            self.local_api_port_status.setText("Enter a port between 1024 and 65535.")
+            self.local_api_port_status.setStyleSheet(f"color:{RED};font-size:8px;font-weight:750;")
+            return
+        status = self.local_api_manager.status if self.local_api_manager is not None else None
+        if status is not None and status.state == "online" and int(status.port or -1) == int(port):
+            self.local_api_port_status.setText(f"Port {port} is currently used by your Local Privacy Bridge ✓")
+            self.local_api_port_status.setStyleSheet(f"color:{GREEN};font-size:8px;font-weight:750;")
+            return
+        if is_port_available(port):
+            self.local_api_port_status.setText(f"Port {port} is available ✓")
+            self.local_api_port_status.setStyleSheet(f"color:{GREEN};font-size:8px;font-weight:750;")
+        else:
+            self.local_api_port_status.setText(f"Port {port} is already in use.")
+            self.local_api_port_status.setStyleSheet(f"color:{RED};font-size:8px;font-weight:750;")
+
+    def _set_local_api_badge(self, text: str, *, tone: str = "navy") -> None:
+        palette = {
+            "navy": ("#EEF3F7", NAVY, "#D8E2E9"),
+            "green": ("#EAF8F1", GREEN, "#CDE8D9"),
+            "red": ("#FDEEEE", RED, "#F0CCCC"),
+        }
+        background, foreground, border = palette.get(tone, palette["navy"])
+        self.local_api_state_badge.setText(text)
+        self.local_api_state_badge.setStyleSheet(
+            f"background:{background};color:{foreground};border:1px solid {border};border-radius:9px;"
+            "padding:5px 9px;font-size:8px;font-weight:900;letter-spacing:.4px;"
+        )
+
     def refresh_local_api_status(self) -> None:
         if self.local_api_manager is None:
             if self.local_api_enabled.isChecked():
                 text = "Saved locally. The bridge starts with PrivacyGate after this setting is applied."
                 color = MUTED
+                self._set_local_api_badge("SAVED")
             else:
                 text = "Status: Off"
                 color = MUTED
+                self._set_local_api_badge("OFF")
         else:
             status = self.local_api_manager.status
             if status.state == "online":
                 text = f"Status: Running locally on 127.0.0.1:{status.port} ✓"
-                color = "#23824B"
+                color = GREEN
+                self._set_local_api_badge("RUNNING", tone="green")
             elif status.state == "error":
                 text = f"Status: Could not start on this device — {status.error}"
-                color = "#B54747"
+                color = RED
+                self._set_local_api_badge("ERROR", tone="red")
             else:
                 text = "Status: Off"
                 color = MUTED
+                self._set_local_api_badge("OFF")
         self.local_api_status.setText(text)
         self.local_api_status.setStyleSheet(f"color:{color};font-size:8px;font-weight:750;")
 
@@ -388,13 +461,9 @@ class SettingsPage(QWidget):
             port = current.manual_port
             mcp_changed = port_mode != current.port_mode
         else:
-            mcp_changed = (
-                port_mode != current.port_mode
-                or port is None
-                and raw_port != str(current.manual_port)
-                or port is not None
-                and int(port) != int(current.manual_port)
-            )
+            invalid_manual_changed = port is None and raw_port != str(current.manual_port)
+            valid_manual_changed = port is not None and int(port) != int(current.manual_port)
+            mcp_changed = port_mode != current.port_mode or invalid_manual_changed or valid_manual_changed
 
         local_api_enabled = self.local_api_enabled.isChecked()
         raw_local_api_port = self.local_api_port_input.text().strip()
