@@ -7,9 +7,11 @@ Paste, Scan/Protect, workspace-policy, Gmail/Drive and preview controllers remai
 the source of behavior.
 """
 
-from PySide6.QtCore import QSize, Qt
+import re
+
+from PySide6.QtCore import QSize, QTimer, Qt
 from PySide6.QtGui import QIcon
-from PySide6.QtWidgets import QComboBox, QFrame, QLabel, QLayout, QPushButton
+from PySide6.QtWidgets import QComboBox, QFrame, QLabel, QLayout, QPushButton, QWidget
 
 from ai_pm_lab_privacy_gate.ui.iconography import icon
 
@@ -21,6 +23,57 @@ TEAL_DARK = "#096E75"
 MUTED = "#61798A"
 BORDER = "#D4E1E9"
 SOFT = "#F8FBFC"
+
+# Protect-only typography pilot. The rest of the application intentionally keeps
+# its existing sizing until this visual scale is approved. Most inherited text is
+# already 10pt (~13 px); the readability problem comes from local Protect styles
+# that intentionally compressed helper/control copy down to 7-12 px.
+_FONT_SIZE_RE = re.compile(r"font-size\s*:\s*(\d+(?:\.\d+)?)px", re.IGNORECASE)
+
+
+def _pilot_font_size(value: float) -> float:
+    """Map legacy micro type to a compact but readable Protect scale."""
+    if value <= 8:
+        return 11
+    if value <= 9:
+        return 12
+    if value <= 11:
+        return 13
+    if value <= 13:
+        return 14
+    return value
+
+
+def _scaled_style_sheet(style: str) -> str:
+    def replace(match: re.Match[str]) -> str:
+        current = float(match.group(1))
+        upgraded = _pilot_font_size(current)
+        rendered = str(int(upgraded)) if upgraded.is_integer() else f"{upgraded:g}"
+        return f"font-size:{rendered}px"
+
+    return _FONT_SIZE_RE.sub(replace, style)
+
+
+def _apply_typography_pilot(page) -> None:
+    """Increase only Protect's explicit micro-fonts without changing layout logic.
+
+    The pass is intentionally stylesheet-preserving: colors, spacing, borders,
+    weights and widget behavior stay untouched. A cached applied stylesheet makes
+    repeated calls idempotent while still allowing a later compatibility layer to
+    restyle a widget and be upgraded on the next pass.
+    """
+    widgets = (page, *page.findChildren(QWidget))
+    for widget in widgets:
+        style = widget.styleSheet()
+        if not style:
+            continue
+        last_applied = getattr(widget, "_privacygate_protect_typography_style", None)
+        if style == last_applied:
+            continue
+        upgraded = _scaled_style_sheet(style)
+        if upgraded != style:
+            widget.setStyleSheet(upgraded)
+        widget._privacygate_protect_typography_style = upgraded
 
 
 def _stateful_icon(name: str, size: int = 19) -> QIcon:
@@ -305,6 +358,12 @@ def apply_protect_top_area_design(main_window) -> None:
     _style_quick_actions(page)
     _style_source_view_controls(page)
     _style_gmail_strip(page)
+    _apply_typography_pilot(page)
+
+    # Later Protect presentation layers run synchronously after this one. Apply
+    # the pilot once more on the next event-loop turn so their 8-12 px helper text
+    # receives the same scale without touching any page outside Protect.
+    QTimer.singleShot(0, lambda: _apply_typography_pilot(page))
 
     # Gmail components are created only after a message package is imported.
     # Refresh through the existing source-selector callback instead of running a
@@ -316,6 +375,7 @@ def apply_protect_top_area_design(main_window) -> None:
         def select_and_style(key: str):
             value = original_select(key)
             _style_gmail_strip(page)
+            _apply_typography_pilot(page)
             return value
 
         page._gmail_component_select = select_and_style
