@@ -27,6 +27,11 @@ _SUPPORTED_SUFFIXES = {
     ".pdf", ".docx", ".xlsx", ".pptx", ".txt", ".png", ".jpg", ".jpeg"
 }
 _IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".webp", ".tif", ".tiff", ".heic"}
+_IMAGE_MIME_SUFFIXES = {
+    "image/png": ".png",
+    "image/jpeg": ".jpg",
+    "image/jpg": ".jpg",
+}
 
 
 def _safe_filename(name: str) -> str:
@@ -57,9 +62,10 @@ def materialize_google_drive_item(service: ConnectedAppsService, item: RemoteIte
             timeout=30.0,
         )
     else:
-        suffix = Path(item.title).suffix.lower()
+        title_suffix = Path(item.title).suffix.lower()
+        suffix = title_suffix or _IMAGE_MIME_SUFFIXES.get(item.kind, "")
         if suffix not in _SUPPORTED_SUFFIXES:
-            if item.kind.startswith("image/") or suffix in _IMAGE_SUFFIXES:
+            if item.kind.startswith("image/") or title_suffix in _IMAGE_SUFFIXES:
                 raise ValueError(
                     "PrivacyGate image OCR currently supports PNG, JPG and JPEG files. "
                     "Convert WEBP, TIFF or HEIC locally to PNG/JPG first, then import the converted copy."
@@ -70,6 +76,8 @@ def materialize_google_drive_item(service: ConnectedAppsService, item: RemoteIte
                 "Google Sheets and Google Slides."
             )
         filename = _safe_filename(item.title)
+        if not Path(filename).suffix and suffix:
+            filename += suffix
         response = httpx.get(
             f"https://www.googleapis.com/drive/v3/files/{item.item_id}",
             headers=headers,
