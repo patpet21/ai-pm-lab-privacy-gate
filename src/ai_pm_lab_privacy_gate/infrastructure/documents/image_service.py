@@ -28,8 +28,6 @@ class ImageDocumentService:
             raise ValueError("Image OCR supports PNG, JPG and JPEG files in this build.")
 
         with Image.open(source) as opened:
-            # Normalize camera orientation before OCR so every returned coordinate
-            # uses the same pixel space later used by the redaction writer.
             image = ImageOps.exif_transpose(opened).convert("RGB")
         lines = self.ocr.read(image)
         text, regions = self._layout_text(lines)
@@ -147,20 +145,31 @@ class ImageDocumentService:
         unresolved: list[str] = []
         for finding in result.applied_findings:
             span = span_by_finding.get(finding.finding_id)
-            regions = layout.regions_for_range(finding.start, finding.end)
-            if span is None or not regions:
+            matching = layout.regions_for_range(finding.start, finding.end)
+            if span is None or not matching:
                 unresolved.append(finding.text)
                 continue
-            box = self._union_box(tuple(region.polygon for region in regions), image.size)
-            if box is None:
+
+            # A line region and its word regions overlap the same text offsets.
+            # Prefer words whenever RapidOCR supplied them; otherwise the whole
+            # line would be included in the union and a small name could blank an
+            # entire sentence. Group per line so multi-line findings never create
+            # one giant rectangle spanning unrelated pixels between the lines.
+            word_regions = tuple(region for region in matching if region.level == "word")
+            selected = word_regions or tuple(region for region in matching if region.level == "line")
+            boxes = self._boxes_by_line(selected, image.size)
+            if not boxes:
                 unresolved.append(finding.text)
                 continue
+
             color = PdfDocumentService.ENTITY_COLORS.get(finding.entity_type, "#E7E9ED")
-            draw.rectangle(box, fill=color, outline="#66788A", width=1)
             label = PdfDocumentService._compact_replacement(
                 span.replacement_text, finding.entity_type
             )
-            PdfDocumentService._draw_fitted_text(draw, box, label)
+            for box_index, box in enumerate(boxes):
+                draw.rectangle(box, fill=color, outline="#66788A", width=1)
+                if box_index == 0:
+                    PdfDocumentService._draw_fitted_text(draw, box, label)
 
         if unresolved:
             raise ValueError(
@@ -184,6 +193,24 @@ class ImageDocumentService:
         image.save(temporary, **save_kwargs)
         os.replace(temporary, destination)
         return destination
+
+    @classmethod
+    def _boxes_by_line(
+        cls,
+        regions: tuple[OcrTextRegion, ...],
+        image_size: tuple[int, int],
+    ) -> tuple[tuple[int, int, int, int], ...]:
+        grouped: dict[int, list[Polygon]] = {}
+        for region in regions:
+            if not region.polygon:
+                continue
+            grouped.setdefault(region.line_index, []).append(region.polygon)
+        boxes: list[tuple[int, int, int, int]] = []
+        for line_index in sorted(grouped):
+            box = cls._union_box(tuple(grouped[line_index]), image_size)
+            if box is not None:
+                boxes.append(box)
+        return tuple(boxes)
 
     @staticmethod
     def _union_box(
