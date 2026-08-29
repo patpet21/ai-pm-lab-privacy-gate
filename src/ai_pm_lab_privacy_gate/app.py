@@ -2,7 +2,11 @@ from __future__ import annotations
 
 import ctypes
 import os
+import subprocess
 import sys
+import tempfile
+import uuid
+from pathlib import Path
 
 from PySide6.QtCore import QTimer, Qt
 from PySide6.QtGui import QColor, QIcon, QPainter, QPixmap
@@ -11,6 +15,7 @@ from PySide6.QtWidgets import QApplication, QLabel, QProgressBar, QSplashScreen,
 
 
 INSTANCE_SERVER_NAME = "AI_PM_LAB_Privacy_Gate_0_4"
+STARTUP_SPLASH_WORKER_ARG = "--startup-splash-worker"
 
 
 def _single_instance_enabled() -> bool:
@@ -55,8 +60,8 @@ def _packaged_smoke_test() -> int:
     return 0 if required <= found and "jane.smith@example.com" not in protected else 2
 
 
-def _startup_splash(logo_path, app_icon: QIcon) -> tuple[QSplashScreen, QLabel, QLabel]:
-    """Create one persistent startup surface with live busy feedback."""
+def _startup_splash(logo_path: Path, app_icon: QIcon) -> QSplashScreen:
+    """Create the startup surface used by the independent splash worker."""
     logo = QPixmap(str(logo_path)) if logo_path.exists() else QPixmap(560, 260)
     if logo.isNull():
         logo = QPixmap(560, 260)
@@ -69,10 +74,10 @@ def _startup_splash(logo_path, app_icon: QIcon) -> tuple[QSplashScreen, QLabel, 
             Qt.TransformationMode.SmoothTransformation,
         )
 
-    # Add dedicated space below the existing brand artwork instead of drawing
-    # startup controls over it.
+    # Reserve a clean area below the existing brand artwork for the product name,
+    # startup status and continuously animated progress indicator.
     width = max(560, logo.width() + 40)
-    canvas = QPixmap(width, logo.height() + 130)
+    canvas = QPixmap(width, logo.height() + 190)
     canvas.fill(QColor("#ffffff"))
     painter = QPainter(canvas)
     painter.drawPixmap((width - logo.width()) // 2, 8, logo)
@@ -83,38 +88,164 @@ def _startup_splash(logo_path, app_icon: QIcon) -> tuple[QSplashScreen, QLabel, 
         splash.setWindowIcon(app_icon)
 
     layout = QVBoxLayout(splash)
-    layout.setContentsMargins(46, 20, 46, 22)
-    layout.setSpacing(8)
+    layout.setContentsMargins(46, 18, 46, 24)
+    layout.setSpacing(7)
     layout.addStretch(1)
+
+    brand = QLabel("PRIVACY GATE", splash)
+    brand.setAlignment(Qt.AlignmentFlag.AlignCenter)
+    brand.setStyleSheet(
+        "QLabel{background:transparent;color:#06243C;font-size:21px;font-weight:950;letter-spacing:2px;}"
+    )
+    layout.addWidget(brand)
 
     status = QLabel("Starting local privacy protection…", splash)
     status.setAlignment(Qt.AlignmentFlag.AlignCenter)
     status.setStyleSheet(
-        "QLabel{background:transparent;color:#06243C;font-size:14px;font-weight:800;}"
+        "QLabel{background:transparent;color:#17384E;font-size:13px;font-weight:750;}"
     )
     layout.addWidget(status)
 
     progress = QProgressBar(splash)
+    # Indeterminate mode remains animated because this splash runs in its own tiny
+    # Qt event loop while the main PrivacyGate process performs synchronous startup.
     progress.setRange(0, 0)
     progress.setTextVisible(False)
-    progress.setFixedHeight(7)
+    progress.setFixedHeight(8)
     progress.setStyleSheet(
-        "QProgressBar{background:#E7EEF2;border:0;border-radius:3px;}"
-        "QProgressBar::chunk{background:#0B7F89;border-radius:3px;}"
+        "QProgressBar{background:#E5EDF1;border:0;border-radius:4px;}"
+        "QProgressBar::chunk{background:#0B7F89;border-radius:4px;}"
     )
     layout.addWidget(progress)
 
-    hint = QLabel("PrivacyGate is starting. The app will open shortly.", splash)
+    hint = QLabel(
+        "PrivacyGate is starting. The app will open shortly.\n"
+        "You do not need to click the icon again.",
+        splash,
+    )
     hint.setAlignment(Qt.AlignmentFlag.AlignCenter)
     hint.setStyleSheet(
-        "QLabel{background:transparent;color:#61798A;font-size:11px;font-weight:600;}"
+        "QLabel{background:transparent;color:#61798A;font-size:10px;font-weight:600;}"
     )
     layout.addWidget(hint)
+    return splash
 
-    return splash, status, hint
+
+def _process_is_alive(process_id: int) -> bool:
+    if process_id <= 0:
+        return False
+    if sys.platform == "win32":
+        try:
+            process_query_limited_information = 0x1000
+            handle = ctypes.windll.kernel32.OpenProcess(
+                process_query_limited_information, False, int(process_id)
+            )
+            if not handle:
+                return False
+            ctypes.windll.kernel32.CloseHandle(handle)
+            return True
+        except Exception:
+            return True
+    try:
+        os.kill(int(process_id), 0)
+    except OSError:
+        return False
+    return True
+
+
+def _run_startup_splash_worker(parent_pid: int, sentinel_path: Path) -> int:
+    """Animate startup feedback independently from the main UI initialization."""
+    app = QApplication([sys.argv[0]])
+    app.setApplicationName("AI PM LAB Privacy Gate Startup")
+    app.setOrganizationName("AI PM LAB")
+
+    from ai_pm_lab_privacy_gate.ui.resources import resource_path
+
+    icon_path = resource_path("resources", "branding", "privacy-gate.ico")
+    if not icon_path.exists():
+        icon_path = resource_path("resources", "branding", "privacy-gate-icon.png")
+    app_icon = QIcon(str(icon_path)) if icon_path.exists() else QIcon()
+    if not app_icon.isNull():
+        app.setWindowIcon(app_icon)
+
+    logo_path = resource_path("resources", "branding", "privacy-gate-logo.png")
+    splash = _startup_splash(logo_path, app_icon)
+    splash.show()
+    splash.raise_()
+    app.processEvents()
+
+    monitor = QTimer(splash)
+    monitor.setInterval(100)
+
+    def finish_if_ready() -> None:
+        if sentinel_path.exists() or not _process_is_alive(parent_pid):
+            splash.close()
+            app.quit()
+
+    monitor.timeout.connect(finish_if_ready)
+    monitor.start()
+    # Defensive timeout: a crashed parent must never leave a startup surface behind.
+    QTimer.singleShot(120_000, app.quit)
+    return app.exec()
+
+
+def _start_startup_splash_process() -> tuple[subprocess.Popen[bytes] | None, Path | None]:
+    sentinel = Path(tempfile.gettempdir()) / (
+        f"privacygate-startup-{os.getpid()}-{uuid.uuid4().hex}.ready"
+    )
+    sentinel.unlink(missing_ok=True)
+
+    if getattr(sys, "frozen", False):
+        command = [
+            sys.executable,
+            STARTUP_SPLASH_WORKER_ARG,
+            str(os.getpid()),
+            str(sentinel),
+        ]
+    else:
+        command = [
+            sys.executable,
+            "-m",
+            "ai_pm_lab_privacy_gate.app",
+            STARTUP_SPLASH_WORKER_ARG,
+            str(os.getpid()),
+            str(sentinel),
+        ]
+
+    creationflags = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
+    try:
+        process = subprocess.Popen(
+            command,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            creationflags=creationflags,
+            env=os.environ.copy(),
+        )
+    except OSError:
+        return None, None
+    return process, sentinel
+
+
+def _signal_startup_complete(sentinel: Path | None) -> None:
+    if sentinel is None:
+        return
+    try:
+        sentinel.write_text("ready", encoding="utf-8")
+    except OSError:
+        return
 
 
 def main() -> int:
+    if STARTUP_SPLASH_WORKER_ARG in sys.argv:
+        try:
+            index = sys.argv.index(STARTUP_SPLASH_WORKER_ARG)
+            parent_pid = int(sys.argv[index + 1])
+            sentinel_path = Path(sys.argv[index + 2])
+        except (ValueError, IndexError):
+            return 2
+        return _run_startup_splash_worker(parent_pid, sentinel_path)
+
     if os.environ.get("PRIVACY_GATE_SMOKE_TEST") == "1":
         return _packaged_smoke_test()
     if sys.platform == "win32":
@@ -138,6 +269,11 @@ def main() -> int:
         if not instance_server.listen(INSTANCE_SERVER_NAME):
             return 1
 
+    startup_process: subprocess.Popen[bytes] | None = None
+    startup_sentinel: Path | None = None
+    if not background_start:
+        startup_process, startup_sentinel = _start_startup_splash_process()
+
     from ai_pm_lab_privacy_gate.ui.fonts import install_app_font
     from ai_pm_lab_privacy_gate.ui.resources import resource_path
     from ai_pm_lab_privacy_gate.ui.styles import APP_STYLE
@@ -145,9 +281,7 @@ def main() -> int:
     install_app_font(app)
     app.setStyleSheet(APP_STYLE)
 
-    # Set the PrivacyGate application icon before the splash/main window appears.
-    # Source runs otherwise briefly inherit the generic Python/Qt window icon on
-    # Windows even though the packaged executable has the correct embedded icon.
+    # Set the PrivacyGate application icon before the main window appears.
     icon_path = resource_path("resources", "branding", "privacy-gate.ico")
     if not icon_path.exists():
         icon_path = resource_path("resources", "branding", "privacy-gate-icon.png")
@@ -155,34 +289,14 @@ def main() -> int:
     if not app_icon.isNull():
         app.setWindowIcon(app_icon)
 
-    splash: QSplashScreen | None = None
-    splash_status: QLabel | None = None
-    splash_hint: QLabel | None = None
-    if not background_start:
-        logo_path = resource_path("resources", "branding", "privacy-gate-logo.png")
-        splash, splash_status, splash_hint = _startup_splash(logo_path, app_icon)
-        splash.show()
-        app.processEvents()
-
-    def update_startup(message: str, hint: str | None = None) -> None:
-        if splash is None:
-            return
-        if splash_status is not None:
-            splash_status.setText(message)
-        if hint is not None and splash_hint is not None:
-            splash_hint.setText(hint)
-        app.processEvents()
-
-    # Import the full UI only after the user can see immediate startup feedback.
-    # Presidio itself remains lazy and is loaded on the first analysis.
-    update_startup("Loading PrivacyGate interface…")
+    # Import the full UI after the independent splash worker is visible. Presidio
+    # itself remains lazy and is loaded on the first analysis.
     from ai_pm_lab_privacy_gate.infrastructure.local_api.manager import LocalApiManager
     from ai_pm_lab_privacy_gate.ui.main_window import MainWindow
     from ai_pm_lab_privacy_gate.ui.settings_services_cleanup_2026 import (
         apply_settings_services_cleanup_2026,
     )
 
-    update_startup("Preparing your workspace…")
     window = MainWindow()
     local_api = LocalApiManager(window.service, window.library.data_dir)
     window.local_api_manager = local_api
@@ -200,7 +314,6 @@ def main() -> int:
     # Desktop and MCP settings still share the same local preferences file, but no
     # longer trigger LocalApiManager lifecycle work.
     window.settings_page.local_api_preferences_changed.connect(apply_local_api_preferences)
-    update_startup("Starting local services…")
     apply_local_api_preferences()
     app.aboutToQuit.connect(local_api.stop)
 
@@ -222,24 +335,23 @@ def main() -> int:
         instance_server.newConnection.connect(show_existing_window)
 
     if not background_start:
-        update_startup(
-            "Opening PrivacyGate…",
-            "The app will open shortly. You do not need to click the icon again.",
-        )
+        # Paint the real main window once before dismissing the independent startup
+        # surface. The user therefore never sees a blank interval between splash
+        # and application, even on slower first launches.
+        window.showMaximized()
+        window.raise_()
+        window.activateWindow()
+        app.processEvents()
+        _signal_startup_complete(startup_sentinel)
 
-        # Let the real Qt event loop start before dismissing the splash. This keeps
-        # startup feedback visible through the complete synchronous initialization
-        # path and avoids the previous gap where the splash vanished just before the
-        # main window became interactive.
-        def reveal_main_window() -> None:
-            window.showMaximized()
-            window.raise_()
-            window.activateWindow()
-            if splash is not None:
-                splash.finish(window)
+        if startup_sentinel is not None:
+            def cleanup_startup_sentinel() -> None:
+                startup_sentinel.unlink(missing_ok=True)
 
-        QTimer.singleShot(0, reveal_main_window)
+            QTimer.singleShot(1500, cleanup_startup_sentinel)
 
+    # Keep a reference until the worker exits; it owns no PrivacyGate service state.
+    window._startup_splash_process = startup_process
     return app.exec()
 
 
