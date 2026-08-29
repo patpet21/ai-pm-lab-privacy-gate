@@ -117,3 +117,11 @@ def test_italian_business_identifiers_and_legal_entity() -> None:
     assert _values(recognizers, text, "IT_REA_NUMBER") == ["RM-123456"]
     assert _values(recognizers, text, "IT_BUSINESS_REGISTER_NUMBER") == ["RM123456789"]
     assert _values(recognizers, "Pratica RM-123456", "IT_REA_NUMBER") == []
+
+    prose = (
+        "Mario Rossi incontrerà l’amministratrice Laura Ferri presso gli uffici di "
+        "Aurora Gestioni Immobiliari S.r.l. a Milano."
+    )
+    assert _values(recognizers, prose, "ORGANIZATION") == [
+        "Aurora Gestioni Immobiliari S.r.l."
+    ]
