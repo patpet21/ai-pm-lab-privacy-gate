@@ -1,7 +1,17 @@
 from __future__ import annotations
 
+from dataclasses import replace
+
 from PySide6.QtCore import QCoreApplication, QEvent, QTimer, Qt
-from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QPushButton, QVBoxLayout, QWidget
+from PySide6.QtWidgets import (
+    QFrame,
+    QHBoxLayout,
+    QLabel,
+    QMessageBox,
+    QPushButton,
+    QVBoxLayout,
+    QWidget,
+)
 
 from ai_pm_lab_privacy_gate.ui.iconography import icon
 
@@ -196,6 +206,71 @@ def _polish_services_copy(settings) -> None:
                     label.setText("Browser protection, automation and connections.")
 
 
+def _install_bridge_only_save(settings) -> None:
+    """Make the Services save action persist only Local Privacy Bridge fields.
+
+    The redesigned Services page no longer owns MCP configuration. Even if legacy
+    MCP widgets remain alive off-screen for compatibility, saving the Bridge must
+    preserve the existing MCP mode and port exactly as stored on disk.
+    """
+    pages = getattr(settings, "settings_service_pages", None)
+    page = pages.get("services") if isinstance(pages, dict) else None
+    if not isinstance(page, QWidget):
+        return
+
+    save_button = None
+    for button in page.findChildren(QPushButton):
+        if button.text().strip() == "Save Privacy Bridge":
+            save_button = button
+            break
+    if save_button is None:
+        return
+
+    try:
+        save_button.clicked.disconnect()
+    except (RuntimeError, TypeError):
+        pass
+
+    def save_bridge() -> None:
+        current = settings.store.load()
+        enabled = bool(settings.local_api_enabled.isChecked())
+        raw_port = settings.local_api_port_input.text().strip()
+        parsed_port = settings._local_api_port_value()
+
+        if enabled and parsed_port is None:
+            QMessageBox.warning(
+                settings,
+                "Invalid bridge port",
+                "Enter a Local Privacy Bridge port between 1024 and 65535.",
+            )
+            return
+
+        port = int(parsed_port) if parsed_port is not None else int(current.local_api_port)
+        changed = enabled != current.local_api_enabled or port != current.local_api_port
+        if not changed:
+            QMessageBox.information(settings, "No changes", "There are no unsaved Privacy Bridge changes.")
+            return
+
+        updated = replace(
+            current,
+            local_api_enabled=enabled,
+            local_api_port=port,
+        )
+        settings.store.save(updated)
+        settings.prefs = updated
+        settings.preferences_changed.emit()
+        settings.local_api_preferences_changed.emit()
+        settings.refresh_local_api_status()
+        QMessageBox.information(
+            settings,
+            "Privacy Bridge saved",
+            "Local Privacy Bridge settings saved locally and applied immediately.",
+        )
+
+    save_button.clicked.connect(save_bridge)
+    settings._privacygate_bridge_only_save = save_bridge
+
+
 def apply_settings_services_cleanup_2026(main_window) -> None:
     """Give Bridge and MCP one authoritative UI home each.
 
@@ -239,4 +314,5 @@ def apply_settings_services_cleanup_2026(main_window) -> None:
 
     _hide_quick_mcp(settings)
     _polish_services_copy(settings)
+    _install_bridge_only_save(settings)
     settings._privacygate_services_cleanup_2026 = True
