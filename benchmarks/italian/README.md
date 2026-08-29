@@ -13,6 +13,25 @@ This directory is for development-only evaluation of the PrivacyGate Italian Pri
 
 PrivacyGate uses `xx_ent_wiki_sm` 3.8.0 as the distributable Italian NER baseline for `PERSON`, `ORGANIZATION` and `LOCATION`. It is a small multilingual spaCy model with MIT model licensing. The official `it_core_news_sm` 3.8.0 model is not bundled because its published license is CC BY-NC-SA 3.0.
 
+The compact multilingual model is treated as a baseline, not as an unquestioned source of truth. Precision-first Italian guardrails suppress obvious form labels, headings and instruction text, while deterministic/contextual recognizers take priority for structured identifiers, complete role-based person names and legal company names.
+
+## Current synthetic regression coverage
+
+The local test suite includes regression cases derived from a fully synthetic Italian property-management document. No real personal data is stored in the repository. Current coverage includes:
+
+- `PERSON`, `ORGANIZATION`, `LOCATION`
+- Codice Fiscale, Partita IVA, IBAN
+- email and contextual PEC classification
+- Italian phone numbers and street addresses
+- CAP and province
+- carta d'identità, passaporto, patente and vehicle plate
+- cadastral municipality code, section, sheet, parcel and subaltern
+- REA and Registro Imprese
+- contextual Italian `DATE_OF_BIRTH`, including textual month names
+- profile-scoped property amounts such as `RENT_AMOUNT`, `SECURITY_DEPOSIT_AMOUNT`, `PURCHASE_PRICE`, `OFFER_PRICE`, `MANAGEMENT_FEE` and `INVOICE_AMOUNT`
+
+Repeated recognized PERSON/ORGANIZATION/LOCATION values are propagated across the same document so short footers, causali or table cells do not silently expose a value already identified elsewhere.
+
 ## Planned workflow
 
 1. Download an approved Italian validation set on the development machine.
