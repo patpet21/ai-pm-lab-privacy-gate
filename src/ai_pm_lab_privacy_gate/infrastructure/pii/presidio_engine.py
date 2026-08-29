@@ -134,8 +134,33 @@ class PresidioPrivacyEngine:
             )
 
             results = filter_italian_ner_results(page.text, results)
+            results = self._prefer_specific_italian_results(results)
         resolved = self._without_overlaps(results)
         return [self._to_finding(page, result, index) for index, result in enumerate(resolved)]
+
+    @staticmethod
+    def _prefer_specific_italian_results(results: list[Any]) -> list[Any]:
+        """Prefer Italian-specific categories over overlapping generic ones.
+
+        A PEC is also syntactically a normal email address, so both recognizers can
+        fire on exactly the same span. Preserve the semantically richer IT_PEC_ADDRESS
+        result and discard only the overlapping generic EMAIL_ADDRESS result.
+        """
+        pec_spans = [
+            (item.start, item.end)
+            for item in results
+            if str(item.entity_type) == "IT_PEC_ADDRESS"
+        ]
+        if not pec_spans:
+            return results
+        return [
+            item
+            for item in results
+            if not (
+                str(item.entity_type) == "EMAIL_ADDRESS"
+                and any(item.start < end and start < item.end for start, end in pec_spans)
+            )
+        ]
 
     @staticmethod
     def _without_overlaps(results: list[Any]) -> list[Any]:
