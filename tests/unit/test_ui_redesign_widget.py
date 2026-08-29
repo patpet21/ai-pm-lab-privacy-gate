@@ -16,11 +16,16 @@ def test_redesigned_protection_page_constructs(tmp_path):
     from ai_pm_lab_privacy_gate.ui.protect_workflow_v2 import apply_protect_workflow_v2
 
     app = QApplication.instance() or QApplication([])
-    page = ProtectionPage(PrivacyGateService(), LibraryRepository(tmp_path / "data"))
+    service = PrivacyGateService()
+    page = ProtectionPage(service, LibraryRepository(tmp_path / "data"))
     try:
         assert hasattr(page, "_redesign_protect_button")
         assert hasattr(page, "_redesign_scroll")
         assert hasattr(page, "_protect_quick_actions")
+        assert hasattr(page, "document_language_combo")
+        assert page.document_language_combo.currentData() == "en"
+        assert page.document_language_combo.currentText() == "English"
+        assert service.document_language == "en"
         assert page._protect_save_only.text() == "Save to Library"
         assert page._protect_save_copy.text() == "Save + Copy"
         assert page._protect_save_download.text() == "Save + Download"
@@ -64,6 +69,25 @@ def test_redesigned_protection_page_constructs(tmp_path):
         assert page._redesign_results_card.isHidden()
         assert page._protect_quick_actions.isHidden()
 
+        # Changing document language must keep the source but invalidate every
+        # finding/result created under the previous detector language.
+        page.current_document = service.document_from_text(page.text_input.toPlainText())
+        page.current_findings = (SimpleNamespace(finding_id="stale"),)
+        page.current_result = SimpleNamespace(combined_text="stale protected text")
+        page._redesign_results_card.show()
+        italian_index = page.document_language_combo.findData("it")
+        assert italian_index >= 0
+        page.document_language_combo.setCurrentIndex(italian_index)
+        app.processEvents()
+        assert service.document_language == "it"
+        assert page.current_document is None
+        assert page.current_findings == ()
+        assert page.current_result is None
+        assert page.text_input.toPlainText().startswith("Daniel Mercer")
+        assert page.scan_button.isEnabled()
+        assert page._redesign_results_card.isHidden()
+        assert "scan again" in page._redesign_review_metric.text().lower()
+
         page.clear()
         app.processEvents()
         assert not page.scan_button.isEnabled()
@@ -71,6 +95,7 @@ def test_redesigned_protection_page_constructs(tmp_path):
         assert page._protect_quick_actions.isHidden()
         assert page.setup_toggle.isHidden()
         assert not page.preview_tabs.isTabVisible(page._privacy_check_tab_index)
+        assert page.document_language_combo.currentData() == "it"
 
         page.pdf_path.setText(str(tmp_path / "sample.pdf"))
         app.processEvents()
