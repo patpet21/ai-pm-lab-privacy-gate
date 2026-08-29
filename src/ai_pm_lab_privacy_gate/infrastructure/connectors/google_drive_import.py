@@ -23,7 +23,9 @@ _GOOGLE_EXPORTS = {
         ".pptx",
     ),
 }
-_SUPPORTED_SUFFIXES = {".pdf", ".docx", ".xlsx", ".pptx", ".txt"}
+_SUPPORTED_SUFFIXES = {
+    ".pdf", ".docx", ".xlsx", ".pptx", ".txt", ".png", ".jpg", ".jpeg"
+}
 _IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".webp", ".tif", ".tiff", ".heic"}
 
 
@@ -59,13 +61,13 @@ def materialize_google_drive_item(service: ConnectedAppsService, item: RemoteIte
         if suffix not in _SUPPORTED_SUFFIXES:
             if item.kind.startswith("image/") or suffix in _IMAGE_SUFFIXES:
                 raise ValueError(
-                    "This image is visible in Google Drive, but PrivacyGate cannot analyze image pixels yet. "
-                    "Local OCR/image protection is the next document-engine block. "
-                    "Supported now: PDF, DOCX, XLSX, PPTX, TXT, Google Docs, Google Sheets and Google Slides."
+                    "PrivacyGate image OCR currently supports PNG, JPG and JPEG files. "
+                    "Convert WEBP, TIFF or HEIC locally to PNG/JPG first, then import the converted copy."
                 )
             raise ValueError(
                 "This Drive file type is not supported by Protect yet. Supported now: PDF, Word (.docx), "
-                "Excel (.xlsx), PowerPoint (.pptx), text (.txt), Google Docs, Google Sheets and Google Slides."
+                "Excel (.xlsx), PowerPoint (.pptx), text (.txt), PNG/JPG images, Google Docs, "
+                "Google Sheets and Google Slides."
             )
         filename = _safe_filename(item.title)
         response = httpx.get(
