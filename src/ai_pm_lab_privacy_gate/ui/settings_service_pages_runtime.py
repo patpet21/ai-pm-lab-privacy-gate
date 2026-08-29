@@ -91,6 +91,65 @@ def _primary_button(text: str, *, icon_name: str | None = None) -> QPushButton:
     return button
 
 
+def _find_card(settings: QWidget, heading: str) -> QFrame | None:
+    for frame in settings.findChildren(QFrame):
+        for label in frame.findChildren(QLabel):
+            if label.text().strip() == heading:
+                return frame
+    return None
+
+
+def _detach_local_bridge_for_redesign(main_window) -> QFrame | None:
+    """Keep the original SettingsPage bridge card alive while the old layout is replaced.
+
+    The base 2026 service-page builder clears controls that it does not explicitly
+    reparent. Local Privacy Bridge was added after that builder, so preserve the
+    existing card before the clear instead of creating a second set of controls.
+    """
+    settings = getattr(main_window, "settings_page", None)
+    if settings is None or bool(getattr(settings, "_privacygate_dedicated_service_pages_2026", False)):
+        return None
+    card = _find_card(settings, "Local Privacy Bridge")
+    if card is None:
+        return None
+    card.setParent(main_window)
+    card.hide()
+    return card
+
+
+def _mount_local_bridge_in_services(settings, card: QFrame | None) -> None:
+    if card is None:
+        return
+    pages = getattr(settings, "settings_service_pages", None)
+    services_page = pages.get("services") if isinstance(pages, dict) else None
+    if not isinstance(services_page, QWidget):
+        return
+    content = services_page.findChild(QWidget, "Settings2026DedicatedContent")
+    body = content.layout() if content is not None else None
+    if not isinstance(body, QVBoxLayout):
+        return
+
+    # Place the original Bridge card before the MCP/runtime controls. The widget's
+    # existing checkbox, port field and status label remain the single live controls.
+    insertion_index = min(2, body.count())
+    for index in range(body.count()):
+        widget = body.itemAt(index).widget()
+        if not isinstance(widget, QWidget):
+            continue
+        if _find_card(widget, "Local MCP service") is not None:
+            insertion_index = index
+            break
+        if any(
+            label.text().strip() == "PrivacyGate runtime services"
+            for label in widget.findChildren(QLabel)
+        ):
+            insertion_index = index
+            break
+    body.insertWidget(max(0, insertion_index), card)
+    card.show()
+    settings.local_privacy_bridge_service_card = card
+
+
 def _decorate_service_navigation(settings) -> None:
     """Make returning to the Settings launcher visually unmistakable."""
     pages = getattr(settings, "settings_service_pages", None)
@@ -204,7 +263,8 @@ def _install_general_quick_settings(main_window, settings) -> None:
 
     The dedicated Device/Services pages still own the full controls. These are a
     synchronized quick-control surface that writes through the original SettingsPage
-    widgets and _save() implementation, so there is only one persisted preference model.
+    widgets and scoped _save() implementation, so there is only one persisted
+    preference model.
     """
     if bool(getattr(settings, "_privacygate_general_quick_settings", False)):
         return
@@ -401,6 +461,7 @@ def _compact_hub_cards(settings) -> None:
 def apply_settings_service_pages_2026_runtime(main_window) -> None:
     """Apply the dedicated service shell with Windows-safe navigation and general controls."""
     WorkspaceFilesPage._refresh_table = _safe_refresh_table
+    local_bridge_card = _detach_local_bridge_for_redesign(main_window)
     _apply_service_pages(main_window)
 
     settings = getattr(main_window, "settings_page", None)
@@ -419,6 +480,7 @@ def apply_settings_service_pages_2026_runtime(main_window) -> None:
 
     if settings is None:
         return
+    _mount_local_bridge_in_services(settings, local_bridge_card)
     _decorate_service_navigation(settings)
     _compact_hub_cards(settings)
     _install_general_quick_settings(main_window, settings)
