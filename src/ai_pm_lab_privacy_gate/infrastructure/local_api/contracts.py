@@ -7,6 +7,7 @@ from dataclasses import dataclass
 class AnalyzeRequest:
     text: str
     profile_key: str
+    language: str = "en"
 
 
 @dataclass(frozen=True, slots=True)
@@ -18,9 +19,17 @@ class AnalyzeResponse:
 class ProtectRequest:
     text: str
     profile_key: str
-    finding_ids: tuple[str, ...]
+    finding_ids: tuple[str, ...] | None = None
+    language: str = "en"
+    replacement_mode: str = "reversible"
 
 
-# No HTTP server is started in v0.1. These contracts reserve a stable boundary
-# for a future opt-in localhost API used by n8n.
+@dataclass(frozen=True, slots=True)
+class ProtectResponse:
+    protected_text: str
+    applied_finding_ids: tuple[str, ...]
+    entity_types: tuple[str, ...]
 
+
+# These contracts are intentionally text-only. The localhost bridge never returns
+# original values, restore mappings, source files, or Library records to clients.
