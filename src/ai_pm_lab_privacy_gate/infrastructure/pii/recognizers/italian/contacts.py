@@ -7,7 +7,10 @@ from ai_pm_lab_privacy_gate.infrastructure.pii.recognizers.italian.contextual im
 )
 
 
-_EMAIL_PATTERN = r"(?<![\w.+-])[A-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?(?:\.[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?)+(?![\w.-])"
+# A trailing full stop is normal sentence punctuation and must not invalidate an
+# otherwise complete email/PEC. Domain labels are consumed greedily, so allowing
+# punctuation after the final TLD does not truncate a longer valid domain.
+_EMAIL_PATTERN = r"(?<![\w.+-])[A-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?(?:\.[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?)+(?![\w-])"
 _PHONE_VALUE = r"(?:(?:\+39|0039)\s*)?(?:3\d{2}|0\d{1,3})(?:[\s./-]?\d){6,8}"
 
 
