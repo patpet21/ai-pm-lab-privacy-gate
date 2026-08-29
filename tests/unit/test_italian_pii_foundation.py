@@ -49,7 +49,19 @@ def test_italian_registry_isolated_from_english_installers() -> None:
         for recognizer in registry.recognizers
         for entity in recognizer.supported_entities
     }
-    assert entities == set(ITALIAN_ENTITY_TYPES)
+    # ITALIAN_ENTITY_TYPES are the entities which must be requested regardless of
+    # product profile. Other installed Italian recognizers intentionally reuse
+    # existing profile-scoped entities such as DATE_OF_BIRTH and RENT_AMOUNT.
+    assert set(ITALIAN_ENTITY_TYPES) <= entities
+    assert {
+        "DATE_OF_BIRTH",
+        "RENT_AMOUNT",
+        "SECURITY_DEPOSIT_AMOUNT",
+        "PURCHASE_PRICE",
+        "OFFER_PRICE",
+        "MANAGEMENT_FEE",
+        "INVOICE_AMOUNT",
+    } <= entities
     assert all(recognizer.supported_language == "it" for recognizer in registry.recognizers)
 
 
