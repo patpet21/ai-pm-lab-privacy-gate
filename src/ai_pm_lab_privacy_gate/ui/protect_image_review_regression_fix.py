@@ -1,18 +1,46 @@
 from __future__ import annotations
 
-"""Keep the approved Protect review surface authoritative after document analysis.
+"""Keep the approved Protect review surface authoritative after image/OCR support.
 
-The image/OCR extension must not own navigation state.  In particular it must not
-leave Protect in the legacy full-document focus mode, because that mode hides the
-existing findings/tags/manual-sensitive controls.  This compatibility layer runs
-last in the approved Protect refinement suite and restores the normal review
-surface after every completed analysis while preserving the user's ability to
-enter full-document view manually afterwards.
+This module is deliberately a compatibility bridge only. It does not build a
+second Protect or Drive UI: it keeps the proven review surface authoritative and
+teaches the existing Drive browser that the central document engine now supports
+PNG/JPG/JPEG images.
 """
 
+from pathlib import Path
 from types import MethodType
 
 from PySide6.QtCore import QTimer
+
+
+def _enable_drive_image_import() -> None:
+    """Extend the existing Drive browser with the formats the pipeline now owns."""
+    from ai_pm_lab_privacy_gate.ui import drive_browser
+
+    drive_browser.SUPPORTED_SUFFIXES.update({".png", ".jpg", ".jpeg"})
+    if getattr(drive_browser, "_privacygate_image_ocr_enabled", False):
+        return
+
+    previous_supported = drive_browser._supported
+
+    def supported(remote) -> bool:
+        # Drive files can be named simply "Untitled", so suffix-only checks are
+        # insufficient. Accept only the image MIME types supported by the local
+        # OCR pipeline; WEBP/TIFF/HEIC remain intentionally excluded from v1.
+        if str(getattr(remote, "kind", "") or "").lower() in {
+            "image/png",
+            "image/jpeg",
+            "image/jpg",
+        }:
+            return True
+        suffix = Path(str(getattr(remote, "title", "") or "")).suffix.lower()
+        if suffix in {".png", ".jpg", ".jpeg"}:
+            return True
+        return previous_supported(remote)
+
+    drive_browser._supported = supported
+    drive_browser._privacygate_image_ocr_enabled = True
 
 
 def _restore_review_surface(page) -> None:
@@ -21,7 +49,7 @@ def _restore_review_surface(page) -> None:
 
     focus = getattr(page, "focus_preview_button", None)
     if focus is not None and focus.isChecked():
-        # The existing toggled signal owns the real layout transition.  Reuse it
+        # The existing toggled signal owns the real layout transition. Reuse it
         # rather than duplicating the approved review/document layout logic.
         focus.setChecked(False)
 
@@ -36,7 +64,7 @@ def _restore_review_surface(page) -> None:
         table.setVisible(True)
 
     # These are the established controls the user uses to inspect categories and
-    # add exact local-only sensitive values.  Never replace or recreate them.
+    # add exact local-only sensitive values. Never replace or recreate them.
     for name in (
         "categories_button",
         "reset_selections_button",
@@ -55,7 +83,9 @@ def _restore_review_surface(page) -> None:
 
 
 def apply_protect_image_review_regression_fix(main_window) -> None:
-    """Prevent OCR/image support from hiding the existing Protect review UI."""
+    """Enable image import while preserving the existing Protect review UI."""
+    _enable_drive_image_import()
+
     page = getattr(main_window, "protection_page", None)
     if page is None or getattr(page, "_image_review_regression_fix_applied", False):
         return
