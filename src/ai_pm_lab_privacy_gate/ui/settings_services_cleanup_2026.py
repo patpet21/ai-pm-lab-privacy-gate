@@ -138,7 +138,7 @@ def _build_mcp_reference(main_window) -> QFrame:
         manager = getattr(main_window, "remote_mcp", None)
         remote = getattr(manager, "status", None)
         state = str(getattr(remote, "state", "stopped") or "stopped").lower()
-        if state == "online":
+        if state in {"online", "external"}:
             text, bg, fg, border = "ONLINE", "#EAF8F1", GREEN, "#CDE8D9"
         elif state in {"starting", "reconnecting"}:
             text, bg, fg, border = state.upper(), "#FFF6E8", AMBER, "#F0D9B3"
