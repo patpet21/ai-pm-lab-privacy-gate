@@ -125,7 +125,7 @@ def apply_local_protect_session_runtime(main_window) -> None:
             primary = _primary_analysis(analysis)
             self._analysis_ready((primary.document, analysis.findings))
 
-            if primary.document.source_kind in {"pdf", "docx", "xlsx", "pptx"}:
+            if primary.document.source_kind in {"pdf", "docx", "xlsx", "pptx", "image"}:
                 self.preview_tabs.setTabVisible(1, True)
             elif analysis.package.source_count == 1:
                 self.preview_tabs.setTabVisible(1, False)
@@ -207,7 +207,7 @@ def apply_local_protect_session_runtime(main_window) -> None:
             f"{len(analysis.findings)} detected  |  {protected_count} protected"
         )
 
-        if self.current_document.source_kind in {"pdf", "docx", "xlsx", "pptx"}:
+        if self.current_document.source_kind in {"pdf", "docx", "xlsx", "pptx", "image"}:
             self.preview_tabs.setTabVisible(1, True)
             self._pdf_preview_timer.start()
         elif result.source_count == 1:
