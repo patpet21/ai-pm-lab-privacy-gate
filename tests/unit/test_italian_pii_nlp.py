@@ -62,3 +62,51 @@ def test_italian_nlp_fixture_guardrails_keep_values_not_field_labels() -> None:
         entity in {"PERSON", "ORGANIZATION", "LOCATION"} and value in blocked
         for entity, value in pairs
     )
+
+
+@pytest.mark.skipif(
+    importlib.util.find_spec("xx_ent_wiki_sm") is None,
+    reason="xx_ent_wiki_sm is installed by requirements-lock.txt for release builds",
+)
+def test_italian_real_docx_regression_rejects_test_labels_and_keeps_full_person() -> None:
+    engine = PresidioPrivacyEngine(language="it")
+    text = (
+        "Synthetic Test Fixture. Synthetic test data only. "
+        "DATI COMPLETAMENTE FITTIZI - SOLO PER TEST PRIVACYGATE. "
+        "REA: MI-1234567. PEC: amministrazione@auroragestioni.pec.it. "
+        "IBAN del conto dedicato: IT60 X054 2811 1010 0000 0123 456. "
+        "Carta d'identità n.: CA12345AA. "
+        "Mario Rossi incontrerà l’amministratrice Laura Ferri presso gli uffici di "
+        "Aurora Gestioni Immobiliari S.r.l. a Milano. "
+        "Aprire Protect e selezionare Document language: Italiano. "
+        "Eseguire Scan & Protect. Verificare il Privacy Check locale."
+    )
+    findings = engine.analyze_page(
+        PageContent(page_number=1, text=text),
+        get_profile("property_management"),
+    )
+    pairs = {(item.entity_type, item.text) for item in findings}
+
+    assert ("PERSON", "Laura Ferri") in pairs
+    assert ("ORGANIZATION", "Aurora Gestioni Immobiliari S.r.l.") in pairs
+    assert ("IT_REA_NUMBER", "MI-1234567") in pairs
+    assert ("IT_ID_CARD", "CA12345AA") in pairs
+
+    noisy_values = {
+        "Synthetic",
+        "Test",
+        "DATI",
+        "COMPLETAMENTE FITTIZI",
+        "REA",
+        "PEC",
+        "IBAN",
+        "Carta",
+        "Ferri",
+        "Aprire Protect",
+        "Eseguire Scan & Protect",
+        "Privacy Check",
+    }
+    assert not any(
+        entity in {"PERSON", "ORGANIZATION", "LOCATION"} and value in noisy_values
+        for entity, value in pairs
+    )
