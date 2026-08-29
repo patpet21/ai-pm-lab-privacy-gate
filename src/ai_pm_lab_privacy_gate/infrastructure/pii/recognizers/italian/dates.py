@@ -58,8 +58,9 @@ def build_date_recognizers() -> tuple[ItalianContextValueRecognizer, ...]:
             entity_type="DATE_OF_BIRTH",
             pattern=(
                 rf"\b(?:data\s+di\s+nascita|nato|nata)\b"
-                rf"(?:\s+(?:a|in)\s+[^\r\n,;.]+?)?\s+(?:il\s+)?"
-                rf"(?P<value>{_DATE_VALUE})\b"
+                rf"\s*[:#-]?\s*"
+                rf"(?:\b(?:a|in)\s+[^\r\n,;.]+?\s+)?"
+                rf"(?:il\s+)?(?P<value>{_DATE_VALUE})\b"
             ),
             score=0.995,
             validator=is_valid_italian_birth_date,
