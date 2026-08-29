@@ -22,6 +22,14 @@ def build_address_recognizers() -> tuple[object, ...]:
             pattern=r"(?:\bcap\b|codice\s+di\s+avviamento\s+postale)\s*[:#-]?\s*(?P<value>\d{5})(?!\d)",
             score=0.985,
         ),
+        # Common inline Italian address shape: Via ... 24, 20121 Milano (MI).
+        # The comma + five digits + capitalized locality makes this much safer
+        # than treating every five-digit number as a CAP.
+        ItalianContextValueRecognizer(
+            entity_type="IT_POSTAL_CODE",
+            pattern=r",\s*(?P<value>\d{5})(?!\d)\s+(?=[A-ZÀ-ÖØ-Þ])",
+            score=0.97,
+        ),
         ItalianContextValueRecognizer(
             entity_type="IT_POSTAL_CODE",
             pattern=r"^\s*(?P<value>\d{5})\s+[A-ZÀ-ÖØ-öø-ÿ][^\r\n,;]{1,50}(?:\s+\([A-Z]{2}\))?\s*$",
