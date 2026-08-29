@@ -124,6 +124,9 @@ def main() -> int:
     # Import the full UI only after the user can see immediate startup feedback.
     # Presidio itself remains lazy and is loaded on the first analysis.
     from ai_pm_lab_privacy_gate.infrastructure.local_api.manager import LocalApiManager
+    from ai_pm_lab_privacy_gate.ui.local_api_settings_2026 import (
+        install_local_privacy_bridge_settings,
+    )
     from ai_pm_lab_privacy_gate.ui.main_window import MainWindow
 
     window = MainWindow()
@@ -136,6 +139,7 @@ def main() -> int:
         window.settings_page.refresh_local_api_status()
 
     window.settings_page.preferences_changed.connect(apply_local_api_preferences)
+    install_local_privacy_bridge_settings(window)
     apply_local_api_preferences()
     app.aboutToQuit.connect(local_api.stop)
 
