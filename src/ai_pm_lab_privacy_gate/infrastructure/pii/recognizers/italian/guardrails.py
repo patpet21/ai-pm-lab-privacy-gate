@@ -63,6 +63,24 @@ _BLOCKED_PREFIXES = (
     "procedura consigliata",
     "synthetic test ",
 )
+# Generic NER sometimes returns a wider span than the exact checklist label, for
+# example ``REA/Registro Imprese`` or ``provincia. Dati``. These are still schema
+# language, not private values. Deterministic recognizers own real identifiers.
+_BLOCKED_STRUCTURAL_FRAGMENTS = (
+    "carta identità",
+    "carta d'identità",
+    "codice fiscale",
+    "dati catastali",
+    "documenti di identità",
+    "partita iva",
+    "passaporto",
+    "patente",
+    "postal_code",
+    "provincia",
+    "registro imprese",
+    "street_address",
+    "targa veicolo",
+)
 _INSTRUCTION_FIRST_WORDS = {
     "aprire",
     "caricare",
@@ -105,6 +123,8 @@ def is_italian_ner_false_positive(entity_type: str, value: str) -> bool:
     if not clean:
         return True
     if clean in _BLOCKED_EXACT or clean.startswith(_BLOCKED_PREFIXES):
+        return True
+    if any(fragment in clean for fragment in _BLOCKED_STRUCTURAL_FRAGMENTS):
         return True
     if "privacygate" in clean or "documento sintetico" in clean:
         return True
