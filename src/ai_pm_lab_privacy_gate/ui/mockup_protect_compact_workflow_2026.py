@@ -236,6 +236,26 @@ def _install_single_row(main_window) -> None:
         _field_host("Account", context_bar.account_combo, minimum=185, maximum=225)
     )
 
+    # The language selector is created by the core Protect runtime before this
+    # final presentation pass. Move that exact widget into the approved command
+    # row so Upload/connected/Paste/Language/Scan describe one coherent session.
+    language_panel = getattr(page, "_protect_document_language_panel", None)
+    language_combo = getattr(page, "document_language_combo", None)
+    language_label = getattr(page, "_protect_document_language_label", None)
+    if language_panel is not None and language_combo is not None:
+        if language_label is not None:
+            language_label.setText("Language")
+            language_label.setStyleSheet(
+                f"color:{MUTED};font-size:7px;font-weight:850;background:transparent;border:none;"
+            )
+        language_panel.setStyleSheet("QFrame#ProtectDocumentLanguage{background:transparent;border:none;}")
+        language_panel.setMinimumWidth(105)
+        language_panel.setMaximumWidth(122)
+        language_combo.setMinimumWidth(105)
+        language_combo.setMaximumWidth(122)
+        language_combo.setMinimumHeight(39)
+        row.addWidget(language_panel)
+
     context_bar.browse.setMinimumHeight(39)
     context_bar.browse.setMinimumWidth(145)
     context_bar.browse.setMaximumWidth(172)
