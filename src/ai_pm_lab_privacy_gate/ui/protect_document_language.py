@@ -12,7 +12,7 @@ place so the user can immediately run a fresh Scan & Protect.
 from types import MethodType
 
 from PySide6.QtCore import QTimer
-from PySide6.QtWidgets import QComboBox, QFrame, QHBoxLayout, QLabel, QLayout, QVBoxLayout
+from PySide6.QtWidgets import QComboBox, QFrame, QLabel, QLayout, QVBoxLayout
 
 from ai_pm_lab_privacy_gate.infrastructure.pii.languages import normalize_document_language
 from ai_pm_lab_privacy_gate.ui.protection_page import ProtectionPage
@@ -171,6 +171,8 @@ def _apply_document_language_selector(page: ProtectionPage) -> None:
             settings_layout.insertWidget(0, panel)
 
     page.document_language_combo = combo
+    page._protect_document_language_panel = panel
+    page._protect_document_language_label = label
     page._protect_document_language = "en"
     page.service.set_document_language("en")
 
