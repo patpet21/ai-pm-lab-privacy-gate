@@ -1,11 +1,21 @@
 from __future__ import annotations
 
 import html
+import os
 from pathlib import Path
 from types import MethodType
 
 from pptx import Presentation
-from PySide6.QtWidgets import QFileDialog, QMessageBox, QTextBrowser
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QImageReader, QPixmap
+from PySide6.QtWidgets import (
+    QFileDialog,
+    QFrame,
+    QLabel,
+    QMessageBox,
+    QScrollArea,
+    QTextBrowser,
+)
 
 
 def _pptx_slide_texts(path: Path) -> list[tuple[str, str]]:
@@ -40,6 +50,38 @@ def _load_pptx_internal(view, path: Path, protected: bool) -> None:
             f"<h3>{html.escape(title)}</h3><p>{escaped}</p></body></html>"
         )
         view.tabs.addTab(browser, title)
+
+
+def _image_preview_widget() -> tuple[QScrollArea, QLabel]:
+    """Reuse the existing document panel and add a neutral raster viewport."""
+    label = QLabel()
+    label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+    label.setScaledContents(False)
+    scroll = QScrollArea()
+    scroll.setFrameShape(QFrame.Shape.NoFrame)
+    scroll.setWidgetResizable(True)
+    scroll.setWidget(label)
+    return scroll, label
+
+
+def _load_image_preview(label: QLabel, path: Path) -> None:
+    reader = QImageReader(str(path))
+    reader.setAutoTransform(True)
+    image = reader.read()
+    if image.isNull():
+        detail = reader.errorString().strip() or "unknown image decode error"
+        raise ValueError(f"Image preview unavailable: {detail}")
+    pixmap = QPixmap.fromImage(image)
+    # Preview-only downscaling protects the UI from very large phone photos.
+    # Protection always runs against the original full-resolution pixels.
+    if pixmap.width() > 1800 or pixmap.height() > 1800:
+        pixmap = pixmap.scaled(
+            1800,
+            1800,
+            Qt.AspectRatioMode.KeepAspectRatio,
+            Qt.TransformationMode.SmoothTransformation,
+        )
+    label.setPixmap(pixmap)
 
 
 def _apply_restore_pipeline_v2(main_window) -> None:
@@ -136,13 +178,13 @@ def _apply_restore_pipeline_v2(main_window) -> None:
 
 
 def apply_document_pipeline_v2_ui(main_window) -> None:
-    """Expose PDF/DOCX/XLSX/PPTX/TXT uniformly in Protect and Restore."""
+    """Expose every unified pipeline format without duplicating Protect UI."""
     page = getattr(main_window, "protection_page", None)
     if page is None or getattr(page, "_document_pipeline_v2_applied", False):
         _apply_restore_pipeline_v2(main_window)
         return
 
-    page.pdf_path.setPlaceholderText("PDF, Word, Excel, PowerPoint or TXT")
+    page.pdf_path.setPlaceholderText("PDF, Word, Excel, PowerPoint, TXT, PNG or JPG")
     page.high_fidelity_button.setToolTip(
         "Use LibreOffice locally for a page-accurate Word, Excel or PowerPoint preview."
     )
@@ -150,14 +192,22 @@ def apply_document_pipeline_v2_ui(main_window) -> None:
         "Save locally and export the protected source-format copy plus a protected TXT companion."
     )
 
+    # The base document panels are shared by PDF/Office previews. Add image
+    # viewports to those same stacks instead of creating a second preview system.
+    page.original_image_scroll, page.original_image_label = _image_preview_widget()
+    page.protected_image_scroll, page.protected_image_label = _image_preview_widget()
+    page.original_view_stack.addWidget(page.original_image_scroll)
+    page.protected_view_stack.addWidget(page.protected_image_scroll)
+
     def browse_document(self) -> None:
         path, _ = QFileDialog.getOpenFileName(
             self,
             "Choose a document",
             "",
-            "Supported documents (*.pdf *.docx *.xlsx *.pptx *.txt);;"
+            "Supported documents (*.pdf *.docx *.xlsx *.pptx *.txt *.png *.jpg *.jpeg);;"
             "PDF files (*.pdf);;Word files (*.docx);;Excel files (*.xlsx);;"
-            "PowerPoint files (*.pptx);;Text files (*.txt)",
+            "PowerPoint files (*.pptx);;Text files (*.txt);;"
+            "Image files (*.png *.jpg *.jpeg)",
         )
         if path:
             self.pdf_path.setText(path)
@@ -170,11 +220,22 @@ def apply_document_pipeline_v2_ui(main_window) -> None:
     page._browse_document = MethodType(browse_document, page)
     page.browse_button.clicked.connect(page._browse_document)
 
+    original_analysis_ready = page._analysis_ready
+
+    def analysis_ready(self, payload: object) -> None:
+        original_analysis_ready(payload)
+        if self.current_document is not None and self.current_document.source_kind == "image":
+            self.focus_preview_button.setChecked(True)
+
+    page._analysis_ready = MethodType(analysis_ready, page)
+
     original_refresh = page._refresh_preview
 
     def refresh_preview(self, *args) -> None:
         original_refresh(*args)
-        if self.current_document is not None and self.current_document.source_kind == "pptx":
+        if self.current_document is None:
+            return
+        if self.current_document.source_kind in {"pptx", "image"}:
             self.preview_tabs.setTabVisible(1, True)
             self._pdf_preview_timer.start()
 
@@ -183,6 +244,51 @@ def apply_document_pipeline_v2_ui(main_window) -> None:
     original_comparison = page._update_document_comparison
 
     def update_document_comparison(self) -> None:
+        if (
+            self.current_document is not None
+            and self.current_result is not None
+            and self.current_document.source_path is not None
+            and self.current_document.source_kind == "image"
+        ):
+            try:
+                self.protected_pdf_document.close()
+                self.original_pdf_document.close()
+                self.office_preview_options_widget.setVisible(False)
+                self._set_pdf_controls_enabled(False)
+                suffix = self.current_document.source_path.suffix.lower()
+                if suffix not in {".png", ".jpg", ".jpeg"}:
+                    suffix = ".png"
+                protected_path = self._preview_directory / (
+                    f"protected-image-{os.getpid()}-{self.current_document.source_path.stem}{suffix}"
+                )
+                self.service.save_protected_document(
+                    self.current_result,
+                    protected_path,
+                    source_document=self.current_document,
+                )
+                _load_image_preview(
+                    self.original_image_label, Path(self.current_document.source_path)
+                )
+                _load_image_preview(self.protected_image_label, protected_path)
+                self.original_view_stack.setCurrentWidget(self.original_image_scroll)
+                self.protected_view_stack.setCurrentWidget(self.protected_image_scroll)
+                self.comparison_note.setText(
+                    "Local image preview: original on the left and pixel-redacted protected copy "
+                    "on the right. OCR and redaction stay on this device; source EXIF metadata is "
+                    "not copied to the protected image."
+                )
+            except Exception as exc:
+                self.preview_tabs.setTabToolTip(1, f"Preview unavailable: {exc}")
+                self.comparison_note.setText(str(exc))
+                self.preview_tabs.setCurrentIndex(0)
+            else:
+                self.preview_tabs.setTabToolTip(
+                    1,
+                    "Compare the local image source with its protected pixel-redacted copy.",
+                )
+                self.preview_tabs.setCurrentIndex(1)
+            return
+
         if (
             self.current_document is None
             or self.current_result is None
@@ -258,15 +364,24 @@ def apply_document_pipeline_v2_ui(main_window) -> None:
             return
 
         kind = self.current_document.source_kind
-        labels = {
-            "pdf": ("PDF", ".pdf"),
-            "docx": ("Word", ".docx"),
-            "xlsx": ("Excel", ".xlsx"),
-            "pptx": ("PowerPoint", ".pptx"),
-            "txt": ("Text", ".txt"),
-            "text": ("Text", ".txt"),
-        }
-        label, suffix = labels.get(kind, ("Document", ".txt"))
+        if (
+            kind == "image"
+            and self.current_document.source_path is not None
+            and self.current_document.source_path.suffix.lower() in {".png", ".jpg", ".jpeg"}
+        ):
+            label = "Image"
+            suffix = self.current_document.source_path.suffix.lower()
+        else:
+            labels = {
+                "pdf": ("PDF", ".pdf"),
+                "docx": ("Word", ".docx"),
+                "xlsx": ("Excel", ".xlsx"),
+                "pptx": ("PowerPoint", ".pptx"),
+                "txt": ("Text", ".txt"),
+                "text": ("Text", ".txt"),
+            }
+            label, suffix = labels.get(kind, ("Document", ".txt"))
+
         suggested = f"{document.title}_protected{suffix}"
         path, _ = QFileDialog.getSaveFileName(
             self,
