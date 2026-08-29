@@ -37,17 +37,31 @@ def _set_min_point_size(widget: QWidget, minimum: float) -> None:
     widget.setFont(font)
 
 
+def _style_findings_table(table) -> None:
+    """Set an explicit local QSS floor so the app stylesheet cannot keep it tiny.
+
+    A QFont-only increase is easy for Qt's application stylesheet to override.
+    The review table therefore gets a small explicit pixel size while retaining
+    the existing colors, selection behavior and column layout.
+    """
+    table.setStyleSheet(
+        "QTableWidget{font-size:13px;}"
+        "QTableWidget::item{font-size:13px;padding:5px 8px;}"
+        "QHeaderView::section{font-size:12px;font-weight:800;padding:7px 8px;}"
+    )
+    header_font = table.horizontalHeader().font()
+    header_font.setPointSizeF(max(header_font.pointSizeF(), 10.0))
+    header_font.setBold(True)
+    table.horizontalHeader().setFont(header_font)
+    table.verticalHeader().setDefaultSectionSize(
+        max(table.verticalHeader().defaultSectionSize(), 34)
+    )
+
+
 def _refresh_readability(page) -> None:
     table = getattr(page, "findings_table", None)
     if table is not None:
-        # The review table inherited the compact application default. A small
-        # increase is enough to make Type / Value / Location readable while
-        # preserving the number of visible rows.
-        _set_min_point_size(table, 10.5)
-        header = table.horizontalHeader()
-        _set_min_point_size(header, 10.0)
-        vertical = table.verticalHeader()
-        vertical.setDefaultSectionSize(max(vertical.defaultSectionSize(), 30))
+        _style_findings_table(table)
 
     card = getattr(page, "findings_card", None)
     if card is None:
@@ -83,8 +97,8 @@ def apply_protect_readability_finish(main_window) -> None:
     _refresh_readability(page)
     QTimer.singleShot(0, lambda: _refresh_readability(page))
 
-    # Scan repopulates the table/status widgets. Re-assert the same visual floor
-    # after completion without touching detection or protection behavior.
+    # Scan repopulates the table/status widgets. The local QSS persists for new
+    # items; refresh once more after the click to cover any compatibility restyle.
     scan = getattr(page, "scan_button", None)
     if scan is not None:
         scan.clicked.connect(
