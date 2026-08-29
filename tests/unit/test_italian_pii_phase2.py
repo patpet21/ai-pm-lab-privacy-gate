@@ -34,7 +34,7 @@ def test_italian_contacts_detect_email_pec_and_phone() -> None:
     recognizers = build_contact_recognizers()
     text = (
         "Email: mario.rossi@example.it\n"
-        "PEC: studio@pec.example.it\n"
+        "PEC: studio@pec.example.it.\n"
         "Telefono: 06 6982 1234\n"
         "Cellulare: +39 347 1234567"
     )
