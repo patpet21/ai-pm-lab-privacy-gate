@@ -1,9 +1,13 @@
 const state = document.getElementById("state");
+const connectedSection = document.getElementById("connectedSection");
 const pairSection = document.getElementById("pairSection");
 const codeInput = document.getElementById("code");
 const pairButton = document.getElementById("pairButton");
 const forgetButton = document.getElementById("forgetButton");
 const message = document.getElementById("message");
+const protectionState = document.getElementById("protectionState");
+
+const PROTECTION_STORAGE_KEY = "privacygateProtectionEnabled";
 
 function setState(kind, text) {
   state.className = kind;
@@ -15,30 +19,43 @@ function setMessage(text, isError = false) {
   message.style.color = isError ? "#B54747" : "#61798A";
 }
 
+async function refreshProtectionState() {
+  const values = await chrome.storage.local.get({ [PROTECTION_STORAGE_KEY]: true });
+  const enabled = values?.[PROTECTION_STORAGE_KEY] !== false;
+  protectionState.textContent = enabled ? "ON" : "OFF";
+  protectionState.style.background = enabled ? "#EAF8F1" : "#EEF3F7";
+  protectionState.style.color = enabled ? "#23824B" : "#61798A";
+}
+
 function renderStatus(response) {
   const bridgeReady = Boolean(response?.bridgeReady);
   const paired = Boolean(response?.paired && response?.ok);
 
+  connectedSection.hidden = true;
+  pairSection.hidden = true;
+  forgetButton.hidden = true;
+
   if (!bridgeReady) {
-    setState("offline", "OFFLINE");
+    setState("offline", "APP OFFLINE");
     pairSection.hidden = false;
-    forgetButton.hidden = true;
-    setMessage("Open PrivacyGate desktop and enable Local Privacy Bridge.");
+    pairButton.disabled = true;
+    setMessage("Open PrivacyGate desktop and make sure Local Privacy Bridge is running.");
     return;
   }
 
   if (paired) {
-    setState("paired", "PAIRED");
-    pairSection.hidden = true;
+    setState("paired", "CONNECTED");
+    connectedSection.hidden = false;
     forgetButton.hidden = false;
     setMessage("");
+    refreshProtectionState();
     return;
   }
 
-  setState("unpaired", "PAIR REQUIRED");
+  setState("unpaired", "CONNECT ONCE");
   pairSection.hidden = false;
-  forgetButton.hidden = true;
-  setMessage("Create an 8-digit code in PrivacyGate → Settings → Services → Browser Protection.");
+  pairButton.disabled = false;
+  setMessage("Create a one-time code in PrivacyGate → Settings → Services → Browser Protection.");
 }
 
 function refreshStatus() {
@@ -58,28 +75,28 @@ codeInput.addEventListener("input", () => {
 pairButton.addEventListener("click", () => {
   const code = codeInput.value.trim();
   if (!/^\d{8}$/.test(code)) {
-    setMessage("Enter the complete 8-digit pairing code.", true);
+    setMessage("Enter the complete 8-digit connection code.", true);
     return;
   }
 
   pairButton.disabled = true;
-  setMessage("Pairing locally…");
+  setMessage("Connecting locally…");
   chrome.runtime.sendMessage({ type: "PG_PAIR", code }, response => {
     pairButton.disabled = false;
     if (chrome.runtime.lastError || !response?.ok) {
-      const detail = response?.data?.message || response?.data?.error || "Pairing failed.";
+      const detail = response?.data?.message || response?.data?.error || "Connection failed.";
       setMessage(detail, true);
       return;
     }
     codeInput.value = "";
-    setMessage("Paired. Browser Protection is ready.");
+    setMessage("Connected. Browser Protection is ready.");
     setTimeout(refreshStatus, 100);
   });
 });
 
 forgetButton.addEventListener("click", () => {
   chrome.runtime.sendMessage({ type: "PG_FORGET_PAIRING" }, () => {
-    setMessage("Local browser credential removed from this extension.");
+    setMessage("This browser has been disconnected from PrivacyGate.");
     setTimeout(refreshStatus, 100);
   });
 });
