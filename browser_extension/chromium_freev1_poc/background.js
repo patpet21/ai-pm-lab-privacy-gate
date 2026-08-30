@@ -1,21 +1,52 @@
 const BRIDGE = "http://127.0.0.1:8765";
 
-async function bridgeJson(path, body) {
-  const response = await fetch(`${BRIDGE}${path}`, {
-    method: "POST",
-    cache: "no-store",
-    headers: {
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify(body)
-  });
+let lastAnalyzeDiagnostic = null;
 
-  const data = await response.json();
-  return {
-    ok: response.ok,
-    status: response.status,
-    data
-  };
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+async function bridgeJson(path, body, attempt = 0) {
+  try {
+    const response = await fetch(`${BRIDGE}${path}`, {
+      method: "POST",
+      cache: "no-store",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify(body)
+    });
+
+    let data = {};
+    try {
+      data = await response.json();
+    } catch (_error) {
+      data = { error: "invalid_bridge_response" };
+    }
+
+    if (!response.ok && response.status >= 500 && attempt < 1) {
+      await sleep(160);
+      return bridgeJson(path, body, attempt + 1);
+    }
+
+    return {
+      ok: response.ok,
+      status: response.status,
+      data
+    };
+  } catch (error) {
+    if (attempt < 1) {
+      await sleep(160);
+      return bridgeJson(path, body, attempt + 1);
+    }
+
+    return {
+      ok: false,
+      status: 0,
+      error: String(error),
+      data: { error: "bridge_unreachable" }
+    };
+  }
 }
 
 chrome.runtime.onMessage.addListener(
@@ -36,6 +67,7 @@ chrome.runtime.onMessage.addListener(
         .catch(error => {
           sendResponse({
             ok: false,
+            status: 0,
             error: String(error)
           });
         });
@@ -49,15 +81,41 @@ chrome.runtime.onMessage.addListener(
         profile_key: "property_management",
         language: "en"
       })
-        .then(sendResponse)
+        .then(response => {
+          if (response.ok) {
+            lastAnalyzeDiagnostic = null;
+          } else {
+            lastAnalyzeDiagnostic = {
+              status: Number(response.status || 0),
+              code: String(response.data?.error || "unknown_error"),
+              networkError: response.error ? String(response.error) : null
+            };
+          }
+          sendResponse(response);
+        })
         .catch(error => {
+          lastAnalyzeDiagnostic = {
+            status: 0,
+            code: "bridge_unreachable",
+            networkError: String(error)
+          };
           sendResponse({
             ok: false,
-            error: String(error)
+            status: 0,
+            error: String(error),
+            data: { error: "bridge_unreachable" }
           });
         });
 
       return true;
+    }
+
+    if (message?.type === "PG_ANALYZE_DIAGNOSTIC") {
+      sendResponse({
+        ok: true,
+        diagnostic: lastAnalyzeDiagnostic
+      });
+      return false;
     }
 
     if (message?.type === "PG_PROTECT") {
@@ -75,6 +133,7 @@ chrome.runtime.onMessage.addListener(
         .catch(error => {
           sendResponse({
             ok: false,
+            status: 0,
             error: String(error)
           });
         });
@@ -91,6 +150,7 @@ chrome.runtime.onMessage.addListener(
         .catch(error => {
           sendResponse({
             ok: false,
+            status: 0,
             error: String(error)
           });
         });
