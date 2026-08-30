@@ -8,7 +8,6 @@ import re
 import shlex
 import ssl
 import subprocess
-import sys
 import tempfile
 from urllib.parse import unquote, urlparse
 
@@ -27,6 +26,7 @@ from ai_pm_lab_privacy_gate.infrastructure.updates.install_channel import (
 
 
 _SHA256_RE = re.compile(r"^[0-9a-fA-F]{64}$")
+_VERSION_RE = re.compile(r"^\d+\.\d+\.\d+$")
 _MAC_BUNDLE_ID = "xyz.propertydex.privacygate"
 
 
@@ -61,12 +61,13 @@ class DirectUpdateService:
             )
 
         try:
-            artifact = self._download_verified(release, channel)
+            version = self._validated_version(release.version)
+            artifact = self._download_verified(release, channel, version)
             backup = self._create_library_backup()
             if channel == InstallChannel.WINDOWS_DIRECT:
                 self._launch_windows_helper(artifact)
             elif channel == InstallChannel.MAC_DIRECT:
-                self._launch_macos_helper(artifact)
+                self._launch_macos_helper(artifact, version)
             else:  # defensive; direct_update_supported already restricts this
                 raise DirectUpdateError("Unsupported direct update channel.")
         except DirectUpdateError as exc:
@@ -76,7 +77,7 @@ class DirectUpdateService:
 
         return DirectUpdateResult(
             "started",
-            f"PrivacyGate {release.version} was downloaded and verified. The updater will finish after PrivacyGate closes.",
+            f"PrivacyGate {version} was downloaded and verified. The updater will finish after PrivacyGate closes.",
             artifact_path=artifact,
             backup_path=backup,
         )
@@ -91,6 +92,13 @@ class DirectUpdateService:
                 "PrivacyGate could not create the pre-update Library backup, so the update was stopped. "
                 f"Details: {exc}"
             ) from exc
+
+    @staticmethod
+    def _validated_version(value: str) -> str:
+        version = str(value or "").strip()
+        if not _VERSION_RE.fullmatch(version):
+            raise DirectUpdateError("The release manifest contains an invalid update version.")
+        return version
 
     @staticmethod
     def _validated_download_name(release, channel: InstallChannel) -> str:
@@ -122,10 +130,15 @@ class DirectUpdateService:
                 digest.update(chunk)
         return digest.hexdigest()
 
-    def _download_verified(self, release, channel: InstallChannel) -> Path:
+    def _download_verified(
+        self,
+        release,
+        channel: InstallChannel,
+        version: str,
+    ) -> Path:
         filename = self._validated_download_name(release, channel)
         expected = self._validate_expected_sha256(release.sha256)
-        root = Path(tempfile.gettempdir()) / "AI-PM-LAB-PrivacyGate-Updates" / str(release.version)
+        root = Path(tempfile.gettempdir()) / "AI-PM-LAB-PrivacyGate-Updates" / version
         root.mkdir(parents=True, exist_ok=True)
         destination = root / filename
         temporary = destination.with_suffix(destination.suffix + ".part")
@@ -216,7 +229,7 @@ class DirectUpdateService:
         except OSError as exc:
             raise DirectUpdateError(f"Windows could not launch the update helper: {exc}") from exc
 
-    def _launch_macos_helper(self, dmg: Path) -> None:
+    def _launch_macos_helper(self, dmg: Path, expected_version: str) -> None:
         bundle = mac_app_bundle_path()
         if bundle is None:
             raise DirectUpdateError("The running macOS app bundle could not be located.")
@@ -266,15 +279,20 @@ class DirectUpdateService:
                     f"SOURCE={shlex.quote(str(source_bundle))}",
                     f"TARGET={shlex.quote(str(bundle))}",
                     f"REPLACE={shlex.quote(str(replace_script))}",
+                    f"EXPECTED_VERSION={shlex.quote(expected_version)}",
                     'while kill -0 "$PID" 2>/dev/null; do sleep 1; done',
+                    "/usr/bin/pkill -f 'AI PM LAB Privacy Gate MCP' >/dev/null 2>&1 || true",
                     'rm -rf "$MOUNT"',
                     'mkdir -p "$MOUNT"',
                     'cleanup() { /usr/bin/hdiutil detach "$MOUNT" -quiet >/dev/null 2>&1 || true; rm -rf "$MOUNT"; }',
-                    "trap cleanup EXIT",
+                    'finish() { STATUS=$?; trap - EXIT; cleanup; if [ "$STATUS" -ne 0 ] && [ -d "$TARGET" ]; then /usr/bin/open "$TARGET" >/dev/null 2>&1 || true; fi; exit "$STATUS"; }',
+                    "trap finish EXIT",
                     '/usr/bin/hdiutil attach -nobrowse -readonly -mountpoint "$MOUNT" "$DMG" >/dev/null',
                     'test -d "$SOURCE"',
-                    f'IDENTIFIER=$(/usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "$SOURCE/Contents/Info.plist")',
+                    'IDENTIFIER=$(/usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "$SOURCE/Contents/Info.plist")',
+                    'VERSION=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$SOURCE/Contents/Info.plist")',
                     f'if [ "$IDENTIFIER" != "{_MAC_BUNDLE_ID}" ]; then exit 12; fi',
+                    'if [ "$VERSION" != "$EXPECTED_VERSION" ]; then exit 13; fi',
                     '/usr/bin/codesign --verify --deep --strict "$SOURCE"',
                     'TARGET_PARENT=$(dirname "$TARGET")',
                     'if [ -w "$TARGET_PARENT" ]; then',
