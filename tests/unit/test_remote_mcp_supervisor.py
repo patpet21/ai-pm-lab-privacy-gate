@@ -8,6 +8,11 @@ from ai_pm_lab_privacy_gate.infrastructure.mcp.remote import RemoteMcpManager, R
 from ai_pm_lab_privacy_gate.infrastructure.mcp.tunnels import CloudflaredRuntime
 
 
+class EmptyProvisioningStore:
+    def load(self):
+        return None
+
+
 def _manager_without_storage() -> RemoteMcpManager:
     manager = RemoteMcpManager.__new__(RemoteMcpManager)
     manager._lock = threading.Lock()
@@ -16,6 +21,7 @@ def _manager_without_storage() -> RemoteMcpManager:
     manager._tunnel_process = None
     manager._monitor_thread = None
     manager._stop_event = threading.Event()
+    manager.provisioning_store = EmptyProvisioningStore()
     return manager
 
 
