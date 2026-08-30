@@ -74,8 +74,6 @@ def _startup_splash(logo_path: Path, app_icon: QIcon) -> QSplashScreen:
             Qt.TransformationMode.SmoothTransformation,
         )
 
-    # Reserve a clean area below the existing brand artwork for the product name,
-    # startup status and continuously animated progress indicator.
     width = max(560, logo.width() + 40)
     canvas = QPixmap(width, logo.height() + 190)
     canvas.fill(QColor("#ffffff"))
@@ -99,7 +97,7 @@ def _startup_splash(logo_path: Path, app_icon: QIcon) -> QSplashScreen:
     )
     layout.addWidget(brand)
 
-    status = QLabel("Starting local privacy protectionâ€¦", splash)
+    status = QLabel("Starting local privacy protection…", splash)
     status.setAlignment(Qt.AlignmentFlag.AlignCenter)
     status.setStyleSheet(
         "QLabel{background:transparent;color:#17384E;font-size:13px;font-weight:750;}"
@@ -107,8 +105,6 @@ def _startup_splash(logo_path: Path, app_icon: QIcon) -> QSplashScreen:
     layout.addWidget(status)
 
     progress = QProgressBar(splash)
-    # Indeterminate mode remains animated because this splash runs in its own tiny
-    # Qt event loop while the main PrivacyGate process performs synchronous startup.
     progress.setRange(0, 0)
     progress.setTextVisible(False)
     progress.setFixedHeight(8)
@@ -184,7 +180,6 @@ def _run_startup_splash_worker(parent_pid: int, sentinel_path: Path) -> int:
 
     monitor.timeout.connect(finish_if_ready)
     monitor.start()
-    # Defensive timeout: a crashed parent must never leave a startup surface behind.
     QTimer.singleShot(120_000, app.quit)
     return app.exec()
 
@@ -281,7 +276,6 @@ def main() -> int:
     install_app_font(app)
     app.setStyleSheet(APP_STYLE)
 
-    # Set the PrivacyGate application icon before the main window appears.
     icon_path = resource_path("resources", "branding", "privacy-gate.ico")
     if not icon_path.exists():
         icon_path = resource_path("resources", "branding", "privacy-gate-icon.png")
@@ -289,8 +283,6 @@ def main() -> int:
     if not app_icon.isNull():
         app.setWindowIcon(app_icon)
 
-    # Import the full UI after the independent splash worker is visible. Presidio
-    # itself remains lazy and is loaded on the first analysis.
     from ai_pm_lab_privacy_gate.infrastructure.local_api.manager import LocalApiManager
     from ai_pm_lab_privacy_gate.ui.main_window import MainWindow
     from ai_pm_lab_privacy_gate.ui.settings_services_cleanup_2026 import (
@@ -301,24 +293,16 @@ def main() -> int:
     local_api = LocalApiManager(
         window.service,
         window.library.data_dir,
-        allowed_origins=(
-            "chrome-extension://epbmlfmgmigggecibejmelokcimgjgmm",
-        ),
     )
     window.local_api_manager = local_api
     window.settings_page.local_api_manager = local_api
 
-    # Keep the Settings ownership cleanup UI-only. The existing MCP runtime,
-    # account, tunnel and device connection paths are left untouched.
     apply_settings_services_cleanup_2026(window)
 
     def apply_local_api_preferences() -> None:
         local_api.apply_preferences(window.preferences.load())
         window.settings_page.refresh_local_api_status()
 
-    # Only Local Privacy Bridge changes should start/stop/reconfigure the bridge.
-    # Desktop and MCP settings still share the same local preferences file, but no
-    # longer trigger LocalApiManager lifecycle work.
     window.settings_page.local_api_preferences_changed.connect(apply_local_api_preferences)
     apply_local_api_preferences()
     app.aboutToQuit.connect(local_api.stop)
@@ -341,9 +325,6 @@ def main() -> int:
         instance_server.newConnection.connect(show_existing_window)
 
     if not background_start:
-        # Paint the real main window once before dismissing the independent startup
-        # surface. The user therefore never sees a blank interval between splash
-        # and application, even on slower first launches.
         window.showMaximized()
         window.raise_()
         window.activateWindow()
@@ -356,7 +337,6 @@ def main() -> int:
 
             QTimer.singleShot(1500, cleanup_startup_sentinel)
 
-    # Keep a reference until the worker exits; it owns no PrivacyGate service state.
     window._startup_splash_process = startup_process
     return app.exec()
 
