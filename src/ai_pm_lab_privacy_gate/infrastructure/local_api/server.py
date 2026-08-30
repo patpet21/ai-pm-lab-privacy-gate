@@ -215,10 +215,25 @@ class LocalApiRequestHandler(BaseHTTPRequestHandler):
     def do_POST(self) -> None:  # noqa: N802 - BaseHTTPRequestHandler API
         if self._reject_if_untrusted_transport():
             return
-        if self.path not in {"/v1/analyze", "/v1/protect", "/v1/restore"}:
+        browser_analyze = self.path == "/v1/browser/analyze"
+        if self.path not in {
+            "/v1/analyze",
+            "/v1/browser/analyze",
+            "/v1/protect",
+            "/v1/restore",
+        }:
             self._send_json(404, {"error": "not_found"})
             return
-        if not self._authorized():
+
+        if browser_analyze:
+            origin = self.headers.get("Origin", "").rstrip("/")
+            if (
+                not origin.startswith("chrome-extension://")
+                or origin not in self.server.allowed_origins
+            ):
+                self._send_json(403, {"error": "browser_origin_not_allowed"})
+                return
+        elif not self._authorized():
             self._send_json(401, {"error": "authentication_required"})
             return
         content_type = self.headers.get("Content-Type", "").split(";", 1)[0].strip().lower()
@@ -242,7 +257,7 @@ class LocalApiRequestHandler(BaseHTTPRequestHandler):
             self._send_json(400, {"error": "json_object_required"})
             return
         try:
-            if self.path == "/v1/analyze":
+            if self.path in {"/v1/analyze", "/v1/browser/analyze"}:
                 response = self._analyze(payload)
             elif self.path == "/v1/protect":
                 response = self._protect(payload)

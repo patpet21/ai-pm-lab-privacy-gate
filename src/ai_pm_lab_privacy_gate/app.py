@@ -99,7 +99,7 @@ def _startup_splash(logo_path: Path, app_icon: QIcon) -> QSplashScreen:
     )
     layout.addWidget(brand)
 
-    status = QLabel("Starting local privacy protection…", splash)
+    status = QLabel("Starting local privacy protectionâ€¦", splash)
     status.setAlignment(Qt.AlignmentFlag.AlignCenter)
     status.setStyleSheet(
         "QLabel{background:transparent;color:#17384E;font-size:13px;font-weight:750;}"
@@ -298,7 +298,13 @@ def main() -> int:
     )
 
     window = MainWindow()
-    local_api = LocalApiManager(window.service, window.library.data_dir)
+    local_api = LocalApiManager(
+        window.service,
+        window.library.data_dir,
+        allowed_origins=(
+            "chrome-extension://epbmlfmgmigggecibejmelokcimgjgmm",
+        ),
+    )
     window.local_api_manager = local_api
     window.settings_page.local_api_manager = local_api
 
