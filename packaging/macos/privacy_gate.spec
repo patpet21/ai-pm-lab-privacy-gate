@@ -5,6 +5,12 @@ from PyInstaller.utils.hooks import collect_all, copy_metadata
 
 
 project_dir = Path(SPECPATH).parent.parent
+version_namespace = {}
+exec(
+    (project_dir / "src" / "ai_pm_lab_privacy_gate" / "__init__.py").read_text(encoding="utf-8"),
+    version_namespace,
+)
+app_version = str(version_namespace["__version__"])
 datas = []
 binaries = []
 hiddenimports = []
@@ -56,8 +62,8 @@ app = BUNDLE(
     bundle_identifier="xyz.propertydex.privacygate",
     info_plist={
         "CFBundleDisplayName": "AI PM LAB Privacy Gate",
-        "CFBundleShortVersionString": "0.4.2",
-        "CFBundleVersion": "0.4.2",
+        "CFBundleShortVersionString": app_version,
+        "CFBundleVersion": app_version,
         "LSMinimumSystemVersion": "12.0",
         "NSHighResolutionCapable": True,
     },
