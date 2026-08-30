@@ -2,7 +2,7 @@ param(
     [Parameter(Mandatory = $true)] [string]$PackageIdentityName,
     [Parameter(Mandatory = $true)] [string]$Publisher,
     [Parameter(Mandatory = $true)] [string]$PublisherDisplayName,
-    [string]$Version = '0.4.2.0',
+    [string]$Version = '',
     [string]$MakeAppx = ''
 )
 
@@ -14,12 +14,20 @@ $Template = Join-Path $ProjectRoot 'packaging\windows\msix\AppxManifest.template
 $Staging = Join-Path $ProjectRoot 'build\msix\layout'
 $Assets = Join-Path $Staging 'Assets'
 $ReleaseDir = Join-Path $ProjectRoot 'release'
+
+if (-not (Test-Path -LiteralPath $Python)) { throw 'Project virtual environment not found.' }
+if (-not $Version) {
+    $AppVersion = (& $Python -c "import ai_pm_lab_privacy_gate; print(ai_pm_lab_privacy_gate.__version__)").Trim()
+    if ($LASTEXITCODE -ne 0 -or $AppVersion -notmatch '^\d+\.\d+\.\d+$') {
+        throw "Unable to resolve a valid PrivacyGate release version. Received '$AppVersion'."
+    }
+    $Version = "$AppVersion.0"
+}
+if ($Version -notmatch '^\d+\.\d+\.\d+\.\d+$') {
+    throw 'MSIX Version must contain four numeric components, for example 0.5.0.0.'
+}
 $Output = Join-Path $ReleaseDir "AI_PM_LAB_Privacy_Gate_${Version}_x64.msix"
 
-if ($Version -notmatch '^\d+\.\d+\.\d+\.\d+$') {
-    throw 'MSIX Version must contain four numeric components, for example 0.4.2.0.'
-}
-if (-not (Test-Path -LiteralPath $Python)) { throw 'Project virtual environment not found.' }
 if (-not (Test-Path -LiteralPath (Join-Path $DistDir 'AI PM LAB Privacy Gate.exe'))) {
     throw 'Windows distribution not found. Run scripts\build_windows.ps1 first.'
 }
