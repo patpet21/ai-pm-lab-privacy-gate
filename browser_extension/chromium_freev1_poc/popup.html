@@ -19,35 +19,52 @@
     .paired { background: #eaf8f1; color: #23824b; }
     .unpaired { background: #fff6e8; color: #a96b18; }
     .offline { background: #fff0f0; color: #b54747; }
+    .connected { margin-top: 12px; padding: 14px; background: white; border: 1px solid #dde7ec; border-radius: 12px; }
+    .connected-title { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 850; color: #17384e; }
+    .dot { width: 9px; height: 9px; border-radius: 50%; background: #22a06b; box-shadow: 0 0 0 4px #eaf8f1; }
+    .connected p { margin: 8px 0 0; font-size: 10px; line-height: 1.45; color: #61798a; }
+    .protection-row { display: flex; align-items: center; justify-content: space-between; margin-top: 12px; padding-top: 11px; border-top: 1px solid #edf1f4; font-size: 11px; font-weight: 750; }
+    #protectionState { padding: 4px 7px; border-radius: 999px; background: #eaf8f1; color: #23824b; font-size: 9px; font-weight: 900; }
     .pair { margin-top: 12px; padding: 13px; background: white; border: 1px solid #dde7ec; border-radius: 12px; }
     label { display: block; font-size: 10px; font-weight: 800; margin-bottom: 6px; }
     input { width: 100%; height: 40px; border: 1px solid #c9d7e0; border-radius: 9px; padding: 0 11px; font-size: 16px; font-weight: 800; letter-spacing: .18em; text-align: center; }
     button { width: 100%; min-height: 38px; margin-top: 9px; border: 0; border-radius: 9px; background: #0b7f89; color: white; font-size: 11px; font-weight: 850; cursor: pointer; }
-    button.secondary { background: white; color: #17384e; border: 1px solid #c9d7e0; }
+    button.secondary { background: transparent; color: #61798a; border: 1px solid #dde7ec; font-weight: 750; }
     button:disabled { opacity: .55; cursor: default; }
     #message { min-height: 16px; margin: 8px 2px 0; font-size: 10px; line-height: 1.35; color: #61798a; }
-    .foot { margin-top: 11px; font-size: 9px; line-height: 1.4; color: #61798a; }
+    .foot { margin-top: 11px; font-size: 9px; line-height: 1.4; color: #82929e; text-align: center; }
   </style>
 </head>
 <body>
   <div class="hero">
     <div class="brand">PrivacyGate</div>
     <h1>Browser Protection</h1>
-    <p>Local prompt protection for supported AI websites.</p>
+    <p>Local protection for supported AI websites.</p>
   </div>
   <main>
     <div class="status">
-      <strong>Local Privacy Bridge</strong>
+      <strong>PrivacyGate Desktop</strong>
       <span id="state" class="unpaired">CHECKING</span>
     </div>
-    <section class="pair" id="pairSection">
-      <label for="code">Pairing code from PrivacyGate desktop</label>
+
+    <section class="connected" id="connectedSection" hidden>
+      <div class="connected-title"><span class="dot"></span>Connected locally</div>
+      <p>PrivacyGate is ready to check prompts before they leave your browser. Your local pairing stays saved across normal app and extension updates.</p>
+      <div class="protection-row">
+        <span>Browser protection</span>
+        <span id="protectionState">ON</span>
+      </div>
+    </section>
+
+    <section class="pair" id="pairSection" hidden>
+      <label for="code">One-time connection code</label>
       <input id="code" inputmode="numeric" maxlength="8" placeholder="00000000" autocomplete="one-time-code">
-      <button id="pairButton">Pair Extension</button>
+      <button id="pairButton">Connect to PrivacyGate</button>
       <div id="message"></div>
     </section>
-    <button id="forgetButton" class="secondary" hidden>Forget this pairing</button>
-    <div class="foot">The pairing credential is separate from PrivacyGate's main local API token. Prompt analysis remains on this device.</div>
+
+    <button id="forgetButton" class="secondary" hidden>Disconnect this browser</button>
+    <div class="foot">Prompt analysis and restore mappings remain on this device.</div>
   </main>
   <script src="popup.js"></script>
 </body>
