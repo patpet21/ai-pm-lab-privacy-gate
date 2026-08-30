@@ -62,6 +62,53 @@ def test_short_chat_noise_is_not_an_organization() -> None:
     assert findings == ()
 
 
+def test_lowercase_casual_phrase_is_not_a_person() -> None:
+    text = "ciao finalmente"
+    findings = augment_browser_findings(
+        text,
+        (_finding(text, "ciao finalmente", "PERSON"),),
+        language="it",
+    )
+
+    assert findings == ()
+
+
+def test_title_cased_person_is_kept() -> None:
+    text = "Pietro Forestieri"
+    findings = augment_browser_findings(
+        text,
+        (_finding(text, "Pietro Forestieri", "PERSON"),),
+        language="it",
+    )
+
+    assert len(findings) == 1
+    assert findings[0].entity_type == "PERSON"
+    assert findings[0].text == "Pietro Forestieri"
+
+
+def test_lowercase_organization_guess_is_not_enough_to_interrupt_chat() -> None:
+    text = "parliamo di qualcosa"
+    findings = augment_browser_findings(
+        text,
+        (_finding(text, "qualcosa", "ORGANIZATION"),),
+        language="it",
+    )
+
+    assert findings == ()
+
+
+def test_company_suffix_keeps_lowercase_organization() -> None:
+    text = "acme llc"
+    findings = augment_browser_findings(
+        text,
+        (_finding(text, "acme llc", "ORGANIZATION"),),
+        language="en",
+    )
+
+    assert len(findings) == 1
+    assert findings[0].entity_type == "ORGANIZATION"
+
+
 def test_italian_street_context_becomes_street_address() -> None:
     text = "quindi se scrivo via Mazzini"
     findings = augment_browser_findings(
