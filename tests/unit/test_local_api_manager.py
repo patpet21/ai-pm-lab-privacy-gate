@@ -69,6 +69,7 @@ def test_manager_starts_loopback_only_and_persists_secret_token(tmp_path) -> Non
     assert status.port == 9123
     assert factory.calls[0]["host"] == "127.0.0.1"
     assert factory.calls[0]["allowed_origins"] == ()
+    assert factory.calls[0]["browser_pairing"] is manager.browser_pairing
     first_token = factory.calls[0]["auth_token"]
     assert isinstance(first_token, str) and len(first_token) >= 24
     assert secrets.get(LOCAL_API_AUTH_TOKEN_SECRET) == first_token
@@ -76,8 +77,33 @@ def test_manager_starts_loopback_only_and_persists_secret_token(tmp_path) -> Non
     manager.stop()
     manager.start(9124)
     assert factory.calls[1]["auth_token"] == first_token
+    assert factory.calls[1]["browser_pairing"] is manager.browser_pairing
     manager.stop()
     assert factory.servers[-1].closed is True
+
+
+def test_manager_creates_and_revokes_browser_pairing(tmp_path) -> None:
+    manager = LocalApiManager(
+        object(),  # type: ignore[arg-type]
+        tmp_path,
+        secret_store=MemorySecretStore(),
+        server_factory=RecordingServerFactory(),
+    )
+    challenge = manager.create_browser_pairing_code()
+    assert len(challenge.code) == 8
+    token = manager.browser_pairing.pair(
+        "chrome-extension://privacygate-test",
+        challenge.code,
+    )
+    assert manager.browser_pairing.validate(
+        "chrome-extension://privacygate-test",
+        token,
+    ) is True
+    assert manager.browser_pairing_status.paired_count == 1
+
+    manager.revoke_browser_pairings()
+
+    assert manager.browser_pairing_status.paired_count == 0
 
 
 def test_disabled_preference_stops_bridge(tmp_path) -> None:
