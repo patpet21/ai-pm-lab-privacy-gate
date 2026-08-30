@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from enum import Enum
-import os
 from pathlib import Path
 import platform
 import sys
@@ -44,11 +43,14 @@ def _windows_inno_install_location() -> Path | None:
         return None
 
     key_name = (
-        r"Software\Microsoft\Windows\CurrentVersion\Uninstall\"
+        "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\"
         + INNO_APP_ID
         + "_is1"
     )
-    access_modes = (winreg.KEY_READ | getattr(winreg, "KEY_WOW64_64KEY", 0), winreg.KEY_READ)
+    access_modes = (
+        winreg.KEY_READ | getattr(winreg, "KEY_WOW64_64KEY", 0),
+        winreg.KEY_READ,
+    )
     for hive in (winreg.HKEY_CURRENT_USER, winreg.HKEY_LOCAL_MACHINE):
         for access in access_modes:
             try:
