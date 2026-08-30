@@ -8,6 +8,11 @@
   let approvedSendText = null;
   let approvedSendTimer = null;
   let lastSessionId = null;
+  let restoreScanTimer = null;
+  let restoreErrorShown = false;
+
+  const PLACEHOLDER_MARKER = "[[PG_";
+  const restoringNodes = new WeakSet();
 
   const TOKEN_COLORS = {
     PERSON: "#DDE7FF",
@@ -44,6 +49,11 @@
     REDACTED: "#D8DEE5"
   };
 
+  function style(element, values) {
+    Object.assign(element.style, values);
+    return element;
+  }
+
   function composer() {
     return (
       document.querySelector("#prompt-textarea") ||
@@ -73,12 +83,12 @@
   }
 
   function notice(message, kind = "normal") {
-    let el = document.getElementById("privacygate-freev1-notice");
+    let element = document.getElementById("privacygate-freev1-notice");
 
-    if (!el) {
-      el = document.createElement("div");
-      el.id = "privacygate-freev1-notice";
-      Object.assign(el.style, {
+    if (!element) {
+      element = document.createElement("div");
+      element.id = "privacygate-freev1-notice";
+      style(element, {
         position: "fixed",
         right: "24px",
         bottom: "100px",
@@ -91,25 +101,23 @@
         fontWeight: "600",
         boxShadow: "0 8px 30px rgba(0,0,0,.30)"
       });
-      document.documentElement.appendChild(el);
+      document.documentElement.appendChild(element);
     }
 
-    el.style.background =
+    element.style.background =
       kind === "success" ? "#065f46" :
       kind === "error" ? "#991b1b" :
       "#111827";
-    el.textContent = message;
+    element.textContent = message;
 
     clearTimeout(window.__privacyGateNoticeTimer);
-    window.__privacyGateNoticeTimer = setTimeout(() => el.remove(), 3500);
+    window.__privacyGateNoticeTimer = setTimeout(() => element.remove(), 3500);
   }
 
   function showWorking(label = "PrivacyGate checking…") {
     document.getElementById("privacygate-freev1-checking")?.remove();
 
-    const indicator = document.createElement("div");
-    indicator.id = "privacygate-freev1-checking";
-    Object.assign(indicator.style, {
+    const indicator = style(document.createElement("div"), {
       position: "fixed",
       right: "24px",
       bottom: "100px",
@@ -127,9 +135,9 @@
       fontWeight: "700",
       boxShadow: "0 8px 26px rgba(15,23,42,.18)"
     });
+    indicator.id = "privacygate-freev1-checking";
 
-    const spinner = document.createElement("span");
-    Object.assign(spinner.style, {
+    const spinner = style(document.createElement("span"), {
       width: "14px",
       height: "14px",
       flex: "0 0 14px",
@@ -272,6 +280,92 @@
     setTimeout(() => clickWhenReady(0), 40);
   }
 
+  function scheduleRestoreScan(delay = 90) {
+    if (!lastSessionId) return;
+    clearTimeout(restoreScanTimer);
+    restoreScanTimer = setTimeout(scanAssistantResponses, delay);
+  }
+
+  function restoreTextNode(node) {
+    if (
+      !lastSessionId ||
+      !node?.isConnected ||
+      restoringNodes.has(node)
+    ) {
+      return;
+    }
+
+    const protectedText = node.nodeValue || "";
+    if (!protectedText.includes(PLACEHOLDER_MARKER)) return;
+
+    const sessionId = lastSessionId;
+    restoringNodes.add(node);
+
+    chrome.runtime.sendMessage(
+      {
+        type: "PG_RESTORE",
+        text: protectedText,
+        sessionId
+      },
+      response => {
+        restoringNodes.delete(node);
+
+        if (chrome.runtime.lastError || !response?.ok) {
+          if (!restoreErrorShown) {
+            restoreErrorShown = true;
+            notice(
+              "PrivacyGate — response restore unavailable. Protected placeholders remain visible.",
+              "error"
+            );
+          }
+          return;
+        }
+
+        const restoredText = response.data?.restored_text;
+        if (
+          typeof restoredText !== "string" ||
+          restoredText === protectedText ||
+          !node.isConnected ||
+          node.nodeValue !== protectedText
+        ) {
+          return;
+        }
+
+        node.nodeValue = restoredText;
+        node.parentElement?.setAttribute("data-privacygate-restored", "true");
+        restoreErrorShown = false;
+      }
+    );
+  }
+
+  function scanAssistantResponses() {
+    if (!lastSessionId) return;
+
+    const roots = document.querySelectorAll(
+      '[data-message-author-role="assistant"]'
+    );
+
+    for (const root of roots) {
+      const walker = document.createTreeWalker(
+        root,
+        NodeFilter.SHOW_TEXT
+      );
+
+      const candidates = [];
+      let node = walker.nextNode();
+      while (node) {
+        if ((node.nodeValue || "").includes(PLACEHOLDER_MARKER)) {
+          candidates.push(node);
+        }
+        node = walker.nextNode();
+      }
+
+      for (const candidate of candidates) {
+        restoreTextNode(candidate);
+      }
+    }
+  }
+
   function protectAndSend(textSnapshot, selectedIds) {
     const currentBox = composer();
     if (!currentBox || composerText(currentBox) !== textSnapshot) {
@@ -290,7 +384,8 @@
       {
         type: "PG_PROTECT",
         text: textSnapshot,
-        findingIds: selectedIds
+        findingIds: selectedIds,
+        sessionId: lastSessionId
       },
       response => {
         hideWorking();
@@ -329,7 +424,9 @@
           return;
         }
 
-        lastSessionId = response.data?.session_id || null;
+        lastSessionId = response.data?.session_id || lastSessionId;
+        restoreErrorShown = false;
+
         console.log(
           "[PrivacyGate FreeV1] Protected locally:",
           Number(response.data?.applied_findings_count || 0),
@@ -337,6 +434,7 @@
         );
 
         approveAndSend(protectedText);
+        scheduleRestoreScan(150);
       }
     );
   }
@@ -346,9 +444,7 @@
     document.getElementById("privacygate-freev1-review")?.remove();
     reviewOpen = true;
 
-    const overlay = document.createElement("div");
-    overlay.id = "privacygate-freev1-review";
-    Object.assign(overlay.style, {
+    const overlay = style(document.createElement("div"), {
       position: "fixed",
       inset: "0",
       zIndex: "2147483646",
@@ -360,12 +456,9 @@
       backdropFilter: "blur(2px)",
       fontFamily: "Arial, sans-serif"
     });
+    overlay.id = "privacygate-freev1-review";
 
-    const card = document.createElement("section");
-    card.setAttribute("role", "dialog");
-    card.setAttribute("aria-modal", "true");
-    card.setAttribute("aria-labelledby", "privacygate-freev1-review-title");
-    Object.assign(card.style, {
+    const card = style(document.createElement("section"), {
       width: "min(620px, 94vw)",
       maxHeight: "min(720px, 88vh)",
       display: "flex",
@@ -377,15 +470,16 @@
       borderRadius: "18px",
       boxShadow: "0 24px 70px rgba(15, 23, 42, 0.28)"
     });
+    card.setAttribute("role", "dialog");
+    card.setAttribute("aria-modal", "true");
+    card.setAttribute("aria-labelledby", "privacygate-freev1-review-title");
 
-    const header = document.createElement("div");
-    Object.assign(header.style, {
+    const header = style(document.createElement("div"), {
       padding: "22px 24px 18px",
       borderBottom: "1px solid #E7EBF0"
     });
 
-    const brandRow = document.createElement("div");
-    Object.assign(brandRow.style, {
+    const brandRow = style(document.createElement("div"), {
       display: "flex",
       alignItems: "center",
       justifyContent: "space-between",
@@ -393,19 +487,16 @@
       marginBottom: "10px"
     });
 
-    const brand = document.createElement("div");
-    brand.textContent = "PrivacyGate";
-    Object.assign(brand.style, {
+    const brand = style(document.createElement("div"), {
       fontSize: "13px",
       fontWeight: "800",
       letterSpacing: "0.08em",
       textTransform: "uppercase",
       color: "#2348B5"
     });
+    brand.textContent = "PrivacyGate";
 
-    const localBadge = document.createElement("span");
-    localBadge.textContent = "LOCAL · Protected";
-    Object.assign(localBadge.style, {
+    const localBadge = style(document.createElement("span"), {
       padding: "6px 9px",
       borderRadius: "999px",
       background: "#E9F7F1",
@@ -413,33 +504,31 @@
       fontSize: "11px",
       fontWeight: "800"
     });
+    localBadge.textContent = "LOCAL · Protected";
 
     brandRow.append(brand, localBadge);
 
-    const title = document.createElement("h2");
-    title.id = "privacygate-freev1-review-title";
-    title.textContent = "Sensitive information detected";
-    Object.assign(title.style, {
+    const title = style(document.createElement("h2"), {
       margin: "0 0 7px",
       fontSize: "22px",
       lineHeight: "1.2",
       fontWeight: "750"
     });
+    title.id = "privacygate-freev1-review-title";
+    title.textContent = "Sensitive information detected";
 
-    const subtitle = document.createElement("p");
-    subtitle.textContent =
-      "Review each item before anything is sent. Checked = protect · Unchecked = keep.";
-    Object.assign(subtitle.style, {
+    const subtitle = style(document.createElement("p"), {
       margin: "0",
       color: "#647084",
       fontSize: "13px",
       lineHeight: "1.5"
     });
+    subtitle.textContent =
+      "Review each item before anything is sent. Checked = protect · Unchecked = keep.";
 
     header.append(brandRow, title, subtitle);
 
-    const list = document.createElement("div");
-    Object.assign(list.style, {
+    const list = style(document.createElement("div"), {
       padding: "14px 24px",
       overflowY: "auto",
       display: "flex",
@@ -448,8 +537,7 @@
     });
 
     for (const finding of findings) {
-      const row = document.createElement("label");
-      Object.assign(row.style, {
+      const row = style(document.createElement("label"), {
         display: "grid",
         gridTemplateColumns: "22px minmax(115px, auto) 1fr",
         alignItems: "center",
@@ -461,7 +549,12 @@
         background: "#FBFCFE"
       });
 
-      const checkbox = document.createElement("input");
+      const checkbox = style(document.createElement("input"), {
+        width: "17px",
+        height: "17px",
+        margin: "0",
+        accentColor: "#2348B5"
+      });
       checkbox.type = "checkbox";
       checkbox.checked = true;
       checkbox.dataset.findingId = String(finding?.finding_id || "");
@@ -469,17 +562,9 @@
         "aria-label",
         `Protect ${finding?.entity_type || "detected item"}`
       );
-      Object.assign(checkbox.style, {
-        width: "17px",
-        height: "17px",
-        margin: "0",
-        accentColor: "#2348B5"
-      });
 
       const type = String(finding?.entity_type || "DETECTED").toUpperCase();
-      const pill = document.createElement("span");
-      pill.textContent = type.replaceAll("_", " ");
-      Object.assign(pill.style, {
+      const pill = style(document.createElement("span"), {
         justifySelf: "start",
         padding: "5px 8px",
         borderRadius: "7px",
@@ -490,23 +575,22 @@
         fontWeight: "800",
         letterSpacing: "0.025em"
       });
+      pill.textContent = type.replaceAll("_", " ");
 
-      const value = document.createElement("span");
-      value.textContent = findingValue(textSnapshot, finding);
-      Object.assign(value.style, {
+      const value = style(document.createElement("span"), {
         minWidth: "0",
         overflowWrap: "anywhere",
         color: "#172033",
         fontSize: "13px",
         fontWeight: "600"
       });
+      value.textContent = findingValue(textSnapshot, finding);
 
       row.append(checkbox, pill, value);
       list.appendChild(row);
     }
 
-    const footer = document.createElement("div");
-    Object.assign(footer.style, {
+    const footer = style(document.createElement("div"), {
       display: "flex",
       alignItems: "center",
       justifyContent: "space-between",
@@ -516,24 +600,19 @@
       background: "#FBFCFE"
     });
 
-    const count = document.createElement("span");
-    count.textContent = `${findings.length} detected item${findings.length === 1 ? "" : "s"}`;
-    Object.assign(count.style, {
+    const count = style(document.createElement("span"), {
       color: "#647084",
       fontSize: "12px",
       fontWeight: "700"
     });
+    count.textContent = `${findings.length} detected item${findings.length === 1 ? "" : "s"}`;
 
-    const actions = document.createElement("div");
-    Object.assign(actions.style, {
+    const actions = style(document.createElement("div"), {
       display: "flex",
       gap: "9px"
     });
 
-    const cancel = document.createElement("button");
-    cancel.type = "button";
-    cancel.textContent = "Cancel";
-    Object.assign(cancel.style, {
+    const cancel = style(document.createElement("button"), {
       padding: "10px 15px",
       border: "1px solid #CDD5DF",
       borderRadius: "9px",
@@ -543,12 +622,11 @@
       fontWeight: "700",
       cursor: "pointer"
     });
+    cancel.type = "button";
+    cancel.textContent = "Cancel";
     cancel.addEventListener("click", closeReview);
 
-    const protect = document.createElement("button");
-    protect.type = "button";
-    protect.textContent = "Protect & Send";
-    Object.assign(protect.style, {
+    const protect = style(document.createElement("button"), {
       padding: "10px 16px",
       border: "1px solid #2348B5",
       borderRadius: "9px",
@@ -558,7 +636,8 @@
       fontWeight: "800",
       cursor: "pointer"
     });
-
+    protect.type = "button";
+    protect.textContent = "Protect & Send";
     protect.addEventListener("click", () => {
       const selectedIds = Array.from(
         list.querySelectorAll('input[type="checkbox"]:checked')
@@ -706,6 +785,15 @@
     true
   );
 
+  const assistantObserver = new MutationObserver(() => {
+    scheduleRestoreScan();
+  });
+  assistantObserver.observe(document.documentElement, {
+    childList: true,
+    subtree: true,
+    characterData: true
+  });
+
   chrome.runtime.sendMessage(
     { type: "PG_BRIDGE_STATUS" },
     response => {
@@ -714,6 +802,4 @@
       }
     }
   );
-
-  void lastSessionId;
 })();
