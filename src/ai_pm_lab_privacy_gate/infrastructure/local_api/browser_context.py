@@ -21,8 +21,8 @@ _ITALIAN_STREET_PATTERN = re.compile(
     r"(?:\s+[A-ZÀ-ÖØ-Þ][A-Za-zÀ-ÖØ-öø-ÿ'’\-]{1,49}){0,3})"
 )
 
-# Short conversational words are occasionally mislabeled as organizations by
-# multilingual/statistical NER. Keep this deliberately small and explicit.
+# Short conversational words are occasionally mislabeled as organizations or
+# people by multilingual/statistical NER. Keep this deliberately browser-only.
 _ORGANIZATION_CHAT_NOISE = {
     "ah",
     "allora",
@@ -40,6 +40,40 @@ _ORGANIZATION_CHAT_NOISE = {
     "va bene",
 }
 
+_PERSON_CHAT_NOISE = {
+    "ah",
+    "allora",
+    "bene",
+    "ciao",
+    "ciao finalmente",
+    "finalmente",
+    "grazie",
+    "hello",
+    "hi",
+    "ok",
+    "okay",
+    "perfetto",
+    "please",
+    "thanks",
+    "va bene",
+}
+
+_ORGANIZATION_SUFFIXES = (
+    " inc",
+    " inc.",
+    " llc",
+    " ltd",
+    " ltd.",
+    " corp",
+    " corp.",
+    " company",
+    " co.",
+    " srl",
+    " s.r.l.",
+    " spa",
+    " s.p.a.",
+)
+
 
 def _normalized_chat_value(value: str) -> str:
     return " ".join(value.casefold().strip().split())
@@ -47,6 +81,33 @@ def _normalized_chat_value(value: str) -> str:
 
 def _overlaps(item: Finding, start: int, end: int) -> bool:
     return item.start < end and start < item.end
+
+
+def _has_uppercase_signal(value: str) -> bool:
+    return any(char.isupper() for char in value)
+
+
+def _keep_statistical_person(item: Finding) -> bool:
+    normalized = _normalized_chat_value(item.text)
+    if not normalized or normalized in _PERSON_CHAT_NOISE:
+        return False
+
+    # In short browser chat, an all-lowercase statistical PERSON is too weak a
+    # signal by itself. Explicit name context is added back below with a stable
+    # browser-person finding, while title-cased names remain protected.
+    return _has_uppercase_signal(item.text)
+
+
+def _keep_statistical_organization(item: Finding) -> bool:
+    normalized = _normalized_chat_value(item.text)
+    if not normalized or normalized in _ORGANIZATION_CHAT_NOISE:
+        return False
+
+    if _has_uppercase_signal(item.text):
+        return True
+
+    padded = f" {normalized}"
+    return any(padded.endswith(suffix) for suffix in _ORGANIZATION_SUFFIXES)
 
 
 def augment_browser_findings(
@@ -57,18 +118,19 @@ def augment_browser_findings(
 ) -> tuple[Finding, ...]:
     """Refine NER findings for short EN/IT browser-chat prompts.
 
-    The browser layer intentionally fixes only high-confidence conversational
-    cases. Document analysis is left untouched.
+    Browser chat uses a conservative interruption policy for statistical
+    PERSON/ORGANIZATION findings: weak lowercase NER guesses are allowed to
+    pass, while explicit name/address context and stronger name/company shapes
+    still trigger review. Document analysis is left untouched.
     """
 
-    merged = [
-        item
-        for item in findings
-        if not (
-            item.entity_type == "ORGANIZATION"
-            and _normalized_chat_value(item.text) in _ORGANIZATION_CHAT_NOISE
-        )
-    ]
+    merged = []
+    for item in findings:
+        if item.entity_type == "PERSON" and not _keep_statistical_person(item):
+            continue
+        if item.entity_type == "ORGANIZATION" and not _keep_statistical_organization(item):
+            continue
+        merged.append(item)
 
     for match in _CONTEXTUAL_PERSON_PATTERN.finditer(text):
         start, end = match.span("person")
