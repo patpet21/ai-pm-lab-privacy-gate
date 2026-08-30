@@ -285,6 +285,9 @@ def main() -> int:
 
     from ai_pm_lab_privacy_gate.infrastructure.local_api.manager import LocalApiManager
     from ai_pm_lab_privacy_gate.ui.main_window import MainWindow
+    from ai_pm_lab_privacy_gate.ui.settings_browser_protection_polish import (
+        apply_browser_protection_product_polish,
+    )
     from ai_pm_lab_privacy_gate.ui.settings_services_cleanup_2026 import (
         apply_settings_services_cleanup_2026,
     )
@@ -298,6 +301,7 @@ def main() -> int:
     window.settings_page.local_api_manager = local_api
 
     apply_settings_services_cleanup_2026(window)
+    apply_browser_protection_product_polish(window)
 
     def apply_local_api_preferences() -> None:
         local_api.apply_preferences(window.preferences.load())
