@@ -5,6 +5,9 @@
 
   let analysisBusy = false;
   let reviewOpen = false;
+  let approvedSendText = null;
+  let approvedSendTimer = null;
+  let lastSessionId = null;
 
   const TOKEN_COLORS = {
     PERSON: "#DDE7FF",
@@ -61,6 +64,14 @@
     return box.innerText || box.textContent || "";
   }
 
+  function sendButton() {
+    return document.querySelector(
+      'button[data-testid="send-button"],' +
+      'button[aria-label*="send" i],' +
+      'button[aria-label*="submit" i]'
+    );
+  }
+
   function notice(message, kind = "normal") {
     let el = document.getElementById("privacygate-freev1-notice");
 
@@ -93,7 +104,7 @@
     window.__privacyGateNoticeTimer = setTimeout(() => el.remove(), 3500);
   }
 
-  function showChecking() {
+  function showWorking(label = "PrivacyGate checking…") {
     document.getElementById("privacygate-freev1-checking")?.remove();
 
     const indicator = document.createElement("div");
@@ -131,13 +142,13 @@
       { duration: 750, iterations: Infinity, easing: "linear" }
     );
 
-    const label = document.createElement("span");
-    label.textContent = "PrivacyGate checking…";
-    indicator.append(spinner, label);
+    const text = document.createElement("span");
+    text.textContent = label;
+    indicator.append(spinner, text);
     document.documentElement.appendChild(indicator);
   }
 
-  function hideChecking() {
+  function hideWorking() {
     document.getElementById("privacygate-freev1-checking")?.remove();
   }
 
@@ -164,8 +175,174 @@
     return text.slice(start, end);
   }
 
+  function replaceComposerText(box, text) {
+    if (!box) return false;
+
+    box.focus();
+
+    if (
+      box instanceof HTMLTextAreaElement ||
+      box instanceof HTMLInputElement
+    ) {
+      const prototype = box instanceof HTMLTextAreaElement
+        ? HTMLTextAreaElement.prototype
+        : HTMLInputElement.prototype;
+      const descriptor = Object.getOwnPropertyDescriptor(prototype, "value");
+      descriptor?.set?.call(box, text);
+      box.dispatchEvent(new Event("input", { bubbles: true }));
+      return composerText(box) === text;
+    }
+
+    const selection = window.getSelection();
+    const range = document.createRange();
+    range.selectNodeContents(box);
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+
+    let inserted = false;
+    try {
+      inserted = document.execCommand("insertText", false, text);
+    } catch (_error) {
+      inserted = false;
+    }
+
+    if (!inserted || composerText(box) !== text) {
+      box.replaceChildren(document.createTextNode(text));
+      box.dispatchEvent(
+        new InputEvent("input", {
+          bubbles: true,
+          inputType: "insertText",
+          data: text
+        })
+      );
+    }
+
+    return composerText(box) === text;
+  }
+
+  function approvedSendActive() {
+    const box = composer();
+    return (
+      typeof approvedSendText === "string" &&
+      box &&
+      composerText(box) === approvedSendText
+    );
+  }
+
+  function clearApprovedSend() {
+    approvedSendText = null;
+    if (approvedSendTimer) {
+      clearTimeout(approvedSendTimer);
+      approvedSendTimer = null;
+    }
+  }
+
+  function approveAndSend(expectedText) {
+    const box = composer();
+    if (!box || composerText(box) !== expectedText) {
+      clearApprovedSend();
+      notice(
+        "PrivacyGate — message changed before send. Nothing was sent.",
+        "error"
+      );
+      return;
+    }
+
+    approvedSendText = expectedText;
+
+    const clickWhenReady = attempt => {
+      const button = sendButton();
+      if (button && !button.disabled) {
+        button.click();
+        approvedSendTimer = setTimeout(clearApprovedSend, 2000);
+        return;
+      }
+
+      if (attempt < 20) {
+        setTimeout(() => clickWhenReady(attempt + 1), 50);
+        return;
+      }
+
+      notice(
+        "PrivacyGate — protected text is ready. Press Send once to continue.",
+        "error"
+      );
+    };
+
+    setTimeout(() => clickWhenReady(0), 40);
+  }
+
+  function protectAndSend(textSnapshot, selectedIds) {
+    const currentBox = composer();
+    if (!currentBox || composerText(currentBox) !== textSnapshot) {
+      closeReview();
+      notice(
+        "PrivacyGate — text changed after scan. Press Send to scan again.",
+        "error"
+      );
+      return;
+    }
+
+    closeReview();
+    showWorking("PrivacyGate protecting…");
+
+    chrome.runtime.sendMessage(
+      {
+        type: "PG_PROTECT",
+        text: textSnapshot,
+        findingIds: selectedIds
+      },
+      response => {
+        hideWorking();
+
+        if (chrome.runtime.lastError || !response?.ok) {
+          notice(
+            "PrivacyGate — local protection unavailable. Nothing was sent.",
+            "error"
+          );
+          return;
+        }
+
+        const box = composer();
+        if (!box || composerText(box) !== textSnapshot) {
+          notice(
+            "PrivacyGate — text changed during protection. Nothing was sent.",
+            "error"
+          );
+          return;
+        }
+
+        const protectedText = response.data?.protected_text;
+        if (typeof protectedText !== "string" || !protectedText.trim()) {
+          notice(
+            "PrivacyGate — protected text was not returned. Nothing was sent.",
+            "error"
+          );
+          return;
+        }
+
+        if (!replaceComposerText(box, protectedText)) {
+          notice(
+            "PrivacyGate — could not replace the composer safely. Nothing was sent.",
+            "error"
+          );
+          return;
+        }
+
+        lastSessionId = response.data?.session_id || null;
+        console.log(
+          "[PrivacyGate FreeV1] Protected locally:",
+          Number(response.data?.applied_findings_count || 0),
+          "item(s)"
+        );
+
+        approveAndSend(protectedText);
+      }
+    );
+  }
+
   function showReview(textSnapshot, findings) {
-    hideChecking();
+    hideWorking();
     document.getElementById("privacygate-freev1-review")?.remove();
     reviewOpen = true;
 
@@ -383,32 +560,13 @@
     });
 
     protect.addEventListener("click", () => {
-      const currentText = composerText(composer());
-      if (currentText !== textSnapshot) {
-        closeReview();
-        notice(
-          "PrivacyGate — text changed after scan. Press Send to scan again.",
-          "error"
-        );
-        return;
-      }
-
       const selectedIds = Array.from(
         list.querySelectorAll('input[type="checkbox"]:checked')
       )
         .map(input => input.dataset.findingId)
         .filter(Boolean);
 
-      closeReview();
-      notice(
-        `PrivacyGate — ${selectedIds.length} item${selectedIds.length === 1 ? "" : "s"} selected. Send remains paused for this review test.`,
-        "success"
-      );
-
-      console.log(
-        "[PrivacyGate FreeV1] Review selection ready:",
-        selectedIds
-      );
+      protectAndSend(textSnapshot, selectedIds);
     });
 
     actions.append(cancel, protect);
@@ -426,7 +584,7 @@
     if (!textSnapshot.trim() || analysisBusy || reviewOpen) return;
 
     analysisBusy = true;
-    showChecking();
+    showWorking();
 
     chrome.runtime.sendMessage(
       {
@@ -435,10 +593,13 @@
       },
       response => {
         analysisBusy = false;
-        hideChecking();
+        hideWorking();
 
         if (chrome.runtime.lastError || !response?.ok) {
-          notice("PrivacyGate — local analysis unavailable", "error");
+          notice(
+            "PrivacyGate — local analysis unavailable. Nothing was sent.",
+            "error"
+          );
           return;
         }
 
@@ -455,7 +616,7 @@
           : [];
 
         if (findings.length === 0) {
-          notice("PrivacyGate — no sensitive data detected", "success");
+          approveAndSend(textSnapshot);
           return;
         }
 
@@ -465,6 +626,10 @@
   }
 
   function block(event, reason) {
+    if (approvedSendActive()) {
+      return;
+    }
+
     event.preventDefault();
     event.stopPropagation();
     event.stopImmediatePropagation();
@@ -549,4 +714,6 @@
       }
     }
   );
+
+  void lastSessionId;
 })();
