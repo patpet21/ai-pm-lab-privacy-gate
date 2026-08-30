@@ -3,6 +3,9 @@
 
   if (window.top !== window) return;
 
+  const STORAGE_KEY = "privacygateProtectionEnabled";
+  const PLACEHOLDER_MARKER = "[[PG_";
+
   let analysisBusy = false;
   let reviewOpen = false;
   let approvedSendText = null;
@@ -10,8 +13,10 @@
   let lastSessionId = null;
   let restoreScanTimer = null;
   let restoreErrorShown = false;
+  let workingTimer = null;
+  let protectionEnabled = true;
+  let bridgeConnected = false;
 
-  const PLACEHOLDER_MARKER = "[[PG_";
   const restoringNodes = new WeakSet();
 
   const TOKEN_COLORS = {
@@ -74,6 +79,12 @@
     return box.innerText || box.textContent || "";
   }
 
+  function composerShell() {
+    const box = composer();
+    if (!box) return null;
+    return box.closest("form") || box.parentElement;
+  }
+
   function sendButton() {
     return document.querySelector(
       'button[data-testid="send-button"],' +
@@ -97,8 +108,8 @@
         borderRadius: "10px",
         color: "#ffffff",
         fontFamily: "Arial, sans-serif",
-        fontSize: "14px",
-        fontWeight: "600",
+        fontSize: "13px",
+        fontWeight: "650",
         boxShadow: "0 8px 30px rgba(0,0,0,.30)"
       });
       document.documentElement.appendChild(element);
@@ -114,50 +125,230 @@
     window.__privacyGateNoticeTimer = setTimeout(() => element.remove(), 3500);
   }
 
-  function showWorking(label = "PrivacyGate checking…") {
+  function hideWorking() {
+    if (workingTimer) {
+      clearTimeout(workingTimer);
+      workingTimer = null;
+    }
     document.getElementById("privacygate-freev1-checking")?.remove();
+  }
 
-    const indicator = style(document.createElement("div"), {
-      position: "fixed",
-      right: "24px",
-      bottom: "100px",
-      zIndex: "2147483647",
+  function showWorking(label = "PrivacyGate checking…", delay = 180) {
+    hideWorking();
+
+    workingTimer = setTimeout(() => {
+      workingTimer = null;
+      const indicator = style(document.createElement("div"), {
+        position: "fixed",
+        left: "50%",
+        top: "50%",
+        transform: "translate(-50%, -50%)",
+        zIndex: "2147483647",
+        display: "flex",
+        alignItems: "center",
+        gap: "9px",
+        padding: "10px 14px",
+        border: "1px solid #D8E1EC",
+        borderRadius: "999px",
+        background: "rgba(255,255,255,.97)",
+        color: "#273247",
+        fontFamily: "Arial, sans-serif",
+        fontSize: "13px",
+        fontWeight: "700",
+        boxShadow: "0 12px 34px rgba(15,23,42,.22)"
+      });
+      indicator.id = "privacygate-freev1-checking";
+
+      const spinner = style(document.createElement("span"), {
+        width: "14px",
+        height: "14px",
+        flex: "0 0 14px",
+        border: "2px solid #D7E0EC",
+        borderTopColor: "#2348B5",
+        borderRadius: "50%"
+      });
+      spinner.animate(
+        [{ transform: "rotate(0deg)" }, { transform: "rotate(360deg)" }],
+        { duration: 750, iterations: Infinity, easing: "linear" }
+      );
+
+      const text = document.createElement("span");
+      text.textContent = label;
+      indicator.append(spinner, text);
+      document.documentElement.appendChild(indicator);
+    }, Math.max(0, delay));
+  }
+
+  function updateProtectionBar() {
+    const bar = document.getElementById("privacygate-freev1-bar");
+    if (!bar) return;
+
+    const state = bar.querySelector('[data-pg-role="state"]');
+    const bridge = bar.querySelector('[data-pg-role="bridge"]');
+    const toggle = bar.querySelector('[data-pg-role="toggle"]');
+    const knob = bar.querySelector('[data-pg-role="knob"]');
+
+    if (state) {
+      state.textContent = protectionEnabled ? "Protection ON" : "Protection OFF";
+      state.style.color = protectionEnabled ? "#86EFAC" : "#CBD5E1";
+    }
+
+    if (bridge) {
+      bridge.textContent = bridgeConnected ? "● Local" : "● Bridge offline";
+      bridge.style.color = bridgeConnected ? "#86EFAC" : "#FBBF24";
+    }
+
+    if (toggle) {
+      toggle.setAttribute("aria-checked", protectionEnabled ? "true" : "false");
+      toggle.title = protectionEnabled
+        ? "Turn PrivacyGate protection off"
+        : "Turn PrivacyGate protection on";
+      toggle.style.background = protectionEnabled ? "#16A34A" : "#64748B";
+    }
+
+    if (knob) {
+      knob.style.transform = protectionEnabled
+        ? "translateX(16px)"
+        : "translateX(0)";
+    }
+  }
+
+  function setProtectionEnabled(enabled) {
+    protectionEnabled = Boolean(enabled);
+
+    if (!protectionEnabled) {
+      analysisBusy = false;
+      hideWorking();
+      closeReview();
+      clearApprovedSend();
+    }
+
+    updateProtectionBar();
+    chrome.storage.local.set({ [STORAGE_KEY]: protectionEnabled });
+  }
+
+  function buildProtectionBar() {
+    const bar = style(document.createElement("div"), {
+      width: "100%",
+      boxSizing: "border-box",
+      display: "flex",
+      justifyContent: "center",
+      padding: "6px 10px 0",
+      pointerEvents: "none",
+      fontFamily: "Arial, sans-serif"
+    });
+    bar.id = "privacygate-freev1-bar";
+
+    const panel = style(document.createElement("div"), {
       display: "flex",
       alignItems: "center",
       gap: "9px",
-      padding: "10px 13px",
-      border: "1px solid #D8E1EC",
+      minHeight: "28px",
+      padding: "4px 8px 4px 6px",
+      border: "1px solid rgba(148,163,184,.34)",
       borderRadius: "999px",
-      background: "rgba(255,255,255,.96)",
-      color: "#273247",
-      fontFamily: "Arial, sans-serif",
-      fontSize: "13px",
-      fontWeight: "700",
-      boxShadow: "0 8px 26px rgba(15,23,42,.18)"
+      background: "rgba(15,23,42,.93)",
+      color: "#F8FAFC",
+      boxShadow: "0 4px 16px rgba(15,23,42,.18)",
+      pointerEvents: "auto",
+      userSelect: "none"
     });
-    indicator.id = "privacygate-freev1-checking";
 
-    const spinner = style(document.createElement("span"), {
-      width: "14px",
+    const mark = style(document.createElement("span"), {
+      display: "inline-flex",
+      alignItems: "center",
+      justifyContent: "center",
+      width: "20px",
+      height: "20px",
+      borderRadius: "6px",
+      background: "#1D4ED8",
+      color: "#FFFFFF",
+      fontSize: "9px",
+      fontWeight: "900",
+      letterSpacing: ".04em"
+    });
+    mark.textContent = "PG";
+
+    const brand = style(document.createElement("span"), {
+      fontSize: "11px",
+      fontWeight: "800",
+      letterSpacing: ".015em"
+    });
+    brand.textContent = "PrivacyGate";
+
+    const state = style(document.createElement("span"), {
+      fontSize: "10.5px",
+      fontWeight: "750"
+    });
+    state.dataset.pgRole = "state";
+
+    const divider = style(document.createElement("span"), {
+      width: "1px",
       height: "14px",
-      flex: "0 0 14px",
-      border: "2px solid #D7E0EC",
-      borderTopColor: "#2348B5",
-      borderRadius: "50%"
+      background: "rgba(148,163,184,.35)"
     });
-    spinner.animate(
-      [{ transform: "rotate(0deg)" }, { transform: "rotate(360deg)" }],
-      { duration: 750, iterations: Infinity, easing: "linear" }
-    );
 
-    const text = document.createElement("span");
-    text.textContent = label;
-    indicator.append(spinner, text);
-    document.documentElement.appendChild(indicator);
+    const bridge = style(document.createElement("span"), {
+      fontSize: "10px",
+      fontWeight: "700"
+    });
+    bridge.dataset.pgRole = "bridge";
+
+    const toggle = style(document.createElement("button"), {
+      position: "relative",
+      width: "38px",
+      height: "22px",
+      padding: "2px",
+      margin: "0 0 0 2px",
+      border: "0",
+      borderRadius: "999px",
+      cursor: "pointer",
+      outline: "none",
+      transition: "background .16s ease"
+    });
+    toggle.type = "button";
+    toggle.dataset.pgRole = "toggle";
+    toggle.setAttribute("role", "switch");
+    toggle.setAttribute("aria-label", "PrivacyGate browser protection");
+
+    const knob = style(document.createElement("span"), {
+      display: "block",
+      width: "18px",
+      height: "18px",
+      borderRadius: "50%",
+      background: "#FFFFFF",
+      boxShadow: "0 1px 4px rgba(15,23,42,.32)",
+      transition: "transform .16s ease"
+    });
+    knob.dataset.pgRole = "knob";
+    toggle.appendChild(knob);
+
+    toggle.addEventListener("click", event => {
+      event.preventDefault();
+      event.stopPropagation();
+      setProtectionEnabled(!protectionEnabled);
+    });
+
+    panel.append(mark, brand, state, divider, bridge, toggle);
+    bar.appendChild(panel);
+    return bar;
   }
 
-  function hideWorking() {
-    document.getElementById("privacygate-freev1-checking")?.remove();
+  function ensureProtectionBar() {
+    const shell = composerShell();
+    if (!shell?.parentElement) return;
+
+    let bar = document.getElementById("privacygate-freev1-bar");
+
+    if (bar && bar.previousElementSibling === shell) {
+      updateProtectionBar();
+      return;
+    }
+
+    bar?.remove();
+    bar = buildProtectionBar();
+    shell.insertAdjacentElement("afterend", bar);
+    updateProtectionBar();
   }
 
   function closeReview() {
@@ -246,6 +437,8 @@
   }
 
   function approveAndSend(expectedText) {
+    if (!protectionEnabled) return;
+
     const box = composer();
     if (!box || composerText(box) !== expectedText) {
       clearApprovedSend();
@@ -259,6 +452,11 @@
     approvedSendText = expectedText;
 
     const clickWhenReady = attempt => {
+      if (!protectionEnabled) {
+        clearApprovedSend();
+        return;
+      }
+
       const button = sendButton();
       if (button && !button.disabled) {
         button.click();
@@ -367,6 +565,8 @@
   }
 
   function protectAndSend(textSnapshot, selectedIds) {
+    if (!protectionEnabled) return;
+
     const currentBox = composer();
     if (!currentBox || composerText(currentBox) !== textSnapshot) {
       closeReview();
@@ -378,7 +578,7 @@
     }
 
     closeReview();
-    showWorking("PrivacyGate protecting…");
+    showWorking("PrivacyGate protecting…", 70);
 
     chrome.runtime.sendMessage(
       {
@@ -389,6 +589,8 @@
       },
       response => {
         hideWorking();
+
+        if (!protectionEnabled) return;
 
         if (chrome.runtime.lastError || !response?.ok) {
           notice(
@@ -656,7 +858,20 @@
     cancel.focus();
   }
 
+  function analysisFailureMessage(response) {
+    const status = Number(response?.status || 0);
+    const code = response?.data?.error || response?.error || "bridge_unavailable";
+
+    if (status > 0) {
+      return `PrivacyGate — local analysis unavailable (HTTP ${status}: ${code}). Nothing was sent.`;
+    }
+
+    return "PrivacyGate — Local Privacy Bridge is not reachable. Nothing was sent.";
+  }
+
   function analyzeCurrentComposer() {
+    if (!protectionEnabled) return;
+
     const box = composer();
     const textSnapshot = composerText(box);
 
@@ -674,13 +889,17 @@
         analysisBusy = false;
         hideWorking();
 
+        if (!protectionEnabled) return;
+
         if (chrome.runtime.lastError || !response?.ok) {
-          notice(
-            "PrivacyGate — local analysis unavailable. Nothing was sent.",
-            "error"
-          );
+          notice(analysisFailureMessage(response), "error");
+          bridgeConnected = false;
+          updateProtectionBar();
           return;
         }
+
+        bridgeConnected = true;
+        updateProtectionBar();
 
         if (composerText(composer()) !== textSnapshot) {
           notice(
@@ -705,6 +924,10 @@
   }
 
   function block(event, reason) {
+    if (!protectionEnabled) {
+      return;
+    }
+
     if (approvedSendActive()) {
       return;
     }
@@ -785,21 +1008,30 @@
     true
   );
 
-  const assistantObserver = new MutationObserver(() => {
+  const pageObserver = new MutationObserver(() => {
+    ensureProtectionBar();
     scheduleRestoreScan();
   });
-  assistantObserver.observe(document.documentElement, {
+  pageObserver.observe(document.documentElement, {
     childList: true,
     subtree: true,
     characterData: true
   });
 
+  chrome.storage.local.get({ [STORAGE_KEY]: true }, values => {
+    protectionEnabled = values?.[STORAGE_KEY] !== false;
+    ensureProtectionBar();
+    updateProtectionBar();
+  });
+
   chrome.runtime.sendMessage(
     { type: "PG_BRIDGE_STATUS" },
     response => {
-      if (response?.ok) {
-        notice("PrivacyGate — Local Bridge connected", "success");
-      }
+      bridgeConnected = Boolean(response?.ok);
+      ensureProtectionBar();
+      updateProtectionBar();
     }
   );
+
+  ensureProtectionBar();
 })();
