@@ -14,6 +14,7 @@ from ai_pm_lab_privacy_gate.infrastructure.local_api.server import create_local_
 
 TOKEN = "test-local-bridge-token-0123456789"
 EMAIL = "jane.smith@example.com"
+BROWSER_ORIGIN = "chrome-extension://privacygate-test"
 
 
 class FakePiiEngine:
@@ -45,7 +46,7 @@ def local_api():
         service,
         port=0,
         auth_token=TOKEN,
-        allowed_origins=("chrome-extension://privacygate-test",),
+        allowed_origins=(BROWSER_ORIGIN,),
     )
     thread = threading.Thread(target=server.serve_forever, kwargs={"poll_interval": 0.01}, daemon=True)
     thread.start()
@@ -148,6 +149,69 @@ def test_restore_returns_original_text_without_exposing_raw_mapping(local_api) -
     assert set(restored) == {"restored_text", "session_id"}
     assert "original_text" not in raw
     assert "mappings" not in raw
+
+
+def test_browser_round_trip_uses_allowlisted_extension_origin_without_bearer(local_api) -> None:
+    status, analyzed, raw = request(
+        local_api,
+        "POST",
+        "/v1/browser/analyze",
+        {"text": f"Contact {EMAIL}", "profile_key": "property_management", "language": "en"},
+        origin=BROWSER_ORIGIN,
+    )
+    assert status == 200
+    assert analyzed["findings_count"] == 1
+    assert EMAIL not in raw
+
+    finding_id = analyzed["findings"][0]["finding_id"]
+    status, protected, raw = request(
+        local_api,
+        "POST",
+        "/v1/browser/protect",
+        {
+            "text": f"Contact {EMAIL}",
+            "profile_key": "property_management",
+            "language": "en",
+            "finding_ids": [finding_id],
+            "replacement_mode": "reversible",
+        },
+        origin=BROWSER_ORIGIN,
+    )
+    assert status == 200
+    assert EMAIL not in raw
+    assert protected["session_id"]
+
+    status, restored, _ = request(
+        local_api,
+        "POST",
+        "/v1/browser/restore",
+        {
+            "session_id": protected["session_id"],
+            "text": f"AI reply: {protected['protected_text']}",
+        },
+        origin=BROWSER_ORIGIN,
+    )
+    assert status == 200
+    assert restored["restored_text"] == f"AI reply: Contact {EMAIL}"
+
+
+def test_browser_restore_requires_allowlisted_extension_origin(local_api) -> None:
+    _, protected, _ = request(
+        local_api,
+        "POST",
+        "/v1/protect",
+        {"text": f"Contact {EMAIL}", "profile_key": "property_management"},
+        token=TOKEN,
+    )
+
+    status, payload, _ = request(
+        local_api,
+        "POST",
+        "/v1/browser/restore",
+        {"session_id": protected["session_id"], "text": protected["protected_text"]},
+    )
+    assert status == 403
+    assert payload["error"] == "browser_origin_not_allowed"
 
 
 def test_reusing_session_generates_unique_tokens_per_turn(local_api) -> None:
