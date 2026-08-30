@@ -1,52 +1,63 @@
 const BRIDGE = "http://127.0.0.1:8765";
 
-let lastAnalyzeDiagnostic = null;
+const ITALIAN_HINTS = new Set([
+  "a", "ad", "anche", "allora", "che", "chi", "come", "con", "cosa", "da",
+  "di", "e", "è", "gli", "ho", "i", "il", "in", "io", "la", "le", "lo",
+  "ma", "mi", "non", "noi", "per", "perché", "pero", "però", "possiamo",
+  "puoi", "quindi", "sei", "si", "sì", "siamo", "sono", "su", "tra", "tu",
+  "un", "una", "voi"
+]);
 
-function sleep(ms) {
-  return new Promise(resolve => setTimeout(resolve, ms));
+const ENGLISH_HINTS = new Set([
+  "a", "an", "and", "are", "can", "do", "for", "how", "i", "in", "is", "it",
+  "my", "not", "of", "on", "please", "that", "the", "this", "to", "we", "what",
+  "with", "you", "your"
+]);
+
+function detectPromptLanguage(text) {
+  const raw = String(text || "").toLowerCase();
+
+  if (/[àèéìòù]/u.test(raw)) {
+    return "it";
+  }
+
+  const words = raw.match(/[a-zà-ÿ']+/giu) || [];
+  let italian = 0;
+  let english = 0;
+
+  for (const word of words) {
+    if (ITALIAN_HINTS.has(word)) italian += 1;
+    if (ENGLISH_HINTS.has(word)) english += 1;
+  }
+
+  if (italian >= 2 && italian > english) {
+    return "it";
+  }
+
+  if (english >= 2 && english > italian) {
+    return "en";
+  }
+
+  // Keep the historical default for ambiguous names, IDs, emails and short text.
+  return "en";
 }
 
-async function bridgeJson(path, body, attempt = 0) {
-  try {
-    const response = await fetch(`${BRIDGE}${path}`, {
-      method: "POST",
-      cache: "no-store",
-      headers: {
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify(body)
-    });
+async function bridgeJson(path, body) {
+  const response = await fetch(`${BRIDGE}${path}`, {
+    method: "POST",
+    cache: "no-store",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify(body)
+  });
 
-    let data = {};
-    try {
-      data = await response.json();
-    } catch (_error) {
-      data = { error: "invalid_bridge_response" };
-    }
-
-    if (!response.ok && response.status >= 500 && attempt < 1) {
-      await sleep(160);
-      return bridgeJson(path, body, attempt + 1);
-    }
-
-    return {
-      ok: response.ok,
-      status: response.status,
-      data
-    };
-  } catch (error) {
-    if (attempt < 1) {
-      await sleep(160);
-      return bridgeJson(path, body, attempt + 1);
-    }
-
-    return {
-      ok: false,
-      status: 0,
-      error: String(error),
-      data: { error: "bridge_unreachable" }
-    };
-  }
+  const data = await response.json();
+  return {
+    ok: response.ok,
+    status: response.status,
+    data
+  };
 }
 
 chrome.runtime.onMessage.addListener(
@@ -67,7 +78,6 @@ chrome.runtime.onMessage.addListener(
         .catch(error => {
           sendResponse({
             ok: false,
-            status: 0,
             error: String(error)
           });
         });
@@ -76,53 +86,36 @@ chrome.runtime.onMessage.addListener(
     }
 
     if (message?.type === "PG_ANALYZE") {
+      const language = detectPromptLanguage(message.text);
+
       bridgeJson("/v1/browser/analyze", {
         text: message.text,
         profile_key: "property_management",
-        language: "en"
+        language
       })
         .then(response => {
-          if (response.ok) {
-            lastAnalyzeDiagnostic = null;
-          } else {
-            lastAnalyzeDiagnostic = {
-              status: Number(response.status || 0),
-              code: String(response.data?.error || "unknown_error"),
-              networkError: response.error ? String(response.error) : null
-            };
-          }
-          sendResponse(response);
+          sendResponse({
+            ...response,
+            detectedLanguage: language
+          });
         })
         .catch(error => {
-          lastAnalyzeDiagnostic = {
-            status: 0,
-            code: "bridge_unreachable",
-            networkError: String(error)
-          };
           sendResponse({
             ok: false,
-            status: 0,
-            error: String(error),
-            data: { error: "bridge_unreachable" }
+            error: String(error)
           });
         });
 
       return true;
     }
 
-    if (message?.type === "PG_ANALYZE_DIAGNOSTIC") {
-      sendResponse({
-        ok: true,
-        diagnostic: lastAnalyzeDiagnostic
-      });
-      return false;
-    }
-
     if (message?.type === "PG_PROTECT") {
+      const language = detectPromptLanguage(message.text);
+
       bridgeJson("/v1/browser/protect", {
         text: message.text,
         profile_key: "property_management",
-        language: "en",
+        language,
         finding_ids: Array.isArray(message.findingIds)
           ? message.findingIds
           : [],
@@ -133,7 +126,6 @@ chrome.runtime.onMessage.addListener(
         .catch(error => {
           sendResponse({
             ok: false,
-            status: 0,
             error: String(error)
           });
         });
@@ -150,7 +142,6 @@ chrome.runtime.onMessage.addListener(
         .catch(error => {
           sendResponse({
             ok: false,
-            status: 0,
             error: String(error)
           });
         });
