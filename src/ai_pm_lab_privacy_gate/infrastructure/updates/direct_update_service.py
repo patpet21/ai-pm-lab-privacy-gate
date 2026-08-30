@@ -28,6 +28,8 @@ from ai_pm_lab_privacy_gate.infrastructure.updates.install_channel import (
 _SHA256_RE = re.compile(r"^[0-9a-fA-F]{64}$")
 _VERSION_RE = re.compile(r"^\d+\.\d+\.\d+$")
 _MAC_BUNDLE_ID = "xyz.propertydex.privacygate"
+_OFFICIAL_RELEASE_HOST = "github.com"
+_OFFICIAL_RELEASE_PATH_PREFIX = "/patpet21/ai-pm-lab-privacy-gate-downloads/releases/download/"
 
 
 @dataclass(frozen=True, slots=True)
@@ -105,6 +107,13 @@ class DirectUpdateService:
         parsed = urlparse(str(release.download_url))
         if parsed.scheme.lower() != "https":
             raise DirectUpdateError("Updates must be downloaded over HTTPS.")
+        if (
+            (parsed.hostname or "").lower() != _OFFICIAL_RELEASE_HOST
+            or not parsed.path.startswith(_OFFICIAL_RELEASE_PATH_PREFIX)
+        ):
+            raise DirectUpdateError(
+                "Automatic installation is allowed only for official PrivacyGate GitHub Release assets."
+            )
         name = Path(unquote(parsed.path)).name
         expected_suffix = ".exe" if channel == InstallChannel.WINDOWS_DIRECT else ".dmg"
         if not name.lower().endswith(expected_suffix):
@@ -268,6 +277,7 @@ class DirectUpdateService:
         )
         replace_script.chmod(0o700)
 
+        apple_script_path = str(replace_script).replace("\\", "\\\\").replace('"', '\\"')
         helper.write_text(
             "\n".join(
                 (
@@ -298,7 +308,9 @@ class DirectUpdateService:
                     'if [ -w "$TARGET_PARENT" ]; then',
                     '  /bin/sh "$REPLACE"',
                     "else",
-                    '  /usr/bin/osascript -e \'do shell script "/bin/sh " & quoted form of POSIX path of "' + str(replace_script).replace('"', '\\"') + '" with administrator privileges\'',
+                    "  /usr/bin/osascript -e 'do shell script (\"/bin/sh \" & quoted form of \""
+                    + apple_script_path
+                    + "\") with administrator privileges'",
                     "fi",
                     '/usr/bin/open "$TARGET"',
                 )
