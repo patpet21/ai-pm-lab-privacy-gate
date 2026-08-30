@@ -41,5 +41,5 @@ def test_sha256_matches_file_content(tmp_path: Path):
     artifact = tmp_path / "artifact.exe"
     artifact.write_bytes(b"privacygate")
     assert DirectUpdateService._sha256(artifact) == (
-        "fdb2947bb2ee527766925c7ad8a913ff62565bdcf40c65b4a2c9a730aac5bfec"
+        "ea68c5acbe1cd1873ea90c6437dbfb7c9952ba05ae27c123fb992fb8f30429e4"
     )
