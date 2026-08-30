@@ -68,7 +68,24 @@ chrome.runtime.onMessage.addListener(
         finding_ids: Array.isArray(message.findingIds)
           ? message.findingIds
           : [],
-        replacement_mode: "reversible"
+        replacement_mode: "reversible",
+        session_id: message.sessionId || null
+      })
+        .then(sendResponse)
+        .catch(error => {
+          sendResponse({
+            ok: false,
+            error: String(error)
+          });
+        });
+
+      return true;
+    }
+
+    if (message?.type === "PG_RESTORE") {
+      bridgeJson("/v1/browser/restore", {
+        text: message.text,
+        session_id: message.sessionId
       })
         .then(sendResponse)
         .catch(error => {
