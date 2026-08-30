@@ -16,6 +16,11 @@ from ai_pm_lab_privacy_gate.infrastructure.settings.preferences import (
     PreferencesStore,
 )
 
+from .browser_pairing import (
+    BrowserPairingChallenge,
+    BrowserPairingRegistry,
+    BrowserPairingStatus,
+)
 from .server import create_local_api_server
 
 
@@ -45,6 +50,7 @@ class LocalApiManager:
         self.data_dir = Path(data_dir)
         self.preferences = PreferencesStore(self.data_dir)
         self.secrets = secret_store or platform_secret_store(self.data_dir)
+        self.browser_pairing = BrowserPairingRegistry(self.secrets)
         self._server_factory = server_factory
         self.allowed_origins = tuple(allowed_origins)
         self._lock = threading.RLock()
@@ -56,6 +62,16 @@ class LocalApiManager:
     def status(self) -> LocalApiStatus:
         with self._lock:
             return self._status
+
+    @property
+    def browser_pairing_status(self) -> BrowserPairingStatus:
+        return self.browser_pairing.status()
+
+    def create_browser_pairing_code(self) -> BrowserPairingChallenge:
+        return self.browser_pairing.create_challenge()
+
+    def revoke_browser_pairings(self) -> None:
+        self.browser_pairing.revoke()
 
     def apply_preferences(self, prefs: AppPreferences | None = None) -> LocalApiStatus:
         selected = prefs or self.preferences.load()
@@ -80,6 +96,7 @@ class LocalApiManager:
                 port=port,
                 auth_token=token,
                 allowed_origins=self.allowed_origins,
+                browser_pairing=self.browser_pairing,
             )
         except Exception as error:
             with self._lock:
