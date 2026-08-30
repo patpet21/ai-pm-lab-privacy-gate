@@ -1,3 +1,8 @@
+from .browser_pairing import (
+    BrowserPairingChallenge,
+    BrowserPairingRegistry,
+    BrowserPairingStatus,
+)
 from .contracts import (
     AnalyzeRequest,
     AnalyzeResponse,
@@ -13,6 +18,9 @@ from .session_store import LocalProtectionSessionStore, LocalSessionNotFound
 __all__ = [
     "AnalyzeRequest",
     "AnalyzeResponse",
+    "BrowserPairingChallenge",
+    "BrowserPairingRegistry",
+    "BrowserPairingStatus",
     "ProtectRequest",
     "ProtectResponse",
     "RestoreRequest",
