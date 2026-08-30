@@ -207,7 +207,7 @@ class LocalApiRequestHandler(BaseHTTPRequestHandler):
             )
         )
         if self.path in {"/v1/browser/analyze", "/v1/browser/protect"}:
-            findings = augment_browser_findings(text, findings)
+            findings = augment_browser_findings(text, findings, language=language)
         return document, findings
 
     def do_OPTIONS(self) -> None:  # noqa: N802 - BaseHTTPRequestHandler API
