@@ -67,7 +67,6 @@
     if (!el) {
       el = document.createElement("div");
       el.id = "privacygate-freev1-notice";
-
       Object.assign(el.style, {
         position: "fixed",
         right: "24px",
@@ -81,7 +80,6 @@
         fontWeight: "600",
         boxShadow: "0 8px 30px rgba(0,0,0,.30)"
       });
-
       document.documentElement.appendChild(el);
     }
 
@@ -89,19 +87,62 @@
       kind === "success" ? "#065f46" :
       kind === "error" ? "#991b1b" :
       "#111827";
-
     el.textContent = message;
 
     clearTimeout(window.__privacyGateNoticeTimer);
+    window.__privacyGateNoticeTimer = setTimeout(() => el.remove(), 3500);
+  }
 
-    window.__privacyGateNoticeTimer = setTimeout(() => {
-      el.remove();
-    }, 3500);
+  function showChecking() {
+    document.getElementById("privacygate-freev1-checking")?.remove();
+
+    const indicator = document.createElement("div");
+    indicator.id = "privacygate-freev1-checking";
+    Object.assign(indicator.style, {
+      position: "fixed",
+      right: "24px",
+      bottom: "100px",
+      zIndex: "2147483647",
+      display: "flex",
+      alignItems: "center",
+      gap: "9px",
+      padding: "10px 13px",
+      border: "1px solid #D8E1EC",
+      borderRadius: "999px",
+      background: "rgba(255,255,255,.96)",
+      color: "#273247",
+      fontFamily: "Arial, sans-serif",
+      fontSize: "13px",
+      fontWeight: "700",
+      boxShadow: "0 8px 26px rgba(15,23,42,.18)"
+    });
+
+    const spinner = document.createElement("span");
+    Object.assign(spinner.style, {
+      width: "14px",
+      height: "14px",
+      flex: "0 0 14px",
+      border: "2px solid #D7E0EC",
+      borderTopColor: "#2348B5",
+      borderRadius: "50%"
+    });
+    spinner.animate(
+      [{ transform: "rotate(0deg)" }, { transform: "rotate(360deg)" }],
+      { duration: 750, iterations: Infinity, easing: "linear" }
+    );
+
+    const label = document.createElement("span");
+    label.textContent = "PrivacyGate checking…";
+    indicator.append(spinner, label);
+    document.documentElement.appendChild(indicator);
+  }
+
+  function hideChecking() {
+    document.getElementById("privacygate-freev1-checking")?.remove();
   }
 
   function closeReview() {
-    const overlay = document.getElementById("privacygate-freev1-review");
-    overlay?.remove();
+    document.getElementById("privacygate-freev1-review")?.remove();
     reviewOpen = false;
     composer()?.focus();
   }
@@ -124,6 +165,7 @@
   }
 
   function showReview(textSnapshot, findings) {
+    hideChecking();
     document.getElementById("privacygate-freev1-review")?.remove();
     reviewOpen = true;
 
@@ -246,7 +288,10 @@
       checkbox.type = "checkbox";
       checkbox.checked = true;
       checkbox.dataset.findingId = String(finding?.finding_id || "");
-      checkbox.setAttribute("aria-label", `Protect ${finding?.entity_type || "detected item"}`);
+      checkbox.setAttribute(
+        "aria-label",
+        `Protect ${finding?.entity_type || "detected item"}`
+      );
       Object.assign(checkbox.style, {
         width: "17px",
         height: "17px",
@@ -356,7 +401,7 @@
 
       closeReview();
       notice(
-        `PrivacyGate — ${selectedIds.length} item${selectedIds.length === 1 ? "" : "s"} selected. Send remains blocked for this review POC.`,
+        `PrivacyGate — ${selectedIds.length} item${selectedIds.length === 1 ? "" : "s"} selected. Send remains paused for this review test.`,
         "success"
       );
 
@@ -371,7 +416,6 @@
     card.append(header, list, footer);
     overlay.appendChild(card);
     document.documentElement.appendChild(overlay);
-
     cancel.focus();
   }
 
@@ -382,6 +426,7 @@
     if (!textSnapshot.trim() || analysisBusy || reviewOpen) return;
 
     analysisBusy = true;
+    showChecking();
 
     chrome.runtime.sendMessage(
       {
@@ -390,12 +435,10 @@
       },
       response => {
         analysisBusy = false;
+        hideChecking();
 
         if (chrome.runtime.lastError || !response?.ok) {
-          notice(
-            "PrivacyGate — local analysis unavailable",
-            "error"
-          );
+          notice("PrivacyGate — local analysis unavailable", "error");
           return;
         }
 
@@ -412,10 +455,7 @@
           : [];
 
         if (findings.length === 0) {
-          notice(
-            "PrivacyGate — no sensitive data detected (POC keeps Send blocked)",
-            "success"
-          );
+          notice("PrivacyGate — no sensitive data detected", "success");
           return;
         }
 
@@ -431,13 +471,7 @@
 
     if (reviewOpen) return;
 
-    notice("PrivacyGate — Send blocked locally");
-
-    console.log(
-      "[PrivacyGate FreeV1] SEND BLOCKED:",
-      reason
-    );
-
+    console.log("[PrivacyGate FreeV1] Send intercepted:", reason);
     analyzeCurrentComposer();
   }
 
@@ -455,11 +489,7 @@
       }
 
       const box = composer();
-
-      if (
-        box &&
-        (event.target === box || box.contains(event.target))
-      ) {
+      if (box && (event.target === box || box.contains(event.target))) {
         block(event, "Enter");
       }
     },
@@ -470,7 +500,6 @@
     "submit",
     event => {
       const box = composer();
-
       if (
         box &&
         event.target instanceof HTMLFormElement &&
@@ -516,10 +545,7 @@
     { type: "PG_BRIDGE_STATUS" },
     response => {
       if (response?.ok) {
-        notice(
-          "PrivacyGate — Local Bridge connected",
-          "success"
-        );
+        notice("PrivacyGate — Local Bridge connected", "success");
       }
     }
   );
