@@ -14,11 +14,13 @@ from ai_pm_lab_privacy_gate.application.protect_session_service import namespace
 from ai_pm_lab_privacy_gate.domain.models import Finding
 from ai_pm_lab_privacy_gate.domain.profiles import get_profile
 from ai_pm_lab_privacy_gate.infrastructure.local_api.browser_context import augment_browser_findings
+from ai_pm_lab_privacy_gate.infrastructure.local_api.browser_pairing import BrowserPairingRegistry
 from ai_pm_lab_privacy_gate.infrastructure.local_api.session_store import (
     LocalProtectionSessionStore,
     LocalSessionNotFound,
 )
 from ai_pm_lab_privacy_gate.infrastructure.pii.languages import normalize_document_language
+from ai_pm_lab_privacy_gate.infrastructure.security.secret_store import MemorySecretStore
 
 
 DEFAULT_HOST = "127.0.0.1"
@@ -31,6 +33,10 @@ _BROWSER_PATHS = {
     "/v1/browser/analyze",
     "/v1/browser/protect",
     "/v1/browser/restore",
+}
+_BROWSER_PUBLIC_PATHS = {
+    "/v1/browser/status",
+    "/v1/browser/pair",
 }
 
 
@@ -115,11 +121,13 @@ class LocalApiHttpServer(ThreadingHTTPServer):
         auth_token: str,
         allowed_origins: tuple[str, ...],
         session_store: LocalProtectionSessionStore,
+        browser_pairing: BrowserPairingRegistry,
     ) -> None:
         self.privacy_service = service
         self.auth_token = auth_token
         self.allowed_origins = frozenset(origin.rstrip("/") for origin in allowed_origins)
         self.session_store = session_store
+        self.browser_pairing = browser_pairing
         super().__init__(server_address, LocalApiRequestHandler)
 
     def server_close(self) -> None:
@@ -139,23 +147,49 @@ class LocalApiRequestHandler(BaseHTTPRequestHandler):
         hostname = raw.rsplit(":", 1)[0].strip("[]").lower()
         return hostname in {"127.0.0.1", "localhost"}
 
+    def _browser_origin(self) -> str:
+        origin = self.headers.get("Origin", "").rstrip("/")
+        if origin.startswith("chrome-extension://"):
+            return origin
+        return ""
+
     def _origin_allowed(self) -> bool:
         origin = self.headers.get("Origin")
         if not origin:
             return True
-        return origin.rstrip("/") in self.server.allowed_origins
+        normalized = origin.rstrip("/")
+        if self.path.startswith("/v1/browser/") and normalized.startswith("chrome-extension://"):
+            # CORS is transport only. Pairing code / scoped bearer auth protects browser routes.
+            return True
+        return normalized in self.server.allowed_origins
 
     def _authorized(self) -> bool:
+        token = self._bearer_token()
+        return bool(token) and hmac.compare_digest(token, self.server.auth_token)
+
+    def _bearer_token(self) -> str:
         header = self.headers.get("Authorization", "")
         prefix = "Bearer "
         if not header.startswith(prefix):
+            return ""
+        return header[len(prefix) :]
+
+    def _browser_authorized(self) -> bool:
+        origin = self._browser_origin()
+        if not origin:
             return False
-        supplied = header[len(prefix) :]
-        return hmac.compare_digest(supplied, self.server.auth_token)
+        return self.server.browser_pairing.validate(origin, self._bearer_token())
 
     def _cors_headers(self) -> dict[str, str]:
         origin = self.headers.get("Origin")
-        if not origin or origin.rstrip("/") not in self.server.allowed_origins:
+        if not origin:
+            return {}
+        normalized = origin.rstrip("/")
+        if self.path.startswith("/v1/browser/") and normalized.startswith("chrome-extension://"):
+            allowed = True
+        else:
+            allowed = normalized in self.server.allowed_origins
+        if not allowed:
             return {}
         return {
             "Access-Control-Allow-Origin": origin,
@@ -184,13 +218,6 @@ class LocalApiRequestHandler(BaseHTTPRequestHandler):
             self._send_json(403, {"error": "origin_not_allowed"})
             return True
         return False
-
-    def _browser_origin_allowed(self) -> bool:
-        origin = self.headers.get("Origin", "").rstrip("/")
-        return (
-            origin.startswith("chrome-extension://")
-            and origin in self.server.allowed_origins
-        )
 
     def _analysis_findings(
         self,
@@ -226,6 +253,23 @@ class LocalApiRequestHandler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:  # noqa: N802 - BaseHTTPRequestHandler API
         if self._reject_if_untrusted_transport():
             return
+
+        if self.path == "/v1/browser/status":
+            origin = self._browser_origin()
+            if not origin:
+                self._send_json(403, {"error": "browser_origin_required"})
+                return
+            self._send_json(
+                200,
+                {
+                    "status": "ready",
+                    "service": "privacy-gate-browser-bridge",
+                    "mode": "local-only",
+                    "paired": self._browser_authorized(),
+                },
+            )
+            return
+
         if self.path != "/v1/status":
             self._send_json(404, {"error": "not_found"})
             return
@@ -250,6 +294,7 @@ class LocalApiRequestHandler(BaseHTTPRequestHandler):
         if self.path not in {
             "/v1/analyze",
             "/v1/browser/analyze",
+            "/v1/browser/pair",
             "/v1/protect",
             "/v1/browser/protect",
             "/v1/restore",
@@ -258,12 +303,13 @@ class LocalApiRequestHandler(BaseHTTPRequestHandler):
             self._send_json(404, {"error": "not_found"})
             return
 
-        if self.path in _BROWSER_PATHS:
-            # FreeV1 browser POC: keep browser access constrained to the exact
-            # allowlisted Chromium extension origin. This is intentionally not
-            # the final pairing/authentication design.
-            if not self._browser_origin_allowed():
-                self._send_json(403, {"error": "browser_origin_not_allowed"})
+        if self.path == "/v1/browser/pair":
+            if not self._browser_origin():
+                self._send_json(403, {"error": "browser_origin_required"})
+                return
+        elif self.path in _BROWSER_PATHS:
+            if not self._browser_authorized():
+                self._send_json(401, {"error": "browser_pairing_required"})
                 return
         elif not self._authorized():
             self._send_json(401, {"error": "authentication_required"})
@@ -290,7 +336,9 @@ class LocalApiRequestHandler(BaseHTTPRequestHandler):
             self._send_json(400, {"error": "json_object_required"})
             return
         try:
-            if self.path in {"/v1/analyze", "/v1/browser/analyze"}:
+            if self.path == "/v1/browser/pair":
+                response = self._pair_browser(payload)
+            elif self.path in {"/v1/analyze", "/v1/browser/analyze"}:
                 response = self._analyze(payload)
             elif self.path in {"/v1/protect", "/v1/browser/protect"}:
                 response = self._protect(payload)
@@ -326,6 +374,24 @@ class LocalApiRequestHandler(BaseHTTPRequestHandler):
             self._send_json(404, {"error": "session_not_found"})
             return
         self._send_json(200, {"status": "deleted"})
+
+    def _pair_browser(self, payload: dict[str, Any]) -> dict[str, object]:
+        code = payload.get("code")
+        if not isinstance(code, str) or not re.fullmatch(r"\d{8}", code.strip()):
+            raise ValueError("pairing code must contain 8 digits")
+        client_name = payload.get("client_name", "Chromium")
+        if client_name is not None and not isinstance(client_name, str):
+            raise ValueError("client_name must be a string")
+        token = self.server.browser_pairing.pair(
+            self._browser_origin(),
+            code.strip(),
+            client_name=str(client_name or "Chromium"),
+        )
+        return {
+            "paired": True,
+            "browser_token": token,
+            "token_type": "Bearer",
+        }
 
     def _analyze(self, payload: dict[str, Any]) -> dict[str, object]:
         text = _validated_text(payload)
@@ -394,6 +460,7 @@ def create_local_api_server(
     auth_token: str | None = None,
     allowed_origins: tuple[str, ...] = (),
     session_store: LocalProtectionSessionStore | None = None,
+    browser_pairing: BrowserPairingRegistry | None = None,
 ) -> LocalApiHttpServer:
     """Create the opt-in local bridge. It can never bind to a LAN/WAN interface."""
     normalized_host = host.strip().lower()
@@ -410,6 +477,7 @@ def create_local_api_server(
         auth_token=token,
         allowed_origins=allowed_origins,
         session_store=session_store or LocalProtectionSessionStore(),
+        browser_pairing=browser_pairing or BrowserPairingRegistry(MemorySecretStore()),
     )
 
 
