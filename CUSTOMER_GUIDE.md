@@ -1,78 +1,99 @@
 # AI PM LAB Privacy Gate — Customer Guide
 
-## 1. Install the app
+## 1. Install PrivacyGate
 
-Download the latest Windows installer from the repository's Releases page and open it. Privacy Gate installs for the current Windows user and does not require Python.
+PrivacyGate 0.5.0 supports Windows x64 and macOS.
 
-Version 0.4.0 is currently unsigned while the SignPath Foundation application is pending. Windows or antivirus software may therefore show an unknown-publisher or reputation warning. Download only from the official AI PM LAB repository and verify the SHA-256 published in the release notes. Future signed releases will be identified explicitly; never assume a file is signed based only on its filename.
+On Windows, the recommended distribution is Microsoft Store. A separate direct EXE installer is also available from the official PrivacyGate distribution page. Microsoft Store installations are updated through Microsoft Store; direct EXE installations use PrivacyGate's verified direct updater after version 0.5.0 is installed.
 
-## 2. Protect pasted text
+On macOS, the direct distribution is a DMG containing `AI PM LAB Privacy Gate.app`. Move the app to **Applications** before opening it. Direct macOS updates require the app to be installed outside the mounted DMG. Until a production Apple Developer ID signature and notarization are configured, macOS may display additional Gatekeeper warnings for direct-download builds.
 
-1. Open **Protect**.
-2. Select Property Management, Realtor / Brokerage, or Projects & Renovations.
-3. Keep **Reversible placeholders** when you want to restore the identities later.
-4. Paste the text and select **Scan for sensitive data**.
-5. Review the categories and every detected item. Deselect anything that should remain visible or use **Add sensitive item** when something was missed.
-6. Use **Save + Copy** to store the protected version locally and copy it for an AI chat.
+Windows direct downloads are not Authenticode-signed until a production Windows signing identity is configured, so Windows or endpoint protection can still display publisher/reputation warnings. Use only official PrivacyGate downloads and verify published release information.
 
-## 3. Protect a PDF
+## 2. Protect text and documents
 
-Open the **PDF file** tab, choose a PDF containing selectable text, and scan it. Image-only or scanned PDFs require OCR and are not supported in this version. Version 0.4.0 can generate a protected PDF that preserves the original page layout using secure overlays; always review the comparison preview before export.
+Open **Protect**, choose the appropriate privacy profile and document language, load a supported source, then select **Scan for sensitive data**. Review every detected value before protection. PrivacyGate supports reversible placeholders when you want to restore identities later, plus non-reversible protection modes.
 
-## 4. Protect Word and Excel files
+Supported document formats include PDF, Word `.docx`, Excel `.xlsx`, PowerPoint `.pptx`, text `.txt`, and printed-text document images `.png`, `.jpg`, and `.jpeg`.
 
-Open the **Document file** tab and choose a Word `.docx` or Excel `.xlsx` file. Privacy Gate scans Word paragraphs, tables, headers and footers, plus Excel cell values and comments—including hidden worksheets. Review every finding, then use **Save + Download** to create a protected copy in the same Office format. The original file is never overwritten.
+The original source is not overwritten. Protected document formats also receive a protected UTF-8 TXT companion where applicable.
 
-If selected sensitive data appears inside an Excel formula, the protected copy converts that cell to protected text so the original value cannot leak. Other formulas and workbook formatting remain unchanged. Legacy `.doc`/`.xls`, macro-enabled Office files and password-protected files are not supported in this release.
+## 3. Protect screenshots and document photos
 
-When LibreOffice is installed, Privacy Gate renders the original and protected Word/Excel documents locally for a side-by-side page comparison. No document is uploaded. Without LibreOffice, scanning, protection and same-format download continue to work normally.
+PrivacyGate 0.5.0 includes local OCR for **printed text** in PNG and JPG/JPEG screenshots or document photos.
 
-Select **Focus preview** to temporarily hide setup and findings and give the document comparison the full workspace. Select **Show review panels** to restore every review control.
+1. Load the image from local upload, Google Drive, or a Gmail attachment.
+2. Scan it normally from Protect.
+3. Review the OCR text and detected sensitive values.
+4. Protect the selected values.
+5. PrivacyGate creates a new raster image with the selected sensitive pixels redacted and a protected TXT companion.
 
-## 4.1 Updates and custom workflows
+OCR processing and sensitive-data detection occur locally after the source has been materialized into PrivacyGate's local working area. The protected image is a new file; PrivacyGate does not overwrite the original.
 
-Privacy Gate checks the official public release manifest without blocking local use. When a newer version exists, it offers the official download. Library data and settings remain stored separately from the application installation.
+**Handwriting is not supported in this release.** OCR quality also depends on image resolution, lighting, perspective and screen/photo artifacts. Always review the protected output before sharing it.
 
-Open **Contact / Workflows** for optional help with n8n, MCP, email, document and real-estate workflows.
+## 4. Protect PDFs and Office documents
 
-## 5. Use the protected text with AI
+For PDFs with selectable text, PrivacyGate can create a layout-preserving protected PDF using secure overlays. Scanned/image-only PDF pages are a separate capability from JPG/PNG image OCR and should not be assumed to work unless the current Protect flow explicitly accepts and previews them.
 
-The free workflow does not require an API key:
+For Word `.docx` and Excel `.xlsx`, PrivacyGate scans supported editable content and writes a protected copy in the same Office format. PowerPoint `.pptx` and text `.txt` use the shared document pipeline as well. Legacy `.doc`/`.xls`, macro-enabled Office files and password-protected files are not claimed as supported in this release.
 
-1. Select **Open with AI** and then **Copy & Open ChatGPT**, or copy the protected text manually.
-2. Paste it into ChatGPT or another approved AI tool.
-3. Keep placeholders such as `[[PG_PERSON_001]]` unchanged in the AI response.
+When a local renderer is available, PrivacyGate can show original/protected comparisons. Protection remains functional even when an optional document-rendering dependency is unavailable.
 
-Privacy Gate never claims that the AI service itself is local. Only the detection, library, mapping, and restoration functions run locally.
+## 5. Use protected content with AI
 
-## 6. Restore the result
+Use **Open with AI**, copy the protected text manually, or use an approved protected Library/MCP workflow. Keep placeholders such as `[[PG_PERSON_001]]` unchanged if you intend to restore the result later.
 
-1. Copy the AI response.
-2. Open **Restore**.
-3. Select the matching protected document from the local library.
-4. Paste the AI response and select **Restore locally**.
-5. Review the result before copying or downloading it.
+PrivacyGate never claims that an external AI service is local. Detection, OCR, protection, Library mappings and restoration are local PrivacyGate operations; any external AI service follows that provider's own data handling.
 
-## 7. Local library and updates
+## 6. Restore locally
 
-The protected library is stored under `%LOCALAPPDATA%\AI PM LAB Privacy Gate\Data`. Reinstalling or updating the program does not overwrite this folder. Reversible mappings are encrypted for the current Windows user using Windows DPAPI, so they should be restored and backed up only under that Windows account.
+1. Open **Restore**.
+2. Select the matching protected Library document.
+3. Paste or load the protected AI result containing PrivacyGate placeholders.
+4. Select **Restore locally**.
+5. Review the restored result before saving or sharing it.
 
-## 8. Automation options
+Reversible mappings are not sent through the protected MCP Library.
 
-- **Local Automation / n8n:** future localhost API and local workflows without a mandatory Privacy Gate cloud.
-- **ChatGPT & Claude / Remote MCP beta:** creates a private session-based HTTPS link. Saved protected copies are available automatically; use **Block AI access** in the Library for exceptions. Keep Privacy Gate open while connected and never publish the complete MCP URL.
-- **Local desktop MCP:** advanced direct configuration for compatible clients installed on the same computer.
-- **Email and other cloud options:** optional future integrations using customer-owned accounts or a managed service.
-- **Manual workflow:** available now and free; no API key is required.
+## 7. Local Library and data preservation
 
-For workflow design, onboarding, or automation consulting, contact [peter@propertydex.xyz](mailto:peter@propertydex.xyz).
+PrivacyGate stores application binaries separately from local user data.
 
-For data handling details, see the project [privacy policy](PRIVACY.md). For release authenticity and signing responsibilities, see the [code signing policy](CODE_SIGNING_POLICY.md).
+Default data locations:
 
-## 9. Privacy checklist
+- Windows: `%LOCALAPPDATA%\AI PM LAB Privacy Gate\Data`
+- macOS: `~/Library/Application Support/AI PM LAB Privacy Gate/Data`
+
+The Library contains protected-document state and encrypted reversible mappings. Updating application binaries must not delete this directory.
+
+Before a Windows Direct or macOS Direct automatic update, PrivacyGate creates an encrypted `.pgbackup` Library snapshot. The app then downloads the matching release package over HTTPS and requires the published SHA-256 checksum to match before installation starts.
+
+## 8. Update behavior
+
+PrivacyGate checks the official release manifest without blocking local use.
+
+- **Microsoft Store / MSIX:** Microsoft Store remains the update authority. PrivacyGate can request the official Store package update and restart after installation.
+- **Windows Direct EXE:** PrivacyGate downloads the matching EXE installer, verifies SHA-256, creates a Library backup, closes the running app, upgrades the existing Inno Setup installation and reopens PrivacyGate.
+- **macOS Direct DMG:** PrivacyGate downloads the matching DMG, verifies SHA-256, creates a Library backup, validates the expected bundle identifier/version and code-signature structure, replaces the installed `.app` with rollback protection and reopens PrivacyGate.
+- **Source/development, portable builds, or a different distribution channel:** PrivacyGate does not silently replace that installation. Use the official distribution path for that channel.
+
+The first direct release containing the self-updater is 0.5.0. Therefore an older direct build that predates this updater may require one manual installation of 0.5.0; subsequent direct releases can use the built-in update path.
+
+## 9. MCP, connections and automations
+
+The protected Library can be exposed to compatible MCP clients without exposing original documents or reversible mappings. Optional Google Drive and Gmail connections are used to select/materialize supported content before local protection. Organization/cloud account features may use their configured backend, but the core local Protect/OCR/Library/update pipeline does not require Supabase to process a local document.
+
+Use **Block AI access** for Library items that should not be exposed through MCP. Keep private MCP connection URLs confidential.
+
+## 10. Privacy checklist
 
 - Review detections before exporting.
-- Do not assume automated detection is perfect.
-- Keep the original document and the local library protected with Windows account security.
+- Review OCR-derived detections carefully; OCR can make recognition mistakes.
 - Never send reversible mappings to an AI provider.
+- Keep your operating-system account and PrivacyGate Library protected.
+- Back up important Library state.
 - Confirm company policy before using any external AI service.
+- Download updates only from the official PrivacyGate channels.
+
+For data handling details, see [PRIVACY.md](PRIVACY.md). For release authenticity and signing responsibilities, see [CODE_SIGNING_POLICY.md](CODE_SIGNING_POLICY.md).
