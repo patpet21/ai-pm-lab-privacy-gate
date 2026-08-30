@@ -26,7 +26,11 @@ MAX_REQUEST_BYTES = 1_000_000
 MAX_TEXT_CHARS = 250_000
 _ALLOWED_REPLACEMENT_MODES = {"reversible", "redact", "generic", "mask"}
 _SESSION_ID_PATTERN = re.compile(r"^[a-f0-9]{32}$")
-_BROWSER_PATHS = {"/v1/browser/analyze", "/v1/browser/protect"}
+_BROWSER_PATHS = {
+    "/v1/browser/analyze",
+    "/v1/browser/protect",
+    "/v1/browser/restore",
+}
 
 
 def _finding_payload(finding: Finding) -> dict[str, object]:
@@ -230,6 +234,7 @@ class LocalApiRequestHandler(BaseHTTPRequestHandler):
             "/v1/protect",
             "/v1/browser/protect",
             "/v1/restore",
+            "/v1/browser/restore",
         }:
             self._send_json(404, {"error": "not_found"})
             return
