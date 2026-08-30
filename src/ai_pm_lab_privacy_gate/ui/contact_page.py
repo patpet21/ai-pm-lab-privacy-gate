@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from pathlib import Path
 import sys
 
 import httpx
@@ -12,6 +13,14 @@ from PySide6.QtWidgets import (
 )
 
 from ai_pm_lab_privacy_gate import __version__
+from ai_pm_lab_privacy_gate.infrastructure.updates.direct_update_service import (
+    DirectUpdateService,
+)
+from ai_pm_lab_privacy_gate.infrastructure.updates.install_channel import (
+    channel_label,
+    current_install_channel,
+    direct_update_supported,
+)
 from ai_pm_lab_privacy_gate.infrastructure.updates.store_update_service import (
     StoreUpdateService,
     is_store_packaged_install,
@@ -25,8 +34,9 @@ class ContactPage(QWidget):
     update_available = Signal(object)
     store_update_event = Signal(object)
 
-    def __init__(self) -> None:
+    def __init__(self, data_dir: str | Path | None = None) -> None:
         super().__init__()
+        self.data_dir = Path(data_dir) if data_dir else None
         self.thread_pool = QThreadPool.globalInstance()
         self._workers: set[FunctionWorker] = set()
         self._store_versions_attempted: set[str] = set()
@@ -300,13 +310,69 @@ class ContactPage(QWidget):
             lambda: self._ready(self.update_button, "Check for updates"),
         )
 
+    def _install_direct_update(self, release) -> None:
+        self._busy(self.update_button, "Downloading update…")
+        self._run(
+            lambda: DirectUpdateService(self.data_dir).prepare_and_launch(release),
+            lambda result: self._handle_direct_update_result(result, release),
+            lambda error: QMessageBox.warning(self, "Update failed", error),
+            lambda: self._ready(self.update_button, "Check for updates"),
+        )
+
+    def _handle_direct_update_result(self, result, release) -> None:
+        if result.status == "started":
+            box = QMessageBox(self)
+            box.setWindowTitle("PrivacyGate update verified")
+            box.setIcon(QMessageBox.Icon.Information)
+            box.setText(f"PrivacyGate {release.version} is ready to install.")
+            backup_note = (
+                f" A pre-update Library backup was created at {result.backup_path}."
+                if result.backup_path is not None
+                else ""
+            )
+            box.setInformativeText(
+                "The package passed SHA-256 verification. PrivacyGate will now close, update the current installation, and reopen automatically."
+                + backup_note
+            )
+            box.addButton("Continue", QMessageBox.ButtonRole.AcceptRole)
+            box.exec()
+            QApplication.quit()
+            return
+
+        box = QMessageBox(self)
+        box.setWindowTitle("PrivacyGate update unavailable")
+        box.setIcon(QMessageBox.Icon.Warning)
+        box.setText("PrivacyGate could not start the automatic update.")
+        box.setInformativeText(result.message)
+        website = box.addButton("PrivacyGate website", QMessageBox.ButtonRole.ActionRole)
+        box.addButton("Later", QMessageBox.ButtonRole.RejectRole)
+        box.exec()
+        if box.clickedButton() is website:
+            QDesktopServices.openUrl(QUrl(release.website_url))
+
     def show_update_dialog(self, result) -> None:
+        channel = current_install_channel()
         box = QMessageBox(self)
         box.setWindowTitle("PrivacyGate update available")
         box.setIcon(QMessageBox.Icon.Information)
         box.setText(f"PrivacyGate {result.version} is available.")
+
+        if direct_update_supported(channel):
+            box.setInformativeText(
+                f"This is a {channel_label(channel)} installation. PrivacyGate can download the matching package, verify its SHA-256 checksum, create a local Library backup, update this installation, and reopen automatically."
+            )
+            install_button = box.addButton("Download & install", QMessageBox.ButtonRole.AcceptRole)
+            website_button = box.addButton("PrivacyGate website", QMessageBox.ButtonRole.ActionRole)
+            box.addButton("Later", QMessageBox.ButtonRole.RejectRole)
+            box.exec()
+            if box.clickedButton() is install_button:
+                self._install_direct_update(result)
+            elif box.clickedButton() is website_button:
+                QDesktopServices.openUrl(QUrl(result.website_url))
+            return
+
         box.setInformativeText(
-            "This installation is not managed by Microsoft Store. Open the PrivacyGate website for the current Windows EXE or macOS download. Your local Library and mappings remain on this device."
+            f"This {channel_label(channel)} installation is not replaced by the direct updater. Open the official PrivacyGate distribution page for the appropriate channel. Your local Library and mappings are not deleted."
         )
         website_button = box.addButton("PrivacyGate website", QMessageBox.ButtonRole.AcceptRole)
         box.addButton("Later", QMessageBox.ButtonRole.RejectRole)
