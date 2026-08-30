@@ -26,6 +26,7 @@ MAX_REQUEST_BYTES = 1_000_000
 MAX_TEXT_CHARS = 250_000
 _ALLOWED_REPLACEMENT_MODES = {"reversible", "redact", "generic", "mask"}
 _SESSION_ID_PATTERN = re.compile(r"^[a-f0-9]{32}$")
+_BROWSER_PATHS = {"/v1/browser/analyze", "/v1/browser/protect"}
 
 
 def _finding_payload(finding: Finding) -> dict[str, object]:
@@ -179,6 +180,13 @@ class LocalApiRequestHandler(BaseHTTPRequestHandler):
             return True
         return False
 
+    def _browser_origin_allowed(self) -> bool:
+        origin = self.headers.get("Origin", "").rstrip("/")
+        return (
+            origin.startswith("chrome-extension://")
+            and origin in self.server.allowed_origins
+        )
+
     def do_OPTIONS(self) -> None:  # noqa: N802 - BaseHTTPRequestHandler API
         if self._reject_if_untrusted_transport():
             return
@@ -215,27 +223,28 @@ class LocalApiRequestHandler(BaseHTTPRequestHandler):
     def do_POST(self) -> None:  # noqa: N802 - BaseHTTPRequestHandler API
         if self._reject_if_untrusted_transport():
             return
-        browser_analyze = self.path == "/v1/browser/analyze"
+
         if self.path not in {
             "/v1/analyze",
             "/v1/browser/analyze",
             "/v1/protect",
+            "/v1/browser/protect",
             "/v1/restore",
         }:
             self._send_json(404, {"error": "not_found"})
             return
 
-        if browser_analyze:
-            origin = self.headers.get("Origin", "").rstrip("/")
-            if (
-                not origin.startswith("chrome-extension://")
-                or origin not in self.server.allowed_origins
-            ):
+        if self.path in _BROWSER_PATHS:
+            # FreeV1 browser POC: keep browser access constrained to the exact
+            # allowlisted Chromium extension origin. This is intentionally not
+            # the final pairing/authentication design.
+            if not self._browser_origin_allowed():
                 self._send_json(403, {"error": "browser_origin_not_allowed"})
                 return
         elif not self._authorized():
             self._send_json(401, {"error": "authentication_required"})
             return
+
         content_type = self.headers.get("Content-Type", "").split(";", 1)[0].strip().lower()
         if content_type != "application/json":
             self._send_json(415, {"error": "application_json_required"})
@@ -259,7 +268,7 @@ class LocalApiRequestHandler(BaseHTTPRequestHandler):
         try:
             if self.path in {"/v1/analyze", "/v1/browser/analyze"}:
                 response = self._analyze(payload)
-            elif self.path == "/v1/protect":
+            elif self.path in {"/v1/protect", "/v1/browser/protect"}:
                 response = self._protect(payload)
             else:
                 response = self._restore(payload)
