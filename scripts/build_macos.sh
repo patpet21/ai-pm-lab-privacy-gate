@@ -6,6 +6,16 @@ PYTHON="$PROJECT_ROOT/.venv/bin/python"
 ARCH="$(uname -m)"
 CLOUDFLARED_VERSION="2026.7.3"
 
+if [[ ! -x "$PYTHON" ]]; then
+  echo "Project virtual environment not found." >&2
+  exit 1
+fi
+APP_VERSION="$($PYTHON -c 'import ai_pm_lab_privacy_gate; print(ai_pm_lab_privacy_gate.__version__)')"
+if [[ ! "$APP_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+  echo "Invalid PrivacyGate version: $APP_VERSION" >&2
+  exit 1
+fi
+
 case "$ARCH" in
   arm64)
     RELEASE_ARCH="arm64"; DISPLAY_ARCH="Apple-Silicon"
@@ -46,16 +56,29 @@ echo "$CLOUDFLARED_SHA256  $CLOUDFLARED_ARCHIVE" | shasum -a 256 -c -
 tar -xzf "$CLOUDFLARED_ARCHIVE" -C build/macos
 install -m 755 build/macos/cloudflared "$APP_RESOURCES/cloudflared"
 
+# Until Developer ID credentials are configured this remains an ad-hoc build.
+# The updater additionally verifies the release SHA-256 and bundle identifier.
 codesign --force --deep --sign - "dist/AI PM LAB Privacy Gate.app"
 PRIVACY_GATE_SMOKE_TEST=1 "dist/AI PM LAB Privacy Gate.app/Contents/MacOS/AI PM LAB Privacy Gate"
 "$APP_RESOURCES/cloudflared" version
 test -x "$APP_RESOURCES/AI PM LAB Privacy Gate MCP/AI PM LAB Privacy Gate MCP"
 
+BUNDLE_VERSION=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "dist/AI PM LAB Privacy Gate.app/Contents/Info.plist")
+BUNDLE_ID=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "dist/AI PM LAB Privacy Gate.app/Contents/Info.plist")
+if [[ "$BUNDLE_VERSION" != "$APP_VERSION" ]]; then
+  echo "macOS bundle version mismatch: expected $APP_VERSION, found $BUNDLE_VERSION" >&2
+  exit 1
+fi
+if [[ "$BUNDLE_ID" != "xyz.propertydex.privacygate" ]]; then
+  echo "macOS bundle identifier mismatch: $BUNDLE_ID" >&2
+  exit 1
+fi
+
 STAGE="build/macos/dmg-stage"
 mkdir -p "$STAGE"
 cp -R "dist/AI PM LAB Privacy Gate.app" "$STAGE/"
 ln -s /Applications "$STAGE/Applications"
-DMG="release/macos-$RELEASE_ARCH/AI_PM_LAB_Privacy_Gate_0.4.2_${DISPLAY_ARCH}.dmg"
+DMG="release/macos-$RELEASE_ARCH/AI_PM_LAB_Privacy_Gate_${APP_VERSION}_${DISPLAY_ARCH}.dmg"
 hdiutil create -volname "AI PM LAB Privacy Gate" -srcfolder "$STAGE" -ov -format UDZO "$DMG"
 shasum -a 256 "$DMG" > "release/macos-$RELEASE_ARCH/SHA256SUMS.txt"
 cp BUILD_INFO.md CUSTOMER_GUIDE.md PRIVACY.md THIRD_PARTY_NOTICES.md "release/macos-$RELEASE_ARCH/"
