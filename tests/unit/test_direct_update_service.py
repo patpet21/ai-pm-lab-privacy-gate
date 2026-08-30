@@ -19,6 +19,13 @@ class Release:
     sha256: str = "a" * 64
 
 
+def test_direct_updater_requires_release_version():
+    assert DirectUpdateService._validated_version("0.5.0") == "0.5.0"
+    for value in ("", "v0.5.0", "0.5", "../0.5.0", "0.5.0-beta"):
+        with pytest.raises(DirectUpdateError):
+            DirectUpdateService._validated_version(value)
+
+
 def test_direct_updater_requires_https():
     release = Release(download_url="http://example.test/PrivacyGate.exe")
     with pytest.raises(DirectUpdateError):
