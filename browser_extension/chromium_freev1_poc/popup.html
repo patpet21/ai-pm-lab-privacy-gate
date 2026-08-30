@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>PrivacyGate Browser Protection</title>
+  <style>
+    :root { color-scheme: light; font-family: Inter, Arial, sans-serif; }
+    * { box-sizing: border-box; }
+    body { margin: 0; width: 330px; background: #f4f7f9; color: #17384e; }
+    .hero { padding: 18px; background: linear-gradient(135deg,#062b4f,#0b7f89); color: white; }
+    .brand { font-size: 11px; font-weight: 900; letter-spacing: .12em; text-transform: uppercase; color: #a9ece8; }
+    h1 { margin: 5px 0 4px; font-size: 19px; }
+    .hero p { margin: 0; font-size: 11px; line-height: 1.45; color: #d9eef1; }
+    main { padding: 15px; }
+    .status { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 11px 12px; background: white; border: 1px solid #dde7ec; border-radius: 12px; }
+    .status strong { font-size: 12px; }
+    #state { font-size: 10px; font-weight: 900; padding: 5px 8px; border-radius: 999px; }
+    .paired { background: #eaf8f1; color: #23824b; }
+    .unpaired { background: #fff6e8; color: #a96b18; }
+    .offline { background: #fff0f0; color: #b54747; }
+    .pair { margin-top: 12px; padding: 13px; background: white; border: 1px solid #dde7ec; border-radius: 12px; }
+    label { display: block; font-size: 10px; font-weight: 800; margin-bottom: 6px; }
+    input { width: 100%; height: 40px; border: 1px solid #c9d7e0; border-radius: 9px; padding: 0 11px; font-size: 16px; font-weight: 800; letter-spacing: .18em; text-align: center; }
+    button { width: 100%; min-height: 38px; margin-top: 9px; border: 0; border-radius: 9px; background: #0b7f89; color: white; font-size: 11px; font-weight: 850; cursor: pointer; }
+    button.secondary { background: white; color: #17384e; border: 1px solid #c9d7e0; }
+    button:disabled { opacity: .55; cursor: default; }
+    #message { min-height: 16px; margin: 8px 2px 0; font-size: 10px; line-height: 1.35; color: #61798a; }
+    .foot { margin-top: 11px; font-size: 9px; line-height: 1.4; color: #61798a; }
+  </style>
+</head>
+<body>
+  <div class="hero">
+    <div class="brand">PrivacyGate</div>
+    <h1>Browser Protection</h1>
+    <p>Local prompt protection for supported AI websites.</p>
+  </div>
+  <main>
+    <div class="status">
+      <strong>Local Privacy Bridge</strong>
+      <span id="state" class="unpaired">CHECKING</span>
+    </div>
+    <section class="pair" id="pairSection">
+      <label for="code">Pairing code from PrivacyGate desktop</label>
+      <input id="code" inputmode="numeric" maxlength="8" placeholder="00000000" autocomplete="one-time-code">
+      <button id="pairButton">Pair Extension</button>
+      <div id="message"></div>
+    </section>
+    <button id="forgetButton" class="secondary" hidden>Forget this pairing</button>
+    <div class="foot">The pairing credential is separate from PrivacyGate's main local API token. Prompt analysis remains on this device.</div>
+  </main>
+  <script src="popup.js"></script>
+</body>
+</html>
