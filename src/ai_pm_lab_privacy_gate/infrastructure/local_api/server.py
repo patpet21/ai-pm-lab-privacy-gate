@@ -13,6 +13,7 @@ from ai_pm_lab_privacy_gate.application.privacy_service import PrivacyGateServic
 from ai_pm_lab_privacy_gate.application.protect_session_service import namespace_protection_result
 from ai_pm_lab_privacy_gate.domain.models import Finding
 from ai_pm_lab_privacy_gate.domain.profiles import get_profile
+from ai_pm_lab_privacy_gate.infrastructure.local_api.browser_context import augment_browser_findings
 from ai_pm_lab_privacy_gate.infrastructure.local_api.session_store import (
     LocalProtectionSessionStore,
     LocalSessionNotFound,
@@ -191,6 +192,24 @@ class LocalApiRequestHandler(BaseHTTPRequestHandler):
             and origin in self.server.allowed_origins
         )
 
+    def _analysis_findings(
+        self,
+        text: str,
+        profile_key: str,
+        language: str,
+    ) -> tuple[object, tuple[Finding, ...]]:
+        document = self.server.privacy_service.document_from_text(text)
+        findings = tuple(
+            self.server.privacy_service.analyze(
+                document,
+                get_profile(profile_key),
+                language=language,
+            )
+        )
+        if self.path in {"/v1/browser/analyze", "/v1/browser/protect"}:
+            findings = augment_browser_findings(text, findings)
+        return document, findings
+
     def do_OPTIONS(self) -> None:  # noqa: N802 - BaseHTTPRequestHandler API
         if self._reject_if_untrusted_transport():
             return
@@ -312,12 +331,7 @@ class LocalApiRequestHandler(BaseHTTPRequestHandler):
         text = _validated_text(payload)
         profile_key = _validated_profile(payload)
         language = _validated_language(payload)
-        document = self.server.privacy_service.document_from_text(text)
-        findings = self.server.privacy_service.analyze(
-            document,
-            get_profile(profile_key),
-            language=language,
-        )
+        _, findings = self._analysis_findings(text, profile_key, language)
         return {
             "findings_count": len(findings),
             "findings": [_finding_payload(item) for item in findings],
@@ -330,12 +344,7 @@ class LocalApiRequestHandler(BaseHTTPRequestHandler):
         finding_ids = _validated_finding_ids(payload)
         replacement_mode = _validated_replacement_mode(payload)
         session_id = _validated_session_id(payload)
-        document = self.server.privacy_service.document_from_text(text)
-        findings = self.server.privacy_service.analyze(
-            document,
-            get_profile(profile_key),
-            language=language,
-        )
+        document, findings = self._analysis_findings(text, profile_key, language)
         if finding_ids is None:
             selected = findings
         else:
