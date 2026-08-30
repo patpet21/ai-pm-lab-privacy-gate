@@ -1,10 +1,13 @@
-name: Windows tests
+name: PrivacyGate tests
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - feat/ui-redesign-mockup-v1
   pull_request:
     branches:
-      - feature/privacygate-settings-update-center
+      - feat/ui-redesign-mockup-v1
 
 permissions:
   contents: read
