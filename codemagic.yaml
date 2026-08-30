@@ -1,0 +1,58 @@
+workflows:
+  macos-apple-silicon:
+    name: PrivacyGate macOS Apple Silicon 0.5.0
+    instance_type: mac_mini_m2
+    max_build_duration: 120
+    scripts:
+      - name: Prepare Python 3.12
+        script: |
+          set -euo pipefail
+          brew list python@3.12 >/dev/null 2>&1 || brew install python@3.12
+          PYTHON="$(brew --prefix python@3.12)/bin/python3.12"
+          "$PYTHON" -m venv .venv
+          .venv/bin/python -m pip install --upgrade pip
+          .venv/bin/python -m pip install -r requirements-lock.txt
+          .venv/bin/python -m pip install -e . --no-deps
+      - name: Build Apple Silicon DMG
+        script: |
+          set -euo pipefail
+          test "$(uname -m)" = "arm64"
+          bash scripts/build_macos.sh
+    artifacts:
+      - release/macos-arm64/*.dmg
+      - release/macos-arm64/SHA256SUMS.txt
+      - release/macos-arm64/BUILD_INFO.md
+      - release/macos-arm64/CUSTOMER_GUIDE.md
+      - release/macos-arm64/PRIVACY.md
+      - release/macos-arm64/THIRD_PARTY_NOTICES.md
+
+  macos-intel:
+    name: PrivacyGate macOS Intel 0.5.0
+    instance_type: mac_mini_m2
+    max_build_duration: 120
+    scripts:
+      - name: Prepare Rosetta and x86_64 Python 3.12
+        script: |
+          set -euo pipefail
+          sudo softwareupdate --install-rosetta --agree-to-license || true
+          curl --fail --location --retry 3 \
+            https://www.python.org/ftp/python/3.12.10/python-3.12.10-macos11.pkg \
+            --output /tmp/python-3.12.10-macos11.pkg
+          sudo installer -pkg /tmp/python-3.12.10-macos11.pkg -target /
+          PYTHON="/Library/Frameworks/Python.framework/Versions/3.12/bin/python3.12"
+          arch -x86_64 "$PYTHON" -m venv .venv
+          arch -x86_64 .venv/bin/python -m pip install --upgrade pip
+          arch -x86_64 .venv/bin/python -m pip install -r requirements-lock.txt
+          arch -x86_64 .venv/bin/python -m pip install -e . --no-deps
+          arch -x86_64 .venv/bin/python -c 'import platform; assert platform.machine() == "x86_64", platform.machine()'
+      - name: Build Intel DMG under Rosetta
+        script: |
+          set -euo pipefail
+          arch -x86_64 /bin/bash scripts/build_macos.sh
+    artifacts:
+      - release/macos-amd64/*.dmg
+      - release/macos-amd64/SHA256SUMS.txt
+      - release/macos-amd64/BUILD_INFO.md
+      - release/macos-amd64/CUSTOMER_GUIDE.md
+      - release/macos-amd64/PRIVACY.md
+      - release/macos-amd64/THIRD_PARTY_NOTICES.md
