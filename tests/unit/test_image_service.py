@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 from pathlib import Path
+from types import SimpleNamespace
 
 from PIL import Image
 
@@ -129,3 +130,38 @@ def test_image_ocr_reports_clear_message_when_no_printed_text_is_found(tmp_path:
         assert "Handwriting is not supported" in message
     else:
         raise AssertionError("Blank images must not enter the PII detector as empty documents")
+
+
+def test_local_image_is_previewed_immediately_after_selection(tmp_path: Path) -> None:
+    import os
+
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication
+
+    from ai_pm_lab_privacy_gate.infrastructure.storage.library_repository import (
+        LibraryRepository,
+    )
+    from ai_pm_lab_privacy_gate.ui.document_pipeline_v2_ui import (
+        apply_document_pipeline_v2_ui,
+    )
+    from ai_pm_lab_privacy_gate.ui.protection_page import ProtectionPage
+
+    app = QApplication.instance() or QApplication([])
+    source = tmp_path / "photo.jpg"
+    Image.new("RGB", (320, 180), "white").save(source)
+    page = ProtectionPage(
+        PrivacyGateService(),
+        LibraryRepository(tmp_path / "library"),
+    )
+    try:
+        apply_document_pipeline_v2_ui(SimpleNamespace(protection_page=page))
+        page.pdf_path.setText(str(source))
+        app.processEvents()
+
+        pixmap = page.original_image_label.pixmap()
+        assert pixmap is not None and not pixmap.isNull()
+        assert page.original_view_stack.currentWidget() is page.original_image_scroll
+        assert page.preview_tabs.isTabVisible(1)
+    finally:
+        page.close()
+        app.processEvents()

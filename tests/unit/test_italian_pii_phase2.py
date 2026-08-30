@@ -46,6 +46,14 @@ def test_italian_contacts_detect_email_pec_and_phone() -> None:
     assert "+39 347 1234567" in phone_values
 
 
+def test_phone_recognizer_handles_centralino_split_across_ocr_lines() -> None:
+    text = "Centralino: +39 02\n1234 5678."
+    assert _values(build_contact_recognizers(), text, "PHONE_NUMBER") == [
+        "+39 02\n1234 5678",
+        "+39 02\n1234 5678",
+    ]
+
+
 def test_italian_address_fields_require_plausible_context() -> None:
     recognizers = build_address_recognizers()
     text = "Via Giuseppe Garibaldi 12\nCAP: 00184\nProvincia: RM"
@@ -101,6 +109,14 @@ def test_italian_cadastral_fields_are_separate_findings() -> None:
     assert _values(recognizers, text, "IT_CADASTRAL_SHEET") == ["123"]
     assert _values(recognizers, text, "IT_CADASTRAL_PARCEL") == ["456/2"]
     assert _values(recognizers, text, "IT_CADASTRAL_SUBALTERN") == ["7"]
+
+
+def test_cadastral_section_accepts_explicit_catastale_label() -> None:
+    assert _values(
+        build_cadastral_recognizers(),
+        "Sezione catastale\nA",
+        "IT_CADASTRAL_SECTION",
+    ) == ["A"]
 
 
 def test_italian_business_identifiers_and_legal_entity() -> None:

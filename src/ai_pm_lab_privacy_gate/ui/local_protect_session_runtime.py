@@ -103,9 +103,12 @@ def apply_local_protect_session_runtime(main_window) -> None:
             return
 
         profile = _current_profile(self)
+        language = str(
+            getattr(self, "_protect_document_language", self.service.document_language)
+        )
 
         def task():
-            return session_service.analyze(package, profile)
+            return session_service.analyze(package, profile, language=language)
 
         def ready(analysis) -> None:
             if not analysis.sources:

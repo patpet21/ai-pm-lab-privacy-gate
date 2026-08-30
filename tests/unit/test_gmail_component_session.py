@@ -3,10 +3,13 @@ from __future__ import annotations
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
+
 from ai_pm_lab_privacy_gate.ui.gmail_component_capture_fix import (
     _authoritative_manifest,
 )
 from ai_pm_lab_privacy_gate.ui.gmail_component_session import (
+    _analyze_gmail_components,
     _body_from_legacy_text,
     _safe_button_text,
     _source_key,
@@ -113,3 +116,67 @@ def test_source_reset_is_suspended_during_atomic_connector_import() -> None:
     assert _source_state_reset_suspended(page)
     page._protect_source_transaction = False
     assert not _source_state_reset_suspended(page)
+
+
+def test_gmail_scan_keeps_readable_image_and_skips_blank_sibling(tmp_path: Path) -> None:
+    readable = tmp_path / "Doc1.jpg"
+    blank = tmp_path / "doc2.jpg"
+    readable.write_bytes(b"readable")
+    blank.write_bytes(b"blank")
+    readable_document = SimpleNamespace(pages=())
+
+    class _Service:
+        def document_from_file(self, path):
+            if Path(path) == blank:
+                raise ValueError(
+                    "No readable printed text was found in doc2.jpg. Try a clearer screenshot."
+                )
+            return readable_document
+
+        def analyze(self, document, _profile, *, language=None):
+            assert document is readable_document
+            assert language == "it"
+            return ()
+
+    manifest = (
+        {
+            "key": "gmail_attachment_1",
+            "label": "Doc1.jpg",
+            "component_kind": "attachment",
+            "path": str(readable),
+        },
+        {
+            "key": "gmail_attachment_2",
+            "label": "doc2.jpg",
+            "component_kind": "attachment",
+            "path": str(blank),
+        },
+    )
+
+    sources, skipped = _analyze_gmail_components(
+        _Service(), manifest, object(), "it"
+    )
+
+    assert tuple(sources) == ("gmail_attachment_1",)
+    assert [item["label"] for item in skipped] == ["doc2.jpg"]
+
+
+def test_gmail_scan_explains_when_every_selected_image_is_unreadable(tmp_path: Path) -> None:
+    blank = tmp_path / "doc2.jpg"
+    blank.write_bytes(b"blank")
+
+    class _Service:
+        def document_from_file(self, _path):
+            raise ValueError("No readable printed text was found in doc2.jpg.")
+
+    manifest = (
+        {
+            "key": "gmail_attachment_1",
+            "label": "doc2.jpg",
+            "component_kind": "attachment",
+            "path": str(blank),
+        },
+    )
+
+    with pytest.raises(ValueError, match="doc2.jpg"):
+        _analyze_gmail_components(_Service(), manifest, object(), "it")

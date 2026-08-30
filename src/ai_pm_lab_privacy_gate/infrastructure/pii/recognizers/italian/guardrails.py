@@ -43,8 +43,11 @@ _BLOCKED_EXACT = {
     "procedura consigliata di test",
     "protected view",
     "provincia",
+    "q cerca",
     "rea",
     "registro imprese",
+    "restore",
+    "restore locally",
     "sezione",
     "sezione catastale",
     "subalterno",
@@ -61,6 +64,7 @@ _BLOCKED_PREFIXES = (
     "categorie che ",
     "document language",
     "procedura consigliata",
+    "restore ",
     "synthetic test ",
 )
 # Generic NER sometimes returns a wider span than the exact checklist label, for
@@ -72,6 +76,7 @@ _BLOCKED_STRUCTURAL_FRAGMENTS = (
     "codice fiscale",
     "dati catastali",
     "documenti di identità",
+    "parti del contratto",
     "partita iva",
     "passaporto",
     "patente",
@@ -80,6 +85,7 @@ _BLOCKED_STRUCTURAL_FRAGMENTS = (
     "registro imprese",
     "street_address",
     "targa veicolo",
+    "valore sintetico",
 )
 _INSTRUCTION_FIRST_WORDS = {
     "aprire",

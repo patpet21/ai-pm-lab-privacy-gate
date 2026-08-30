@@ -146,6 +146,8 @@ class ProtectSessionService:
         self,
         package: ProtectPackage,
         profile: PrivacyProfile,
+        *,
+        language: str | None = None,
     ) -> ProtectSessionAnalysis:
         analyzed: list[ProtectSourceAnalysis] = []
         for source in package.sources:
@@ -153,10 +155,12 @@ class ProtectSessionService:
                 document = self._privacy.document_from_text(source.text)
             else:
                 document = self._privacy.document_from_file(source.path)
-            findings = namespace_findings(
-                self._privacy.analyze(document, profile),
-                source.key,
+            raw_findings = (
+                self._privacy.analyze(document, profile)
+                if language is None
+                else self._privacy.analyze(document, profile, language=language)
             )
+            findings = namespace_findings(raw_findings, source.key)
             analyzed.append(
                 ProtectSourceAnalysis(
                     source=source,

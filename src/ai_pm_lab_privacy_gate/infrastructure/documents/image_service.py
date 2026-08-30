@@ -33,7 +33,8 @@ class ImageDocumentService:
         text, regions = self._layout_text(lines)
         if not text.strip():
             raise ValueError(
-                "No readable printed text was found in this image. Try a clearer screenshot or photo, "
+                f"No readable printed text was found in {source.name}. "
+                "Try a clearer screenshot or photo, "
                 "better lighting, less perspective distortion, or a higher-resolution copy. "
                 "Handwriting is not supported in this image OCR version."
             )

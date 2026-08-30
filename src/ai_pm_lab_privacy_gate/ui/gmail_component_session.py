@@ -31,6 +31,7 @@ _SOURCE_ROLE = int(Qt.ItemDataRole.UserRole) + 1
 _EMAIL_MARKER = "=== GMAIL EMAIL BODY ==="
 _ATTACHMENT_MARKER = "\n\n=== GMAIL ATTACHMENT · "
 _DOCUMENT_KINDS = {"pdf", "docx", "xlsx", "pptx"}
+_IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg"}
 
 
 def _source_key(finding_id: str) -> str:
@@ -57,6 +58,51 @@ def _safe_button_text(label: str, limit: int = 34) -> str:
 
 def _document_text(document) -> str:
     return "\n\n".join(page.text for page in document.pages if page.text.strip())
+
+
+def _analyze_gmail_components(service, manifest, profile, language: str):
+    """Analyze every readable Gmail component without one blank image aborting all."""
+    sources = {}
+    skipped = []
+    for component in manifest:
+        key = str(component["key"])
+        try:
+            if component.get("component_kind") == "body":
+                document = service.document_from_text(str(component.get("text") or ""))
+            else:
+                document = service.document_from_file(str(component.get("path") or ""))
+        except ValueError as exc:
+            path = Path(str(component.get("path") or ""))
+            if (
+                component.get("component_kind") == "attachment"
+                and path.suffix.lower() in _IMAGE_SUFFIXES
+                and "No readable printed text" in str(exc)
+            ):
+                skipped.append(
+                    {
+                        "key": key,
+                        "label": str(component.get("label") or path.name or "Image attachment"),
+                        "reason": str(exc),
+                    }
+                )
+                continue
+            raise
+        sources[key] = {
+            "document": document,
+            "findings": _tag_findings(
+                service.analyze(document, profile, language=language),
+                key,
+            ),
+            "label": str(component.get("label") or "Source"),
+            "component_kind": str(component.get("component_kind") or "attachment"),
+        }
+    if not sources:
+        labels = ", ".join(item["label"] for item in skipped) or "selected images"
+        raise ValueError(
+            "No readable printed text was found in the selected Gmail image attachments: "
+            f"{labels}. Remove blank/dark images or choose a clearer source."
+        )
+    return sources, tuple(skipped)
 
 
 def _render_tokens(page, editor: QPlainTextEdit, result) -> None:
@@ -378,40 +424,43 @@ def _install_package_runtime(page) -> None:
             entities=entities_for_scope(base_profile, self.scope_combo.currentData()),
             threshold=float(self.threshold_input.value()),
         )
+        language = str(
+            getattr(self, "_protect_document_language", self.service.document_language)
+        )
 
         def task():
-            sources = {}
-            for component in manifest:
-                key = str(component["key"])
-                if component.get("component_kind") == "body":
-                    document = self.service.document_from_text(str(component.get("text") or ""))
-                else:
-                    document = self.service.document_from_file(str(component.get("path") or ""))
-                sources[key] = {
-                    "document": document,
-                    "findings": _tag_findings(self.service.analyze(document, profile), key),
-                    "label": str(component.get("label") or "Source"),
-                    "component_kind": str(component.get("component_kind") or "attachment"),
-                }
-            return sources
+            return _analyze_gmail_components(
+                self.service,
+                manifest,
+                profile,
+                language,
+            )
 
         def ready(payload: object) -> None:
-            sources = dict(payload)
+            raw_sources, skipped = payload
+            sources = dict(raw_sources)
             if not sources:
                 return
+            successful_manifest = tuple(
+                component
+                for component in manifest
+                if str(component["key"]) in sources
+            )
+            self._gmail_component_manifest = successful_manifest
+            self._gmail_component_skipped = tuple(skipped)
             self._gmail_package_active = True
             self._gmail_component_sources = sources
             self._gmail_component_results = {}
             self._protect_session_active = False
             combined = tuple(
                 finding
-                for component in manifest
+                for component in successful_manifest
                 for finding in sources[str(component["key"])]["findings"]
             )
             first_key = (
                 self._gmail_component_active_key
                 if self._gmail_component_active_key in sources
-                else str(manifest[0]["key"])
+                else str(successful_manifest[0]["key"])
             )
             self._gmail_component_active_key = first_key
             self._analysis_ready((sources[first_key]["document"], combined))
@@ -419,7 +468,21 @@ def _install_package_runtime(page) -> None:
             self._gmail_component_select(first_key)
             metric = getattr(self, "_redesign_review_metric", None)
             if metric is not None:
-                metric.setText(f"Ready to review · {len(manifest)} Gmail sources")
+                suffix = (
+                    f" · skipped {len(skipped)} unreadable image"
+                    f"{'s' if len(skipped) != 1 else ''}"
+                    if skipped
+                    else ""
+                )
+                metric.setText(
+                    f"Ready to review · {len(successful_manifest)} Gmail sources{suffix}"
+                )
+            if skipped:
+                labels = ", ".join(str(item["label"]) for item in skipped)
+                self.comparison_note.setText(
+                    f"Skipped unreadable image attachment(s): {labels}. "
+                    "All other Gmail sources were scanned locally."
+                )
 
         self._set_busy(True)
         begin = getattr(self, "_redesign_begin_operation", None)
@@ -695,6 +758,7 @@ def _install_package_runtime(page) -> None:
 
     def clear(self) -> None:
         self._gmail_component_manifest = ()
+        self._gmail_component_skipped = ()
         self._gmail_component_sources = {}
         self._gmail_component_results = {}
         self._gmail_component_active_key = ""
@@ -717,6 +781,7 @@ def apply_gmail_component_session(main_window) -> None:
         return
     page._gmail_component_session_runtime = True
     page._gmail_component_manifest = ()
+    page._gmail_component_skipped = ()
     page._gmail_component_sources = {}
     page._gmail_component_results = {}
     page._gmail_component_active_key = ""

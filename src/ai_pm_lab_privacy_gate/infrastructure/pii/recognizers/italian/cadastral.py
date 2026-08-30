@@ -17,7 +17,7 @@ def build_cadastral_recognizers() -> tuple[ItalianContextValueRecognizer, ...]:
         ),
         ItalianContextValueRecognizer(
             entity_type="IT_CADASTRAL_SECTION",
-            pattern=rf"\bsezione(?:\s+urbana)?\b{_SEPARATOR}(?P<value>[A-Z0-9]{{1,4}})\b",
+            pattern=rf"\bsezione(?:\s+(?:urbana|catastale))?\b{_SEPARATOR}(?P<value>[A-Z0-9]{{1,4}})\b",
             score=0.98,
         ),
         ItalianContextValueRecognizer(

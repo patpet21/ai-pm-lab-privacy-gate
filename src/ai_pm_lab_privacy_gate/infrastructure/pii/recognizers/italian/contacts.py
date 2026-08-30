@@ -32,14 +32,14 @@ def build_contact_recognizers() -> tuple[object, ...]:
             patterns=[
                 Pattern(
                     "italian_international_phone",
-                    r"(?<!\d)(?:\+39|0039)[ .-]?(?:3\d{2}|0\d{1,3})(?:[ .-]?\d){6,8}(?!\d)",
+                    r"(?<!\d)(?:\+39|0039)[\s.-]?(?:3\d{2}|0\d{1,3})(?:[\s.-]?\d){6,8}(?!\d)",
                     0.97,
                 )
             ],
         ),
         ItalianContextValueRecognizer(
             entity_type="PHONE_NUMBER",
-            pattern=rf"\b(?:telefono|tel\.?|cellulare|cell\.?|mobile)\s*(?:(?:n(?:umero)?\.?)\s*)?[:#-]?\s*(?P<value>{_PHONE_VALUE})(?!\d)",
+            pattern=rf"\b(?:telefono|tel\.?|cellulare|cell\.?|mobile|centralino)\s*(?:(?:n(?:umero)?\.?)\s*)?[:#-]?\s*(?P<value>{_PHONE_VALUE})(?!\d)",
             score=0.985,
         ),
     )

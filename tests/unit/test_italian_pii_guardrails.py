@@ -39,6 +39,9 @@ def test_italian_ner_guardrails_reject_form_labels_from_real_fixture() -> None:
         ("ORGANIZATION", "Aprire Protect"),
         ("ORGANIZATION", "Eseguire Scan & Protect"),
         ("ORGANIZATION", "Privacy Check"),
+        ("ORGANIZATION", "Parti del contratto\nLocatore"),
+        ("LOCATION", "Campo\nValore sintetico\nComune"),
+        ("LOCATION", "Q Cerca"),
     ):
         assert is_italian_ner_false_positive(entity_type, value)
 

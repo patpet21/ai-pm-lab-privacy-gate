@@ -34,6 +34,7 @@ def _source_state_reset_suspended(page) -> bool:
 def _reset_gmail_state(page, *, clear_external_metadata: bool = True) -> None:
     """Drop Gmail-only routing state without touching the newly selected source."""
     page._gmail_component_manifest = ()
+    page._gmail_component_skipped = ()
     page._gmail_component_sources = {}
     page._gmail_component_results = {}
     page._gmail_component_active_key = ""

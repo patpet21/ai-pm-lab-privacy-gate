@@ -6,7 +6,7 @@ from pathlib import Path
 from types import MethodType
 
 from pptx import Presentation
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QTimer, Qt
 from PySide6.QtGui import QImageReader, QPixmap
 from PySide6.QtWidgets import (
     QFileDialog,
@@ -198,6 +198,36 @@ def apply_document_pipeline_v2_ui(main_window) -> None:
     page.protected_image_scroll, page.protected_image_label = _image_preview_widget()
     page.original_view_stack.addWidget(page.original_image_scroll)
     page.protected_view_stack.addWidget(page.protected_image_scroll)
+
+    def refresh_initial_image_preview(path_text: str) -> None:
+        source = Path(path_text.strip())
+        if source.suffix.lower() not in {".png", ".jpg", ".jpeg"} or not source.is_file():
+            return
+        try:
+            _load_image_preview(page.original_image_label, source)
+            page.protected_image_label.clear()
+            page.protected_image_label.setText("Protected preview available after Scan & Protect")
+            page.original_view_stack.setCurrentWidget(page.original_image_scroll)
+            page.protected_view_stack.setCurrentWidget(page.protected_image_scroll)
+            page.preview_tabs.setTabVisible(1, True)
+            page.preview_tabs.setCurrentIndex(1)
+            page.comparison_note.setText(
+                "Image loaded locally. The original is shown on the left; scan to create "
+                "the pixel-redacted protected preview on the right."
+            )
+        except Exception as exc:
+            page.preview_tabs.setTabToolTip(1, f"Preview unavailable: {exc}")
+            page.comparison_note.setText(str(exc))
+
+    def queue_initial_image_preview(path_text: str) -> None:
+        # Other shared source-state handlers run on the same signal. Queue the
+        # image preview once so their reset work completes before it is shown.
+        QTimer.singleShot(
+            0,
+            lambda value=path_text: refresh_initial_image_preview(value),
+        )
+
+    page.pdf_path.textChanged.connect(queue_initial_image_preview)
 
     def browse_document(self) -> None:
         path, _ = QFileDialog.getOpenFileName(

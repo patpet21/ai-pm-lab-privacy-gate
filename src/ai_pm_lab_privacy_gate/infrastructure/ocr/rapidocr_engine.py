@@ -14,6 +14,8 @@ from ai_pm_lab_privacy_gate.infrastructure.ocr.base import (
 
 _MAX_PREPROCESSED_DIMENSION = 3200
 _MAX_UPSCALE = 2.0
+_LOW_CONFIDENCE_LINE = 0.82
+_MIN_RETRY_SCORE = 0.78
 
 
 def _polygon(value: Any) -> Polygon:
@@ -70,6 +72,167 @@ def _bounds(polygon: Polygon) -> tuple[float, float, float, float] | None:
     xs = [point[0] for point in polygon]
     ys = [point[1] for point in polygon]
     return min(xs), min(ys), max(xs), max(ys)
+
+
+def _ordered_quad(polygon: Polygon) -> np.ndarray | None:
+    """Return a stable TL, TR, BR, BL quadrilateral for perspective recovery."""
+    if len(polygon) != 4:
+        return None
+    points = np.asarray(polygon, dtype=np.float64)
+    sums = points[:, 0] + points[:, 1]
+    differences = points[:, 0] - points[:, 1]
+    ordered = np.asarray(
+        (
+            points[int(np.argmin(sums))],
+            points[int(np.argmax(differences))],
+            points[int(np.argmax(sums))],
+            points[int(np.argmin(differences))],
+        ),
+        dtype=np.float64,
+    )
+    if len({(round(float(x), 4), round(float(y), 4)) for x, y in ordered}) != 4:
+        return None
+    return ordered
+
+
+def _perspective_coefficients(
+    output_points: np.ndarray,
+    source_points: np.ndarray,
+) -> tuple[float, ...] | None:
+    """Solve Pillow's output-to-source perspective transform coefficients."""
+    matrix: list[list[float]] = []
+    values: list[float] = []
+    for (x, y), (source_x, source_y) in zip(output_points, source_points):
+        matrix.append([x, y, 1.0, 0.0, 0.0, 0.0, -source_x * x, -source_x * y])
+        values.append(source_x)
+        matrix.append([0.0, 0.0, 0.0, x, y, 1.0, -source_y * x, -source_y * y])
+        values.append(source_y)
+    try:
+        solved = np.linalg.solve(
+            np.asarray(matrix, dtype=np.float64),
+            np.asarray(values, dtype=np.float64),
+        )
+    except np.linalg.LinAlgError:
+        return None
+    return tuple(float(value) for value in solved)
+
+
+def _map_perspective_point(
+    point: tuple[float, float], coefficients: tuple[float, ...]
+) -> tuple[float, float]:
+    x, y = point
+    a, b, c, d, e, f, g, h = coefficients
+    denominator = g * x + h * y + 1.0
+    if abs(denominator) < 1e-9:
+        return x, y
+    return (
+        (a * x + b * y + c) / denominator,
+        (d * x + e * y + f) / denominator,
+    )
+
+
+def _retry_line_recognition(
+    engine: Any,
+    image: Image.Image,
+    polygon: Polygon,
+    original_text: str,
+    original_score: float,
+) -> tuple[str, float, tuple[OcrWordObservation, ...]] | None:
+    """Rectify and re-read one weak line while retaining safe word geometry.
+
+    Screen photos commonly contain horizontal moire. The detector can still find
+    the correct quadrilateral but the first recognition crop is weak because the
+    line is slightly skewed. Re-projecting that exact quadrilateral to a level
+    strip gives the recognizer its intended input and avoids a costly second
+    whole-page pass.
+    """
+    if original_score >= _LOW_CONFIDENCE_LINE:
+        return None
+    source_quad = _ordered_quad(polygon)
+    if source_quad is None:
+        return None
+
+    top_width = np.linalg.norm(source_quad[1] - source_quad[0])
+    bottom_width = np.linalg.norm(source_quad[2] - source_quad[3])
+    left_height = np.linalg.norm(source_quad[3] - source_quad[0])
+    right_height = np.linalg.norm(source_quad[2] - source_quad[1])
+    width = max(8, int(round(max(top_width, bottom_width))))
+    height = max(8, int(round(max(left_height, right_height))))
+    output_quad = np.asarray(
+        ((0.0, 0.0), (width - 1.0, 0.0), (width - 1.0, height - 1.0), (0.0, height - 1.0)),
+        dtype=np.float64,
+    )
+    coefficients = _perspective_coefficients(output_quad, source_quad)
+    if coefficients is None:
+        return None
+
+    rectified = image.convert("RGB").transform(
+        (width, height),
+        Image.Transform.PERSPECTIVE,
+        coefficients,
+        resample=Image.Resampling.BICUBIC,
+        fillcolor="white",
+    )
+    retry = engine(
+        np.asarray(rectified),
+        use_det=False,
+        use_cls=False,
+        use_rec=True,
+        return_word_box=True,
+        return_single_char_box=False,
+    )
+    texts = getattr(retry, "txts", None)
+    scores = getattr(retry, "scores", None)
+    raw_word_results = getattr(retry, "word_results", None)
+    if not texts or not scores or not raw_word_results:
+        return None
+    retry_text = str(texts[0]).strip()
+    retry_score = float(scores[0])
+    original_alnum = sum(character.isalnum() for character in original_text)
+    retry_alnum = sum(character.isalnum() for character in retry_text)
+    if (
+        retry_score < _MIN_RETRY_SCORE
+        or retry_score < original_score + 0.08
+        or retry_alnum < original_alnum + 3
+    ):
+        return None
+
+    word_info = raw_word_results[0]
+    word_groups = getattr(word_info, "words", None)
+    word_columns = getattr(word_info, "word_cols", None)
+    line_length = float(getattr(word_info, "line_txt_len", 0.0) or 0.0)
+    if not word_groups or not word_columns or line_length <= 0:
+        return None
+
+    words: list[OcrWordObservation] = []
+    for characters, columns in zip(word_groups, word_columns):
+        word_text = "".join(str(character) for character in characters).strip()
+        if not word_text or not columns:
+            continue
+        left = max(0.0, (float(min(columns)) - 0.75) * width / line_length)
+        right = min(float(width - 1), (float(max(columns)) + 0.75) * width / line_length)
+        if right <= left:
+            continue
+        word_polygon = tuple(
+            _map_perspective_point(point, coefficients)
+            for point in (
+                (left, 0.0),
+                (right, 0.0),
+                (right, float(height - 1)),
+                (left, float(height - 1)),
+            )
+        )
+        words.append(
+            OcrWordObservation(
+                text=word_text,
+                confidence=retry_score,
+                polygon=word_polygon,
+            )
+        )
+    if not words:
+        return None
+    canonical = " ".join(word.text for word in words)
+    return canonical, retry_score, tuple(words)
 
 
 def _word_entries(raw: Any, coordinate_scale: float = 1.0) -> tuple[OcrWordObservation, ...]:
@@ -177,6 +340,13 @@ class RapidOcrEngine:
         coordinate_scale = 1.0 / input_scale
         result = engine(
             np.asarray(prepared),
+            # RapidOCR keeps call parameters on the engine instance.  The
+            # low-confidence retry below temporarily uses recognition-only
+            # mode; without explicitly restoring the full pipeline here, the
+            # next image scan inherits ``use_det=False`` and returns no lines.
+            use_det=True,
+            use_cls=True,
+            use_rec=True,
             return_word_box=True,
             return_single_char_box=False,
         )
@@ -208,14 +378,37 @@ class RapidOcrEngine:
             if line_index is not None:
                 words_by_line[line_index].append(word)
 
+        # A cheap second recognition pass is reserved for weak detected lines.
+        # It uses the original pixels and the already-known line quadrilateral,
+        # so successful recovery also returns exact word polygons for redaction.
+        for index, (text, score, polygon) in enumerate(raw_lines):
+            recovered = _retry_line_recognition(
+                engine,
+                image,
+                polygon,
+                text,
+                score,
+            )
+            if recovered is None:
+                continue
+            recovered_text, recovered_score, recovered_words = recovered
+            raw_lines[index] = (recovered_text, recovered_score, polygon)
+            words_by_line[index] = list(recovered_words)
+
         lines: list[OcrLineObservation] = []
         for index, (text, score, polygon) in enumerate(raw_lines):
             words = tuple(
                 sorted(
                     words_by_line[index],
-                    key=lambda word: (
-                        min((point[1] for point in word.polygon), default=0.0),
-                        min((point[0] for point in word.polygon), default=0.0),
+                    # Words have already been assigned to one detected text line.
+                    # Sort horizontally only: a photographed line is rarely
+                    # perfectly level, and using its small Y jitter as the primary
+                    # key can reverse labels and values (for example putting an ID
+                    # number before ``Carta d'identita``).  That destroys the
+                    # context required by the identity-document recognizers even
+                    # though OCR recovered every token correctly.
+                    key=lambda word: min(
+                        (point[0] for point in word.polygon), default=0.0
                     ),
                 )
             )

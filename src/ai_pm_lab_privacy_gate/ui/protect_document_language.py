@@ -65,6 +65,34 @@ def invalidate_language_scan_state(page: ProtectionPage) -> None:
     page.current_findings = ()
     page.current_result = None
     page._reviewed_row = None
+    try:
+        page._pdf_preview_timer.stop()
+    except Exception:
+        pass
+    page.preview.clear()
+
+    # Never leave a protected copy from the previous detector language on
+    # screen. For images, preserve the already-loaded original on the left and
+    # reset only the protected side so the selected source remains truthful.
+    source_value = str(page.pdf_path.text() or "").strip()
+    is_image_source = source_value.lower().endswith((".png", ".jpg", ".jpeg"))
+    original_image = getattr(page, "original_image_label", None)
+    protected_image = getattr(page, "protected_image_label", None)
+    if is_image_source and original_image is not None and protected_image is not None:
+        protected_image.clear()
+        protected_image.setText("Scan again with the selected document language")
+        original_scroll = getattr(page, "original_image_scroll", None)
+        protected_scroll = getattr(page, "protected_image_scroll", None)
+        if original_scroll is not None:
+            page.original_view_stack.setCurrentWidget(original_scroll)
+        if protected_scroll is not None:
+            page.protected_view_stack.setCurrentWidget(protected_scroll)
+        page.preview_tabs.setTabVisible(1, True)
+        page.preview_tabs.setCurrentIndex(1)
+        page.comparison_note.setText(
+            "Document language changed. The original source remains selected; "
+            "run Scan & Protect to rebuild the protected preview."
+        )
 
     page.findings_table.blockSignals(True)
     try:
