@@ -9,7 +9,9 @@ import pytest
 
 from ai_pm_lab_privacy_gate.application.privacy_service import PrivacyGateService
 from ai_pm_lab_privacy_gate.domain.models import Finding, PageContent
+from ai_pm_lab_privacy_gate.infrastructure.local_api.browser_pairing import BrowserPairingRegistry
 from ai_pm_lab_privacy_gate.infrastructure.local_api.server import create_local_api_server
+from ai_pm_lab_privacy_gate.infrastructure.security.secret_store import MemorySecretStore
 
 
 TOKEN = "test-local-bridge-token-0123456789"
@@ -42,11 +44,12 @@ class FakePiiEngine:
 @pytest.fixture()
 def local_api():
     service = PrivacyGateService(pii_engine=FakePiiEngine())
+    pairing = BrowserPairingRegistry(MemorySecretStore())
     server = create_local_api_server(
         service,
         port=0,
         auth_token=TOKEN,
-        allowed_origins=(BROWSER_ORIGIN,),
+        browser_pairing=pairing,
     )
     thread = threading.Thread(target=server.serve_forever, kwargs={"poll_interval": 0.01}, daemon=True)
     thread.start()
@@ -73,6 +76,22 @@ def request(server, method: str, path: str, payload=None, *, token: str | None =
     raw = response.read().decode("utf-8")
     connection.close()
     return response.status, json.loads(raw) if raw else {}, raw
+
+
+def pair_browser(server) -> str:
+    challenge = server.browser_pairing.create_challenge()
+    status, payload, raw = request(
+        server,
+        "POST",
+        "/v1/browser/pair",
+        {"code": challenge.code, "client_name": "unit-test"},
+        origin=BROWSER_ORIGIN,
+    )
+    assert status == 200
+    assert payload["paired"] is True
+    assert payload["token_type"] == "Bearer"
+    assert TOKEN not in raw
+    return payload["browser_token"]
 
 
 def test_status_is_local_safe_and_does_not_reveal_token(local_api) -> None:
@@ -151,13 +170,39 @@ def test_restore_returns_original_text_without_exposing_raw_mapping(local_api) -
     assert "mappings" not in raw
 
 
-def test_browser_round_trip_uses_allowlisted_extension_origin_without_bearer(local_api) -> None:
+def test_browser_status_requires_pairing_for_ready_state(local_api) -> None:
+    status, payload, _ = request(
+        local_api,
+        "GET",
+        "/v1/browser/status",
+        origin=BROWSER_ORIGIN,
+    )
+    assert status == 200
+    assert payload["status"] == "ready"
+    assert payload["paired"] is False
+
+    browser_token = pair_browser(local_api)
+    status, payload, _ = request(
+        local_api,
+        "GET",
+        "/v1/browser/status",
+        origin=BROWSER_ORIGIN,
+        token=browser_token,
+    )
+    assert status == 200
+    assert payload["paired"] is True
+
+
+def test_browser_round_trip_requires_scoped_pairing_token(local_api) -> None:
+    browser_token = pair_browser(local_api)
+
     status, analyzed, raw = request(
         local_api,
         "POST",
         "/v1/browser/analyze",
         {"text": f"Contact {EMAIL}", "profile_key": "property_management", "language": "en"},
         origin=BROWSER_ORIGIN,
+        token=browser_token,
     )
     assert status == 200
     assert analyzed["findings_count"] == 1
@@ -176,6 +221,7 @@ def test_browser_round_trip_uses_allowlisted_extension_origin_without_bearer(loc
             "replacement_mode": "reversible",
         },
         origin=BROWSER_ORIGIN,
+        token=browser_token,
     )
     assert status == 200
     assert EMAIL not in raw
@@ -190,28 +236,36 @@ def test_browser_round_trip_uses_allowlisted_extension_origin_without_bearer(loc
             "text": f"AI reply: {protected['protected_text']}",
         },
         origin=BROWSER_ORIGIN,
+        token=browser_token,
     )
     assert status == 200
     assert restored["restored_text"] == f"AI reply: Contact {EMAIL}"
 
 
-def test_browser_restore_requires_allowlisted_extension_origin(local_api) -> None:
-    _, protected, _ = request(
-        local_api,
-        "POST",
-        "/v1/protect",
-        {"text": f"Contact {EMAIL}", "profile_key": "property_management"},
-        token=TOKEN,
-    )
-
+def test_browser_routes_reject_origin_without_pairing_token(local_api) -> None:
     status, payload, _ = request(
         local_api,
         "POST",
-        "/v1/browser/restore",
-        {"session_id": protected["session_id"], "text": protected["protected_text"]},
+        "/v1/browser/analyze",
+        {"text": f"Contact {EMAIL}", "profile_key": "property_management"},
+        origin=BROWSER_ORIGIN,
     )
-    assert status == 403
-    assert payload["error"] == "browser_origin_not_allowed"
+    assert status == 401
+    assert payload["error"] == "browser_pairing_required"
+
+
+def test_browser_token_cannot_be_reused_from_another_origin(local_api) -> None:
+    browser_token = pair_browser(local_api)
+    status, payload, _ = request(
+        local_api,
+        "POST",
+        "/v1/browser/analyze",
+        {"text": f"Contact {EMAIL}", "profile_key": "property_management"},
+        origin="chrome-extension://different-extension",
+        token=browser_token,
+    )
+    assert status == 401
+    assert payload["error"] == "browser_pairing_required"
 
 
 def test_reusing_session_generates_unique_tokens_per_turn(local_api) -> None:
@@ -267,7 +321,20 @@ def test_deleted_session_can_no_longer_restore(local_api) -> None:
     assert payload["error"] == "session_not_found"
 
 
-def test_browser_origin_is_denied_unless_explicitly_allowed(local_api) -> None:
+def test_browser_pairing_rejects_non_extension_origin(local_api) -> None:
+    challenge = local_api.browser_pairing.create_challenge()
+    status, payload, _ = request(
+        local_api,
+        "POST",
+        "/v1/browser/pair",
+        {"code": challenge.code},
+        origin="https://evil.example",
+    )
+    assert status == 403
+    assert payload["error"] == "origin_not_allowed"
+
+
+def test_browser_origin_is_denied_for_standard_api_unless_explicitly_allowed(local_api) -> None:
     status, payload, _ = request(
         local_api,
         "POST",
