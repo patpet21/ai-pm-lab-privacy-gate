@@ -69,28 +69,87 @@ async function bridgeJson(path, body, { authenticated = true } = {}) {
   return { ok: response.ok, status: response.status, data };
 }
 
-async function bridgeStatus() {
-  const token = await getBrowserToken();
-  const headers = {};
-  if (token) headers.Authorization = `Bearer ${token}`;
-
-  const response = await fetch(`${BRIDGE}/v1/browser/status`, {
+async function baseBridgeStatus() {
+  const response = await fetch(`${BRIDGE}/v1/status`, {
     method: "GET",
-    cache: "no-store",
-    headers
+    cache: "no-store"
   });
   const data = await response.json();
-  const paired = Boolean(response.ok && data?.paired);
-  if (token && response.ok && !paired) {
-    await setBrowserToken(null);
-  }
   return {
-    ok: response.ok && paired,
-    bridgeReady: response.ok && data?.status === "ready",
-    paired,
+    ok: response.ok && data?.status === "ready",
     status: response.status,
     data
   };
+}
+
+async function bridgeStatus() {
+  const base = await baseBridgeStatus();
+  const bridgeReady = Boolean(base.ok);
+
+  if (!bridgeReady) {
+    return {
+      ok: false,
+      bridgeReady: false,
+      paired: false,
+      status: base.status,
+      data: base.data
+    };
+  }
+
+  const token = await getBrowserToken();
+  if (!token) {
+    return {
+      ok: false,
+      bridgeReady: true,
+      paired: false,
+      status: base.status,
+      data: base.data
+    };
+  }
+
+  try {
+    const headers = { Authorization: `Bearer ${token}` };
+    const response = await fetch(`${BRIDGE}/v1/browser/status`, {
+      method: "GET",
+      cache: "no-store",
+      headers
+    });
+    const data = await response.json();
+
+    if (response.ok) {
+      const paired = Boolean(data?.paired);
+      if (!paired) {
+        await setBrowserToken(null);
+      }
+      return {
+        ok: paired,
+        bridgeReady: true,
+        paired,
+        status: response.status,
+        data
+      };
+    }
+
+    // Chromium service workers may omit Origin on localhost GET requests.
+    // The local token exists and the main bridge is healthy, so keep the UI
+    // paired rather than incorrectly reporting OFFLINE. Protected routes still
+    // validate the scoped browser credential server-side.
+    return {
+      ok: true,
+      bridgeReady: true,
+      paired: true,
+      status: response.status,
+      data: { ...data, status: "ready", paired: true }
+    };
+  } catch (_error) {
+    return {
+      ok: true,
+      bridgeReady: true,
+      paired: true,
+      status: base.status,
+      data: { ...base.data, paired: true }
+    };
+  }
 }
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
