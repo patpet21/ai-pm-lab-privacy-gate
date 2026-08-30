@@ -12,6 +12,35 @@ datas = []
 binaries = []
 hiddenimports = []
 
+_DEV_ONLY_SUFFIXES = {
+    ".c",
+    ".cc",
+    ".cpp",
+    ".cxx",
+    ".cu",
+    ".h",
+    ".hh",
+    ".hpp",
+    ".pxd",
+    ".pyi",
+    ".pyx",
+}
+
+
+def runtime_package_data(entries):
+    """Drop test/source-only files accidentally pulled in by collect_all()."""
+    kept = []
+    for source, destination in entries:
+        normalized = destination.replace("\\", "/").lower()
+        parts = {part for part in normalized.split("/") if part}
+        if parts.intersection({"test", "tests", "testing", "benchmarks"}):
+            continue
+        if Path(source).suffix.lower() in _DEV_ONLY_SUFFIXES:
+            continue
+        kept.append((source, destination))
+    return kept
+
+
 for package in (
     "presidio_analyzer",
     "presidio_anonymizer",
@@ -34,7 +63,7 @@ for package in (
     "onnxruntime",
 ):
     package_datas, package_binaries, package_hidden = collect_all(package)
-    datas += package_datas
+    datas += runtime_package_data(package_datas)
     binaries += package_binaries
     hiddenimports += package_hidden
 
