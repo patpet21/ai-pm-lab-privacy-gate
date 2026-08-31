@@ -12,6 +12,9 @@
     "message", "messages", "content", "parts", "prompt", "input", "text",
     "author", "role", "user_message", "user_input"
   ]);
+  const REWRITE_KEYS = [
+    "content", "parts", "text", "user_message", "user_input", "prompt", "input", "message"
+  ];
 
   let pending = null;
 
@@ -136,13 +139,212 @@
     return value;
   }
 
+  function collectStrings(value, depth = 0, output = []) {
+    if (depth > 8 || value == null) return output;
+    if (typeof value === "string") {
+      const text = compactWhitespace(value);
+      if (text) output.push(text);
+      return output;
+    }
+    if (Array.isArray(value)) {
+      for (const entry of value) collectStrings(entry, depth + 1, output);
+      return output;
+    }
+    if (typeof value === "object") {
+      for (const entry of Object.values(value)) collectStrings(entry, depth + 1, output);
+    }
+    return output;
+  }
+
+  function stringLooksLikeOriginal(value) {
+    const item = activePending();
+    if (!item || typeof value !== "string") return false;
+    const compact = compactWhitespace(value);
+    if (!compact) return false;
+    if (compact === item.compactOriginal) return true;
+    if (compact.includes(item.compactOriginal)) return true;
+
+    const original = item.compactOriginal;
+    const fragmentLength = Math.min(Math.max(32, Math.floor(original.length * 0.35)), 160);
+    if (original.length >= fragmentLength) {
+      const start = original.slice(0, fragmentLength);
+      const end = original.slice(-fragmentLength);
+      if (compact.includes(start) || compact.includes(end)) return true;
+    }
+    return false;
+  }
+
+  function valueLooksLikeOriginal(value) {
+    const strings = collectStrings(value);
+    if (!strings.length) return false;
+    if (strings.some(stringLooksLikeOriginal)) return true;
+    return stringLooksLikeOriginal(strings.join(" "));
+  }
+
+  function forceProtectedPromptValue(value, protectedText, depth = 0) {
+    if (depth > 6) return { changed: false, value };
+
+    if (typeof value === "string") {
+      return { changed: true, value: protectedText };
+    }
+
+    if (Array.isArray(value)) {
+      if (value.length === 0) return { changed: false, value };
+      if (value.every(entry => typeof entry === "string")) {
+        return { changed: true, value: [protectedText] };
+      }
+
+      for (let index = value.length - 1; index >= 0; index -= 1) {
+        const entry = value[index];
+        if (!valueLooksLikeOriginal(entry)) continue;
+        const rewritten = forceProtectedPromptValue(entry, protectedText, depth + 1);
+        if (rewritten.changed) {
+          const copy = value.slice();
+          copy[index] = rewritten.value;
+          return { changed: true, value: copy };
+        }
+      }
+
+      // Rich editors can split one logical prompt across several text-part
+      // objects. If the combined array is clearly the armed prompt, rewrite the
+      // last text-capable part while preserving non-text attachments/metadata.
+      if (valueLooksLikeOriginal(value)) {
+        for (let index = value.length - 1; index >= 0; index -= 1) {
+          const entry = value[index];
+          if (!entry || typeof entry !== "object" || Array.isArray(entry)) continue;
+          for (const key of ["text", "content", "parts"]) {
+            if (!(key in entry)) continue;
+            const rewritten = forceProtectedPromptValue(entry[key], protectedText, depth + 1);
+            if (rewritten.changed) {
+              const copy = value.slice();
+              copy[index] = { ...entry, [key]: rewritten.value };
+              return { changed: true, value: copy };
+            }
+          }
+        }
+      }
+      return { changed: false, value };
+    }
+
+    if (value && typeof value === "object") {
+      for (const key of REWRITE_KEYS) {
+        if (!(key in value)) continue;
+        const child = value[key];
+        if (!valueLooksLikeOriginal(child) && key !== "parts" && key !== "text") continue;
+        const rewritten = forceProtectedPromptValue(child, protectedText, depth + 1);
+        if (rewritten.changed) {
+          return { changed: true, value: { ...value, [key]: rewritten.value } };
+        }
+      }
+    }
+
+    return { changed: false, value };
+  }
+
+  function isUserMessageObject(value) {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+    if (String(value.role || "").toLowerCase() === "user") return true;
+    return Boolean(
+      value.author &&
+      typeof value.author === "object" &&
+      String(value.author.role || "").toLowerCase() === "user"
+    );
+  }
+
+  function collectUserMessageCandidates(value, depth = 0, output = []) {
+    if (depth > 8 || value == null) return output;
+    if (Array.isArray(value)) {
+      for (const entry of value) collectUserMessageCandidates(entry, depth + 1, output);
+      return output;
+    }
+    if (typeof value !== "object") return output;
+    if (isUserMessageObject(value) && valueLooksLikeOriginal(value)) output.push(value);
+    for (const entry of Object.values(value)) {
+      collectUserMessageCandidates(entry, depth + 1, output);
+    }
+    return output;
+  }
+
+  function rewriteObjectReference(root, target, replacement, depth = 0) {
+    if (root === target) return replacement;
+    if (depth > 9 || root == null || typeof root !== "object") return root;
+
+    if (Array.isArray(root)) {
+      let changed = false;
+      const output = root.map(entry => {
+        const next = rewriteObjectReference(entry, target, replacement, depth + 1);
+        changed ||= next !== entry;
+        return next;
+      });
+      return changed ? output : root;
+    }
+
+    let changed = false;
+    const output = {};
+    for (const [key, entry] of Object.entries(root)) {
+      const next = rewriteObjectReference(entry, target, replacement, depth + 1);
+      changed ||= next !== entry;
+      output[key] = next;
+    }
+    return changed ? output : root;
+  }
+
+  function structurallyRewritePrompt(parsed, state) {
+    const item = activePending();
+    if (!item || !parsed || typeof parsed !== "object") return parsed;
+
+    const candidates = collectUserMessageCandidates(parsed);
+    for (let index = candidates.length - 1; index >= 0; index -= 1) {
+      const candidate = candidates[index];
+      const rewritten = forceProtectedPromptValue(candidate, item.protectedText);
+      if (!rewritten.changed) continue;
+      state.replaced = true;
+      return rewriteObjectReference(parsed, candidate, rewritten.value);
+    }
+
+    // Some ChatGPT variants omit an explicit role on the outbound draft but
+    // keep it under a prompt-specific key. Only use this fallback when that
+    // exact subtree still carries substantial evidence from the armed prompt.
+    function walk(value, depth = 0) {
+      if (depth > 8 || !value || typeof value !== "object") return null;
+      if (Array.isArray(value)) {
+        for (let index = value.length - 1; index >= 0; index -= 1) {
+          const found = walk(value[index], depth + 1);
+          if (found) return found;
+        }
+        return null;
+      }
+
+      for (const key of REWRITE_KEYS) {
+        if (!(key in value) || !valueLooksLikeOriginal(value[key])) continue;
+        const rewritten = forceProtectedPromptValue(value[key], item.protectedText);
+        if (rewritten.changed) {
+          return { target: value, replacement: { ...value, [key]: rewritten.value } };
+        }
+      }
+
+      const entries = Object.values(value);
+      for (let index = entries.length - 1; index >= 0; index -= 1) {
+        const found = walk(entries[index], depth + 1);
+        if (found) return found;
+      }
+      return null;
+    }
+
+    const fallback = walk(parsed);
+    if (!fallback) return parsed;
+    state.replaced = true;
+    return rewriteObjectReference(parsed, fallback.target, fallback.replacement);
+  }
+
   function transformTextBody(text) {
     const state = { replaced: false };
     let output = String(text || "");
 
     try {
       const parsed = JSON.parse(output);
-      const transformed = replaceValue(parsed, state);
+      let transformed = replaceValue(parsed, state);
+      if (!state.replaced) transformed = structurallyRewritePrompt(parsed, state);
       if (state.replaced) {
         return { replaced: true, body: JSON.stringify(transformed) };
       }
@@ -176,26 +378,6 @@
       value.includes("/messages") ||
       value.includes("chat/complet")
     );
-  }
-
-  function stringLooksLikeOriginal(value) {
-    const item = activePending();
-    if (!item || typeof value !== "string") return false;
-    const compact = compactWhitespace(value);
-    if (!compact) return false;
-    if (compact === item.compactOriginal) return true;
-    if (compact.includes(item.compactOriginal)) return true;
-
-    // Require a substantial fragment so metadata words cannot accidentally
-    // classify an accessory request as the actual prompt.
-    const original = item.compactOriginal;
-    const fragmentLength = Math.min(Math.max(32, Math.floor(original.length * 0.35)), 160);
-    if (original.length >= fragmentLength) {
-      const start = original.slice(0, fragmentLength);
-      const end = original.slice(-fragmentLength);
-      if (compact.includes(start) || compact.includes(end)) return true;
-    }
-    return false;
   }
 
   function promptEvidence(value, depth = 0) {
@@ -272,9 +454,6 @@
 
   function shouldBlockUnverified(url, body) {
     if (!conversationLike(url)) return false;
-    // A conversation-like URL alone is not enough. ChatGPT issues metadata,
-    // telemetry and lifecycle requests on similar endpoints. Only fail closed
-    // when the body itself proves this is the user's prompt request.
     return bodyLooksLikePrompt(body);
   }
 
