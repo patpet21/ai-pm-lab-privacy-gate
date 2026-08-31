@@ -1,5 +1,6 @@
 const BRIDGE = "http://127.0.0.1:8765";
 const BROWSER_TOKEN_KEY = "privacygateBrowserCredentialV1";
+const LAST_SESSION_KEY = "privacygateLastSessionIdV1";
 
 const ITALIAN_HINTS = new Set([
   "a", "ad", "anche", "allora", "che", "chi", "come", "con", "cosa", "da",
@@ -42,6 +43,22 @@ async function setBrowserToken(token) {
     await chrome.storage.local.set({ [BROWSER_TOKEN_KEY]: token });
   } else {
     await chrome.storage.local.remove(BROWSER_TOKEN_KEY);
+  }
+}
+
+async function getLastSessionId() {
+  const values = await chrome.storage.local.get(LAST_SESSION_KEY);
+  const sessionId = values?.[LAST_SESSION_KEY];
+  return typeof sessionId === "string" && /^[a-f0-9]{32}$/.test(sessionId)
+    ? sessionId
+    : null;
+}
+
+async function setLastSessionId(sessionId) {
+  if (typeof sessionId === "string" && /^[a-f0-9]{32}$/.test(sessionId)) {
+    await chrome.storage.local.set({ [LAST_SESSION_KEY]: sessionId });
+  } else {
+    await chrome.storage.local.remove(LAST_SESSION_KEY);
   }
 }
 
@@ -120,6 +137,7 @@ async function bridgeStatus() {
       const paired = Boolean(data?.paired);
       if (!paired) {
         await setBrowserToken(null);
+        await setLastSessionId(null);
       }
       return {
         ok: paired,
@@ -130,10 +148,6 @@ async function bridgeStatus() {
       };
     }
 
-    // Chromium service workers may omit Origin on localhost GET requests.
-    // The local token exists and the main bridge is healthy, so keep the UI
-    // paired rather than incorrectly reporting OFFLINE. Protected routes still
-    // validate the scoped browser credential server-side.
     return {
       ok: true,
       bridgeReady: true,
@@ -174,6 +188,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         const token = response.data?.browser_token;
         if (response.ok && typeof token === "string") {
           await setBrowserToken(token);
+          await setLastSessionId(null);
           sendResponse({ ok: true, paired: true });
           return;
         }
@@ -184,7 +199,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 
   if (message?.type === "PG_FORGET_PAIRING") {
-    setBrowserToken(null)
+    Promise.all([setBrowserToken(null), setLastSessionId(null)])
       .then(() => sendResponse({ ok: true }))
       .catch(error => sendResponse({ ok: false, error: String(error) }));
     return true;
@@ -212,18 +227,34 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       replacement_mode: "reversible",
       session_id: message.sessionId || null
     })
-      .then(sendResponse)
+      .then(async response => {
+        if (response.ok && response.data?.session_id) {
+          await setLastSessionId(response.data.session_id);
+        }
+        sendResponse(response);
+      })
       .catch(error => sendResponse({ ok: false, error: String(error) }));
     return true;
   }
 
   if (message?.type === "PG_RESTORE") {
-    bridgeJson("/v1/browser/restore", {
-      text: message.text,
-      session_id: message.sessionId
-    })
-      .then(sendResponse)
-      .catch(error => sendResponse({ ok: false, error: String(error) }));
+    (async () => {
+      const sessionId = message.sessionId || await getLastSessionId();
+      if (!sessionId) {
+        sendResponse({
+          ok: false,
+          status: 404,
+          data: { error: "browser_session_unavailable" }
+        });
+        return;
+      }
+
+      const response = await bridgeJson("/v1/browser/restore", {
+        text: message.text,
+        session_id: sessionId
+      });
+      sendResponse(response);
+    })().catch(error => sendResponse({ ok: false, error: String(error) }));
     return true;
   }
 });
