@@ -65,78 +65,31 @@
     setTimeout(() => element.remove(), 5000);
   }
 
-  function forceEditorInput(box, protectedText) {
-    if (!box) return false;
-    box.focus();
-
-    if (box instanceof HTMLTextAreaElement || box instanceof HTMLInputElement) {
-      const prototype = box instanceof HTMLTextAreaElement
-        ? HTMLTextAreaElement.prototype
-        : HTMLInputElement.prototype;
-      const descriptor = Object.getOwnPropertyDescriptor(prototype, "value");
-      descriptor?.set?.call(box, protectedText);
-      box.dispatchEvent(new InputEvent("input", {
-        bubbles: true,
-        inputType: "insertText",
-        data: protectedText
-      }));
-      return normalized(composerText(box)) === normalized(protectedText);
-    }
-
-    const selection = window.getSelection();
-    const range = document.createRange();
-    range.selectNodeContents(box);
-    selection?.removeAllRanges();
-    selection?.addRange(range);
-
-    let inserted = false;
-    try {
-      inserted = document.execCommand("insertText", false, protectedText);
-    } catch (_error) {
-      inserted = false;
-    }
-
-    // Let React/Lexical/ProseMirror-style editors observe an editing event.
-    box.dispatchEvent(new InputEvent("input", {
-      bubbles: true,
-      composed: true,
-      inputType: "insertText",
-      data: protectedText
-    }));
-
-    return inserted && normalized(composerText(box)) === normalized(protectedText);
-  }
-
   function sleep(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
   }
 
   async function verifyProtectedComposer(protectedText) {
     const expected = normalized(protectedText);
-    let box = composer();
-    if (!box || !expected.includes(PLACEHOLDER_MARKER)) return false;
+    if (!expected.includes(PLACEHOLDER_MARKER)) return false;
 
-    // Re-apply through the browser editing pipeline so the site's editor state,
-    // not only the visible DOM, has a chance to accept the protected text.
-    forceEditorInput(box, protectedText);
-
-    for (const delay of [120, 220, 360]) {
+    // Do not mutate the editor here. content.js must have committed the protected
+    // text through the browser editing pipeline already. We only verify that the
+    // site's own re-render keeps the exact protected value stable before Send.
+    for (const delay of [180, 280, 420, 620]) {
       await sleep(delay);
-      box = composer();
+      const box = composer();
       const current = normalized(composerText(box));
-      if (current !== expected) {
-        // One guarded retry; if ChatGPT restores the original text, fail closed.
-        if (!box || !forceEditorInput(box, protectedText)) return false;
+      if (
+        !box ||
+        current !== expected ||
+        !current.includes(PLACEHOLDER_MARKER)
+      ) {
+        return false;
       }
     }
 
-    await sleep(180);
-    box = composer();
-    return Boolean(
-      box &&
-      normalized(composerText(box)) === expected &&
-      normalized(composerText(box)).includes(PLACEHOLDER_MARKER)
-    );
+    return true;
   }
 
   HTMLButtonElement.prototype.click = function privacyGateVerifiedClick() {
@@ -159,7 +112,7 @@
       .then(ok => {
         if (!ok) {
           notice(
-            "PrivacyGate blocked Send because ChatGPT restored the original composer state. Nothing was sent."
+            "PrivacyGate blocked Send because the protected composer was not stable. Nothing was sent."
           );
           return;
         }
