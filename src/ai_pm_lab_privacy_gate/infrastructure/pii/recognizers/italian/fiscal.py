@@ -2,6 +2,9 @@ from __future__ import annotations
 
 import re
 
+from ai_pm_lab_privacy_gate.infrastructure.pii.recognizers.italian.contextual import (
+    ItalianContextValueRecognizer,
+)
 from ai_pm_lab_privacy_gate.infrastructure.pii.recognizers.italian.validated_pattern import (
     ValidatedRegexRecognizer,
 )
@@ -26,6 +29,12 @@ _CF_EVEN_VALUES = {
     **{str(index): index for index in range(10)},
     **{chr(ord("A") + index): index for index in range(26)},
 }
+
+
+def is_structurally_plausible_codice_fiscale(value: str) -> bool:
+    """Accept CF-shaped values when explicit context already proves sensitivity."""
+    candidate = re.sub(r"\s+", "", value).upper()
+    return bool(_CF_STRUCTURE.fullmatch(candidate))
 
 
 def is_valid_codice_fiscale(value: str) -> bool:
@@ -55,12 +64,31 @@ def is_valid_partita_iva(value: str) -> bool:
     return total % 10 == 0
 
 
-def build_fiscal_recognizers() -> tuple[ValidatedRegexRecognizer, ...]:
+def build_fiscal_recognizers() -> tuple[
+    ValidatedRegexRecognizer | ItalianContextValueRecognizer, ...
+]:
     return (
+        # Strong generic detector: checksum-valid CF values are sensitive even
+        # without a nearby label.
         ValidatedRegexRecognizer(
             entity_type="IT_FISCAL_CODE",
             pattern=r"(?<![A-Z0-9])[A-Z]{6}[0-9LMNPQRSTUV]{2}[A-Z][0-9LMNPQRSTUV]{2}[A-Z][0-9LMNPQRSTUV]{3}[A-Z](?![A-Z0-9])",
             validator=is_valid_codice_fiscale,
+        ),
+        # Privacy-first contextual fallback: a CF-shaped value explicitly
+        # labelled as codice fiscale must still be protected even when the
+        # checksum is invalid (for example synthetic/test or mistyped data).
+        ItalianContextValueRecognizer(
+            entity_type="IT_FISCAL_CODE",
+            pattern=(
+                r"\b(?:codice\s+fiscale|c\.?\s*f\.?|cf)\b"
+                r"\s*(?:è|e|:|#|-)??\s*"
+                r"(?P<value>[A-Z]{6}[0-9LMNPQRSTUV]{2}[A-Z]"
+                r"[0-9LMNPQRSTUV]{2}[A-Z][0-9LMNPQRSTUV]{3}[A-Z])"
+                r"(?![A-Z0-9])"
+            ),
+            score=0.985,
+            validator=is_structurally_plausible_codice_fiscale,
         ),
         ValidatedRegexRecognizer(
             entity_type="IT_VAT_NUMBER",
