@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "PrivacyGate FreeV1 POC",
-  "version": "0.0.23",
+  "version": "0.0.24",
   "description": "PrivacyGate local browser protection proof of concept.",
   "permissions": [
     "storage"
