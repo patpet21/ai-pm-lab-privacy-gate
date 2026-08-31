@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+
 import pytest
 
 from ai_pm_lab_privacy_gate.infrastructure.local_api.browser_pairing import (
@@ -29,6 +31,50 @@ def test_pairing_code_is_one_time_and_credential_is_origin_bound() -> None:
 
     with pytest.raises(ValueError, match="expired or unavailable"):
         registry.pair(ORIGIN, challenge.code, now=102.0)
+
+
+def test_multiple_clients_can_pair_with_same_extension_origin() -> None:
+    secrets = MemorySecretStore()
+    registry = BrowserPairingRegistry(secrets)
+
+    first = registry.create_challenge(now=100.0)
+    token_avg = registry.pair(ORIGIN, first.code, client_name="AVG Secure Browser", now=101.0)
+
+    second = registry.create_challenge(now=200.0)
+    token_chrome = registry.pair(ORIGIN, second.code, client_name="Google Chrome", now=201.0)
+
+    assert token_avg != token_chrome
+    assert registry.validate(ORIGIN, token_avg) is True
+    assert registry.validate(ORIGIN, token_chrome) is True
+    assert registry.status().paired_count == 2
+    assert registry.status().origins == (ORIGIN,)
+
+
+def test_legacy_single_token_record_is_preserved_when_new_client_pairs() -> None:
+    secrets = MemorySecretStore()
+    registry = BrowserPairingRegistry(secrets)
+    legacy_token = "legacy-browser-token-value-1234567890"
+    secrets.set(
+        BROWSER_PAIRING_SECRET,
+        json.dumps(
+            {
+                ORIGIN: {
+                    "token_hash": registry._token_hash(legacy_token),
+                    "client_name": "Legacy Chromium",
+                    "paired_at": 50.0,
+                }
+            }
+        ),
+    )
+
+    assert registry.validate(ORIGIN, legacy_token) is True
+
+    challenge = registry.create_challenge(now=100.0)
+    new_token = registry.pair(ORIGIN, challenge.code, client_name="Google Chrome", now=101.0)
+
+    assert registry.validate(ORIGIN, legacy_token) is True
+    assert registry.validate(ORIGIN, new_token) is True
+    assert registry.status().paired_count == 2
 
 
 def test_pairing_code_expires() -> None:
