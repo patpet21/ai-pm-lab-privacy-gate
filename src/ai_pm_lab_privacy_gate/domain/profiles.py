@@ -250,7 +250,7 @@ def get_scope(key: str) -> ProtectionScope:
     for scope in _SCOPES:
         if scope.key == key:
             return scope
-    raise KeyError(f"Unknown protection scope: {scope_key}")
+    raise KeyError(f"Unknown protection scope: {key}")
 
 
 def entities_for_scope(profile: PrivacyProfile, scope_key: str) -> tuple[str, ...]:
