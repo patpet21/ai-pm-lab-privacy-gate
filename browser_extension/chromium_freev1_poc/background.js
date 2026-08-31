@@ -321,3 +321,57 @@ installPrivacyGateActionIcon();
 chrome.tabs?.onRemoved?.addListener(tabId => {
   SessionRegistry.clearDraftForTab(tabId).catch(() => {});
 });
+
+async function analyzePdfForBrowser(message) {
+  const language = detectPromptLanguage(message.contextText || "");
+  const response = await bridgeJson("/v1/browser/pdf/analyze", {
+    filename: message.filename,
+    file_base64: message.fileBase64,
+    profile_key: "property_management",
+    language
+  });
+  return { ...response, detectedLanguage: language };
+}
+
+async function protectPdfForConversation(message, sender) {
+  let sessionId = await SessionRegistry.getSessionForSender(sender);
+
+  const request = id => bridgeJson("/v1/browser/pdf/protect", {
+    analysis_id: message.analysisId,
+    finding_ids: Array.isArray(message.findingIds) ? message.findingIds : [],
+    session_id: id || null
+  });
+
+  let response = await request(sessionId);
+  if (
+    !response.ok &&
+    sessionId &&
+    response.status === 404 &&
+    response.data?.error === "session_not_found"
+  ) {
+    await SessionRegistry.clearSessionForSender(sender);
+    sessionId = null;
+    response = await request(null);
+  }
+
+  if (response.ok && response.data?.session_id) {
+    await SessionRegistry.setSessionForSender(sender, response.data.session_id);
+  }
+  return response;
+}
+
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message?.type === "PG_PDF_ANALYZE") {
+    analyzePdfForBrowser(message)
+      .then(sendResponse)
+      .catch(error => sendResponse({ ok: false, error: String(error) }));
+    return true;
+  }
+
+  if (message?.type === "PG_PDF_PROTECT") {
+    protectPdfForConversation(message, sender)
+      .then(sendResponse)
+      .catch(error => sendResponse({ ok: false, error: String(error) }));
+    return true;
+  }
+});
