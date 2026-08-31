@@ -20,6 +20,7 @@ from ai_pm_lab_privacy_gate.infrastructure.local_api.browser_ai_persistence impo
 from ai_pm_lab_privacy_gate.infrastructure.local_api.browser_pairing import BrowserPairingRegistry
 from ai_pm_lab_privacy_gate.infrastructure.local_api.browser_pdf import install_browser_pdf_support
 from ai_pm_lab_privacy_gate.infrastructure.local_api.browser_pdf_integrity import (
+    _count_occurrences,
     install_browser_pdf_integrity,
 )
 from ai_pm_lab_privacy_gate.infrastructure.local_api.server import create_local_api_server
@@ -38,6 +39,8 @@ class _Service:
     def analyze(self, document, _profile, *, language="en"):  # noqa: ARG002
         text = document.pages[0].text
         start = text.index("Alice")
+        # Deliberately select only the first Alice. The second identical value is
+        # unselected and must be allowed to remain in the generated PDF.
         return (
             Finding(
                 finding_id="PERSON_001",
@@ -65,7 +68,11 @@ class _Service:
         )
 
     def save_protected_pdf(self, result, path, source_document=None):  # noqa: ARG002
-        text = "Tenant Alice" if self.leak_output else result.protected_pages[0].text
+        text = result.protected_pages[0].text
+        if self.leak_output:
+            # Simulate the selected first occurrence leaking back into the output;
+            # the unselected second occurrence is present in both safe/leak cases.
+            text = text.replace("[[PG_PERSON_001]]", "Alice")
         return self.pdf.write_protected((PageContent(1, text),), path)
 
     @staticmethod
@@ -107,7 +114,10 @@ def _post(server, origin: str, token: str, path: str, payload: dict[str, object]
 
 def _exercise(tmp_path: Path, *, leak_output: bool):
     source = tmp_path / ("leak.pdf" if leak_output else "safe.pdf")
-    PdfDocumentService().write_protected((PageContent(1, "Tenant Alice"),), source)
+    PdfDocumentService().write_protected(
+        (PageContent(1, "Tenant Alice. Public alias Alice remains visible."),),
+        source,
+    )
     registry, origin, token = _paired_registry()
     repository = AiLibraryRepository(tmp_path / ("library-leak" if leak_output else "library-safe"))
     server = create_local_api_server(
@@ -152,14 +162,20 @@ def _exercise(tmp_path: Path, *, leak_output: bool):
         thread.join(timeout=2)
 
 
-def test_integrity_gate_marks_safe_pdf_verified(tmp_path: Path) -> None:
+def test_integrity_occurrence_match_does_not_use_raw_substrings() -> None:
+    assert _count_occurrences("PrivacyGate protects AI locally", "AI") == 1
+    assert _count_occurrences("PrivacyGate", "AI") == 0
+    assert _count_occurrences("Alice and Alice", "Alice") == 2
+
+
+def test_integrity_gate_allows_identical_unselected_occurrence(tmp_path: Path) -> None:
     status, protected = _exercise(tmp_path, leak_output=False)
     assert status == 200
     assert protected["integrity_verified"] is True
-    assert protected["integrity_checked_mappings"] == 1
+    assert protected["integrity_checked_findings"] == 1
 
 
-def test_integrity_gate_blocks_pdf_that_still_contains_selected_value(tmp_path: Path) -> None:
+def test_integrity_gate_blocks_selected_occurrence_that_survives(tmp_path: Path) -> None:
     status, blocked = _exercise(tmp_path, leak_output=True)
     assert status == 400
     assert blocked["error"] == "invalid_request"
