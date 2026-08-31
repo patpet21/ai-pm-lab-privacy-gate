@@ -14,6 +14,12 @@ from ai_pm_lab_privacy_gate.infrastructure.pii.recognizers.italian.dates import 
     build_date_recognizers,
     is_valid_italian_birth_date,
 )
+from ai_pm_lab_privacy_gate.infrastructure.pii.recognizers.italian.fiscal import (
+    build_fiscal_recognizers,
+)
+from ai_pm_lab_privacy_gate.infrastructure.pii.recognizers.italian.references import (
+    build_reference_recognizers,
+)
 
 
 def _values(recognizers, text: str, entity_type: str) -> list[str]:
@@ -75,6 +81,45 @@ def test_italian_real_estate_amounts_are_contextual() -> None:
     ) == []
 
 
+def test_contextual_codice_fiscale_protects_cf_shaped_test_data() -> None:
+    recognizers = build_fiscal_recognizers()
+    fake_but_cf_shaped = "FRSPTR84H14F205X"
+
+    assert _values(
+        recognizers,
+        f"Il suo codice fiscale è {fake_but_cf_shaped}.",
+        "IT_FISCAL_CODE",
+    ) == [fake_but_cf_shaped]
+
+    # Keep checksum-invalid CF-shaped strings out of generic prose: the fallback
+    # is intentionally privacy-first only when an explicit fiscal-code label is present.
+    assert _values(
+        recognizers,
+        f"Riferimento interno {fake_but_cf_shaped}.",
+        "IT_FISCAL_CODE",
+    ) == []
+
+
+def test_italian_case_reference_is_contextual() -> None:
+    recognizers = build_reference_recognizers()
+
+    assert _values(
+        recognizers,
+        "La pratica di riferimento è RE-2026-45871 e riguarda l'immobile.",
+        "CASE_REFERENCE",
+    ) == ["RE-2026-45871"]
+    assert _values(
+        recognizers,
+        "Numero pratica: PM-2026-0042",
+        "CASE_REFERENCE",
+    ) == ["PM-2026-0042"]
+    assert _values(
+        recognizers,
+        "La costruzione è stata completata nel 2026.",
+        "CASE_REFERENCE",
+    ) == []
+
+
 @pytest.mark.skipif(
     importlib.util.find_spec("xx_ent_wiki_sm") is None,
     reason="xx_ent_wiki_sm is installed by requirements-lock.txt for release builds",
@@ -97,3 +142,24 @@ def test_real_fixture_classifies_pec_birth_date_and_monthly_rent() -> None:
     assert ("IT_PEC_ADDRESS", "amministrazione@auroragestioni.pec.it") in pairs
     assert ("EMAIL_ADDRESS", "amministrazione@auroragestioni.pec.it") not in pairs
     assert ("RENT_AMOUNT", "Euro 1.850,00") in pairs
+
+
+@pytest.mark.skipif(
+    importlib.util.find_spec("xx_ent_wiki_sm") is None,
+    reason="xx_ent_wiki_sm is installed by requirements-lock.txt for release builds",
+)
+def test_property_management_fixture_masks_fiscal_code_and_case_reference() -> None:
+    engine = PresidioPrivacyEngine(language="it")
+    text = (
+        "Il suo codice fiscale è FRSPTR84H14F205X. "
+        "La pratica di riferimento è RE-2026-45871 e riguarda l'immobile."
+    )
+
+    findings = engine.analyze_page(
+        PageContent(page_number=1, text=text),
+        get_profile("property_management"),
+    )
+    pairs = {(item.entity_type, item.text) for item in findings}
+
+    assert ("IT_FISCAL_CODE", "FRSPTR84H14F205X") in pairs
+    assert ("CASE_REFERENCE", "RE-2026-45871") in pairs
