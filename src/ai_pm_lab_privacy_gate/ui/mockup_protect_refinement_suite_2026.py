@@ -32,6 +32,9 @@ from .mockup_protect_review_controls_2026 import (
 from .protect_image_review_regression_fix import (
     apply_protect_image_review_regression_fix,
 )
+from .mockup_protect_entry_surface_2026 import (
+    apply_mockup_protect_entry_surface_2026,
+)
 
 
 def apply_mockup_protect_refinement_suite_2026(main_window) -> None:
@@ -53,3 +56,7 @@ def apply_mockup_protect_refinement_suite_2026(main_window) -> None:
     # Image/OCR support extends the engine only. Never let its compatibility
     # preview hooks hide the established tags/review/manual-sensitive surface.
     apply_protect_image_review_regression_fix(main_window)
+    # Final source-entry presentation: reorder/style the existing source buttons
+    # and add the empty-state upload/paste/drop surface without replacing any
+    # Protect callbacks or engine behavior.
+    apply_mockup_protect_entry_surface_2026(main_window)
