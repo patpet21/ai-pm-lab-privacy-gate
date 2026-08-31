@@ -14,6 +14,7 @@ from ai_pm_lab_privacy_gate.infrastructure.security.secret_store import SecretSt
 BROWSER_PAIRING_SECRET = "browser-pairing-registry-v1"
 _PAIRING_TTL_SECONDS = 300
 _PAIRING_MAX_ATTEMPTS = 5
+_MAX_CLIENTS_PER_ORIGIN = 12
 
 
 @dataclass(frozen=True, slots=True)
@@ -29,7 +30,12 @@ class BrowserPairingStatus:
 
 
 class BrowserPairingRegistry:
-    """Issue and validate scoped browser credentials without exposing the main API token."""
+    """Issue and validate scoped browser credentials without exposing the main API token.
+
+    Multiple Chromium browsers can load the same unpacked extension and therefore
+    share the same chrome-extension:// origin. Credentials are stored per client,
+    not one-per-origin, so pairing Chrome does not invalidate AVG/Edge/Brave.
+    """
 
     def __init__(self, secret_store: SecretStore) -> None:
         self.secret_store = secret_store
@@ -42,6 +48,19 @@ class BrowserPairingRegistry:
     def _token_hash(token: str) -> str:
         return hashlib.sha256(token.encode("utf-8")).hexdigest()
 
+    @staticmethod
+    def _client_record(record: object) -> dict[str, object] | None:
+        if not isinstance(record, dict):
+            return None
+        token_hash = record.get("token_hash")
+        if not isinstance(token_hash, str) or not token_hash:
+            return None
+        return {
+            "token_hash": token_hash,
+            "client_name": str(record.get("client_name") or "Chromium")[:80],
+            "paired_at": float(record.get("paired_at") or 0.0),
+        }
+
     def _load(self) -> dict[str, dict[str, object]]:
         raw = self.secret_store.get(BROWSER_PAIRING_SECRET)
         if not raw:
@@ -52,10 +71,28 @@ class BrowserPairingRegistry:
             return {}
         if not isinstance(parsed, dict):
             return {}
+
         records: dict[str, dict[str, object]] = {}
         for origin, record in parsed.items():
-            if isinstance(origin, str) and isinstance(record, dict):
-                records[origin] = dict(record)
+            if not isinstance(origin, str) or not isinstance(record, dict):
+                continue
+
+            clients: list[dict[str, object]] = []
+            raw_clients = record.get("clients")
+            if isinstance(raw_clients, list):
+                for item in raw_clients:
+                    normalized = self._client_record(item)
+                    if normalized is not None:
+                        clients.append(normalized)
+            else:
+                # Backward compatibility with the original one-token-per-origin
+                # registry. The next successful pairing transparently migrates it.
+                legacy = self._client_record(record)
+                if legacy is not None:
+                    clients.append(legacy)
+
+            if clients:
+                records[origin] = {"clients": clients[-_MAX_CLIENTS_PER_ORIGIN:]}
         return records
 
     def _save(self, records: dict[str, dict[str, object]]) -> None:
@@ -102,11 +139,18 @@ class BrowserPairingRegistry:
 
             browser_token = secrets.token_urlsafe(32)
             records = self._load()
-            records[normalized_origin] = {
-                "token_hash": self._token_hash(browser_token),
-                "client_name": str(client_name or "Chromium")[:80],
-                "paired_at": timestamp,
-            }
+            origin_record = records.setdefault(normalized_origin, {"clients": []})
+            clients = origin_record.get("clients")
+            if not isinstance(clients, list):
+                clients = []
+            clients.append(
+                {
+                    "token_hash": self._token_hash(browser_token),
+                    "client_name": str(client_name or "Chromium")[:80],
+                    "paired_at": timestamp,
+                }
+            )
+            origin_record["clients"] = clients[-_MAX_CLIENTS_PER_ORIGIN:]
             self._save(records)
             self._challenge_code = None
             self._challenge_expires_at = 0.0
@@ -119,19 +163,32 @@ class BrowserPairingRegistry:
         normalized_origin = origin.rstrip("/")
         if not normalized_origin.startswith("chrome-extension://"):
             return False
+        token_hash = self._token_hash(token)
         with self._lock:
             record = self._load().get(normalized_origin)
         if not record:
             return False
-        expected = record.get("token_hash")
-        if not isinstance(expected, str):
+        clients = record.get("clients")
+        if not isinstance(clients, list):
             return False
-        return hmac.compare_digest(self._token_hash(token), expected)
+        for client in clients:
+            if not isinstance(client, dict):
+                continue
+            expected = client.get("token_hash")
+            if isinstance(expected, str) and hmac.compare_digest(token_hash, expected):
+                return True
+        return False
 
     def status(self) -> BrowserPairingStatus:
         with self._lock:
-            origins = tuple(sorted(self._load()))
-        return BrowserPairingStatus(paired_count=len(origins), origins=origins)
+            records = self._load()
+        origins = tuple(sorted(records))
+        paired_count = 0
+        for record in records.values():
+            clients = record.get("clients")
+            if isinstance(clients, list):
+                paired_count += len(clients)
+        return BrowserPairingStatus(paired_count=paired_count, origins=origins)
 
     def revoke(self, origin: str | None = None) -> None:
         with self._lock:
