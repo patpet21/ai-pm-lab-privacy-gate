@@ -30,6 +30,9 @@ from ai_pm_lab_privacy_gate.infrastructure.pii.recognizers.italian.identity_docu
 from ai_pm_lab_privacy_gate.infrastructure.pii.recognizers.italian.people import (
     build_person_recognizers,
 )
+from ai_pm_lab_privacy_gate.infrastructure.pii.recognizers.italian.references import (
+    build_reference_recognizers,
+)
 from ai_pm_lab_privacy_gate.infrastructure.pii.recognizers.italian.vehicles import (
     build_vehicle_recognizers,
 )
@@ -37,8 +40,9 @@ from ai_pm_lab_privacy_gate.infrastructure.pii.recognizers.italian.vehicles impo
 
 # Italian-specific entities which must be requested in addition to the selected
 # product profile. Recognizers which reuse existing cross-language profile types
-# (for example DATE_OF_BIRTH or RENT_AMOUNT) are registered below but intentionally
-# are not added here, so the current profile/scope semantics remain authoritative.
+# (for example DATE_OF_BIRTH, CASE_REFERENCE or RENT_AMOUNT) are registered below
+# but intentionally are not added here, so the current profile/scope semantics
+# remain authoritative.
 ITALIAN_ENTITY_TYPES = (
     "IT_FISCAL_CODE",
     "IT_VAT_NUMBER",
@@ -76,6 +80,7 @@ def install_italian_recognizers(registry) -> None:  # noqa: ANN001
         *build_vehicle_recognizers(),
         *build_cadastral_recognizers(),
         *build_business_recognizers(),
+        *build_reference_recognizers(),
         *build_person_recognizers(),
         *build_date_recognizers(),
         *build_amount_recognizers(),
