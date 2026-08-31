@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "PrivacyGate FreeV1 POC",
-  "version": "0.0.21",
+  "version": "0.0.22",
   "description": "PrivacyGate local browser protection proof of concept.",
   "permissions": [
     "storage"
@@ -16,6 +16,17 @@
     "default_title": "PrivacyGate Browser Protection",
     "default_popup": "popup.html"
   },
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "restore_overlay.html",
+        "restore_overlay.js"
+      ],
+      "matches": [
+        "https://chatgpt.com/*"
+      ]
+    }
+  ],
   "content_scripts": [
     {
       "matches": [
