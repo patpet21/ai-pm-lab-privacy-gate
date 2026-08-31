@@ -2,11 +2,9 @@ from __future__ import annotations
 
 """Final source-entry polish for Protect.
 
-This module is presentation-only. It reorders/styles the already-wired source
-buttons and adds an empty-state entry surface inside the existing Original
-Document panel. Upload/Paste/Connected Source continue to call the proven
-callbacks installed by the Protect runtime; detection, protection, preview,
-connectors and export behavior are not replaced here.
+Presentation only. Existing Upload/Paste/Connected Source callbacks remain
+canonical. This layer styles those controls and owns only the visual state of the
+large Original document entry surface: EMPTY, PASTE, or DOCUMENT.
 """
 
 from pathlib import Path
@@ -34,7 +32,6 @@ GREEN_SOFT = "#EAF8F0"
 GREEN_BORDER = "#A9DCC0"
 NAVY = "#17384E"
 MUTED = "#667085"
-BORDER = "#D0D5DD"
 SUPPORTED_DROP_SUFFIXES = {
     ".pdf",
     ".docx",
@@ -48,7 +45,7 @@ SUPPORTED_DROP_SUFFIXES = {
 
 
 class _ProtectSourceDropZone(QFrame):
-    """Visual drop target which delegates the selected path to the existing UI state."""
+    """Visual drop target delegating a local path to the existing source state."""
 
     def __init__(self, on_drop: Callable[[str], None]) -> None:
         super().__init__()
@@ -106,8 +103,7 @@ class _ProtectSourceDropZone(QFrame):
 
 
 def _format_chip(label: str, accent: str, background: str) -> QFrame:
-    chip = QFrame()
-    chip.setObjectName("ProtectFormatChip")
+    chip = QFrame(objectName="ProtectFormatChip")
     chip.setStyleSheet(
         f"QFrame#ProtectFormatChip{{background:{background};border:1px solid {accent}33;"
         "border-radius:9px;}"
@@ -129,22 +125,13 @@ def _format_chip(label: str, accent: str, background: str) -> QFrame:
     return chip
 
 
-def _reorder_and_style_source_buttons(page) -> None:
-    bar = getattr(page, "_protect_source_quick_bar", None)
+def _style_source_buttons(page) -> None:
+    """Style only; never reparent the command-row buttons."""
     upload = getattr(page, "_protect_source_upload", None)
     paste = getattr(page, "_protect_source_paste", None)
     connected = getattr(page, "_protect_source_connected", None)
-    if bar is None or upload is None or paste is None or connected is None:
+    if upload is None or paste is None or connected is None:
         return
-
-    layout = bar.layout()
-    if layout is not None and hasattr(layout, "insertWidget"):
-        # Keep the same button instances/signals; only move them visually.
-        for button in (upload, paste, connected):
-            layout.removeWidget(button)
-        layout.insertWidget(0, upload)
-        layout.insertWidget(1, paste)
-        layout.insertWidget(2, connected)
 
     upload.setMinimumHeight(40)
     upload.setMinimumWidth(108)
@@ -154,7 +141,6 @@ def _reorder_and_style_source_buttons(page) -> None:
         f"QPushButton{{background:{BLUE};color:#FFFFFF;border:1px solid {BLUE};"
         "border-radius:9px;padding:8px 14px;font-size:9px;font-weight:900;}"
         f"QPushButton:hover{{background:{BLUE_DARK};border-color:{BLUE_DARK};}}"
-        "QPushButton:pressed{padding-top:9px;padding-bottom:7px;}"
         "QPushButton:disabled{background:#D0D5DD;color:#FFFFFF;border-color:#D0D5DD;}"
     )
 
@@ -166,7 +152,6 @@ def _reorder_and_style_source_buttons(page) -> None:
         f"QPushButton{{background:{GREEN_SOFT};color:{GREEN};border:1px solid {GREEN_BORDER};"
         "border-radius:9px;padding:8px 14px;font-size:9px;font-weight:900;}"
         f"QPushButton:hover{{background:#DDF3E7;color:{GREEN_DARK};border-color:#7FC99E;}}"
-        "QPushButton:pressed{padding-top:9px;padding-bottom:7px;}"
         "QPushButton:disabled{background:#F2F4F7;color:#98A2B3;border-color:#EAECF0;}"
     )
 
@@ -183,11 +168,13 @@ def _reorder_and_style_source_buttons(page) -> None:
 
 def _build_empty_state(page) -> _ProtectSourceDropZone:
     def select_dropped_file(path: str) -> None:
-        # Mirror the state set by the proven file-picker callback. No scan or
-        # protection logic is duplicated here.
+        page._protect_entry_force_empty = False
         document_mode = getattr(page, "_redesign_document_mode", None)
-        if document_mode is not None and not document_mode.isChecked():
-            document_mode.click()
+        paste_mode = getattr(page, "_redesign_paste_mode", None)
+        if document_mode is not None:
+            document_mode.setChecked(True)
+        if paste_mode is not None:
+            paste_mode.setChecked(False)
         page.pdf_path.setText(path)
         page.pdf_path.setToolTip(path)
         try:
@@ -320,63 +307,117 @@ def _install_empty_state(page) -> None:
         return
 
     empty_state = _build_empty_state(page)
-    # Index 0 is the existing Original document / Local source heading.
     layout.insertWidget(1, empty_state, 1)
     page._protect_source_empty_state = empty_state
+    page._protect_entry_force_empty = False
 
-    def sync_empty_state(*_args) -> None:
+    # The existing text editor already belongs to the proven Protect runtime.
+    # We only control whether it or the document preview is visible.
+    page.text_input.setMinimumHeight(420)
+    page.text_input.setMaximumHeight(16777215)
+    page.text_input.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+
+    def content_state() -> str:
         has_file = bool(str(page.pdf_path.text() or "").strip())
         has_text = bool(str(page.text_input.toPlainText() or "").strip())
-        has_document = getattr(page, "current_document", None) is not None
-        has_session_source = bool(dict(getattr(page, "_protect_session_sources", {}) or {}))
-        has_gmail_source = bool(tuple(getattr(page, "_gmail_component_manifest", ()) or ()))
-        has_external_source = bool(dict(getattr(page, "_external_source_metadata", {}) or {}))
+        document = getattr(page, "current_document", None)
+        current_kind = str(getattr(document, "source_kind", "") or "")
+        has_document = document is not None
+        session_sources = dict(getattr(page, "_protect_session_sources", {}) or {})
+        active_key = str(getattr(page, "_privacygate_active_source_key", "") or "")
+        has_gmail = bool(tuple(getattr(page, "_gmail_component_manifest", ()) or ()))
+        has_external = bool(dict(getattr(page, "_external_source_metadata", {}) or {}))
         paste_mode = getattr(page, "_redesign_paste_mode", None)
         paste_active = bool(paste_mode is not None and paste_mode.isChecked())
 
-        show_empty = not (
-            has_file
-            or has_text
-            or has_document
-            or has_session_source
-            or has_gmail_source
-            or has_external_source
-            or paste_active
-        )
-        empty_state.setVisible(show_empty)
-        stack.setVisible(not show_empty)
+        # Clear is authoritative for the entry surface even if an older runtime
+        # still clears compatibility/session metadata a few milliseconds later.
+        if bool(getattr(page, "_protect_entry_force_empty", False)) and not has_file and not has_text:
+            return "EMPTY"
 
-    page.text_input.textChanged.connect(sync_empty_state)
-    page.pdf_path.textChanged.connect(sync_empty_state)
-    page.clear_button.clicked.connect(lambda: QTimer.singleShot(0, sync_empty_state))
+        # Connected sources own their own document/body presentation. Do not turn
+        # those into the manual paste editor merely because they contain text.
+        if has_gmail or has_external:
+            return "DOCUMENT"
+
+        if paste_active or current_kind == "text" or active_key == "text":
+            return "PASTE"
+        if has_text and not has_file:
+            return "PASTE"
+
+        if has_file or has_document or bool(session_sources):
+            return "DOCUMENT"
+        return "EMPTY"
+
+    def sync_entry_state(*_args) -> None:
+        state = content_state()
+        empty_state.setVisible(state == "EMPTY")
+        page.text_input.setVisible(state == "PASTE")
+        stack.setVisible(state == "DOCUMENT")
+
+    def release_for_new_source(*_args) -> None:
+        page._protect_entry_force_empty = False
+        QTimer.singleShot(0, sync_entry_state)
+
+    def text_changed() -> None:
+        if str(page.text_input.toPlainText() or "").strip():
+            page._protect_entry_force_empty = False
+        sync_entry_state()
+
+    def file_changed(value: str) -> None:
+        if str(value or "").strip():
+            page._protect_entry_force_empty = False
+        sync_entry_state()
+
+    def reset_after_clear() -> None:
+        page._protect_entry_force_empty = True
+        paste_mode = getattr(page, "_redesign_paste_mode", None)
+        document_mode = getattr(page, "_redesign_document_mode", None)
+        if paste_mode is not None:
+            paste_mode.setChecked(False)
+        if document_mode is not None:
+            document_mode.setChecked(True)
+        try:
+            page.input_tabs.setCurrentIndex(1)
+        except Exception:
+            pass
+        sync_entry_state()
+        # Some compatibility clear handlers finish asynchronously. Reassert the
+        # same visual state after they have completed without polling forever.
+        QTimer.singleShot(80, sync_entry_state)
+        QTimer.singleShot(250, sync_entry_state)
+
+    page.text_input.textChanged.connect(text_changed)
+    page.pdf_path.textChanged.connect(file_changed)
+    page.clear_button.clicked.connect(lambda: QTimer.singleShot(0, reset_after_clear))
 
     paste_mode = getattr(page, "_redesign_paste_mode", None)
     document_mode = getattr(page, "_redesign_document_mode", None)
     if paste_mode is not None:
-        paste_mode.toggled.connect(lambda _checked: QTimer.singleShot(0, sync_empty_state))
+        paste_mode.toggled.connect(release_for_new_source)
     if document_mode is not None:
-        document_mode.toggled.connect(lambda _checked: QTimer.singleShot(0, sync_empty_state))
+        document_mode.toggled.connect(lambda _checked: QTimer.singleShot(0, sync_entry_state))
 
-    # Re-check after source pickers/connected-source callbacks finish their own
-    # state updates. These are one-shot syncs, not another permanent polling loop.
     for button in (
         getattr(page, "_protect_source_upload", None),
         getattr(page, "_protect_source_paste", None),
         getattr(page, "_protect_source_connected", None),
+        getattr(page, "_protect_empty_upload", None),
+        getattr(page, "_protect_empty_paste", None),
     ):
         if button is not None:
-            button.clicked.connect(lambda _checked=False: QTimer.singleShot(250, sync_empty_state))
+            button.clicked.connect(release_for_new_source)
 
-    sync_empty_state()
-    page._protect_source_empty_state_sync = sync_empty_state
+    sync_entry_state()
+    page._protect_source_empty_state_sync = sync_entry_state
 
 
 def apply_mockup_protect_entry_surface_2026(main_window) -> None:
-    """Apply the final source-entry visual layer without replacing Protect behavior."""
+    """Apply the source-entry visual layer without replacing Protect behavior."""
     page = getattr(main_window, "protection_page", None)
     if page is None or getattr(page, "_privacygate_protect_entry_surface_2026", False):
         return
     page._privacygate_protect_entry_surface_2026 = True
 
-    _reorder_and_style_source_buttons(page)
+    _style_source_buttons(page)
     _install_empty_state(page)
