@@ -114,6 +114,23 @@ class PrivacyGateService:
             findings = list(propagate_known_ner_values(document, findings))
             return self._without_overlaps(tuple(findings))
 
+        if code == "en":
+            from ai_pm_lab_privacy_gate.infrastructure.pii.recognizers.english.guardrails import (
+                email_linked_person_findings,
+                propagate_known_ner_values,
+            )
+
+            # Personal email local-parts such as first.last provide strong local
+            # evidence for repeated full-name occurrences in resumes and business
+            # documents, even when statistical NER misses one copy.
+            findings = list(email_linked_person_findings(document, findings))
+
+            # After precision filtering, propagate stable EN PERSON/ORG/LOCATION
+            # values across exact standalone repeats so the same identity cannot
+            # leak simply because spaCy classified only one occurrence.
+            findings = list(propagate_known_ner_values(document, findings))
+            return self._without_overlaps(tuple(findings))
+
         return tuple(findings)
 
     def protect(
