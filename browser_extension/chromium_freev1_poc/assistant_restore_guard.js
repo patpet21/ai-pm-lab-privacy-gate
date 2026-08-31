@@ -27,11 +27,14 @@
     if (!element) return true;
 
     // Never make the user's outbound bubble look unprotected and never touch
-    // the live composer or PrivacyGate's own UI. Everything else containing a
-    // session placeholder is an AI-rendered/local surface eligible for restore.
+    // the actual ChatGPT prompt composer or PrivacyGate's own UI.
+    //
+    // Important: do NOT exclude every contenteditable element. ChatGPT renders
+    // long rewritten emails/documents as editable response cards (Edit / Send).
+    // Those are AI output surfaces and must be restored locally too.
     return Boolean(
       element.closest?.(
-        '[data-message-author-role="user"], #prompt-textarea, textarea, input, [contenteditable="true"], ' +
+        '[data-message-author-role="user"], #prompt-textarea, ' +
         '#privacygate-freev1-bar, #privacygate-freev1-review, #privacygate-freev1-checking, ' +
         '#privacygate-freev1-notice, #privacygate-composer-sync-error'
       )
@@ -125,7 +128,7 @@
 
   // ChatGPT can replace a streamed response/card after local DOM restoration.
   // Re-scan all non-user surfaces so the local view converges back to restored
-  // values even after the final render mounts in a different container.
-  setInterval(() => scan(), 450);
+  // values even after the final render mounts in a different/editable container.
+  setInterval(() => scan(), 350);
   scheduleScan(60);
 })();
