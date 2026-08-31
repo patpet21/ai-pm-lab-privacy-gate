@@ -194,9 +194,6 @@ async function protectForConversation(message, sender) {
 
   let response = await request(sessionId);
 
-  // Desktop sessions are intentionally RAM-only. If PrivacyGate was restarted
-  // while the browser stayed open, discard the stale conversation session and
-  // transparently create a fresh one for the next protected message.
   if (
     !response.ok &&
     sessionId &&
@@ -315,22 +312,23 @@ chrome.runtime.onStartup.addListener(() => {
 });
 installPrivacyGateActionIcon();
 
-// Only the temporary draft mapping is tab-specific. Permanent conversation
-// mappings remain available while the browser session and PrivacyGate process
-// stay alive, so reopening the same ChatGPT conversation can still restore it.
 chrome.tabs?.onRemoved?.addListener(tabId => {
   SessionRegistry.clearDraftForTab(tabId).catch(() => {});
 });
 
 async function analyzePdfForBrowser(message) {
-  const language = detectPromptLanguage(message.contextText || "");
+  const profileKey =
+    typeof message.profileKey === "string" && message.profileKey.trim()
+      ? message.profileKey.trim()
+      : "general_business";
+  const language = message.language === "it" ? "it" : "en";
   const response = await bridgeJson("/v1/browser/pdf/analyze", {
     filename: message.filename,
     file_base64: message.fileBase64,
-    profile_key: "property_management",
+    profile_key: profileKey,
     language
   });
-  return { ...response, detectedLanguage: language };
+  return { ...response, detectedLanguage: language, profileKey };
 }
 
 async function protectPdfForConversation(message, sender) {
