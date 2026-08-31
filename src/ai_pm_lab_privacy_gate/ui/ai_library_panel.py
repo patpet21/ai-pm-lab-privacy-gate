@@ -25,53 +25,39 @@ from ai_pm_lab_privacy_gate.infrastructure.storage.ai_library_repository import 
 )
 
 
-class AiLibraryPanel(QWidget):
-    """Read-only Personal Library view for browser-protected AI conversations."""
+_PROVIDER_LABELS = {
+    "chatgpt": "ChatGPT",
+    "claude": "Claude",
+    "gemini": "Gemini",
+}
 
-    def __init__(self, data_dir) -> None:
+
+class _ProviderConversationPage(QWidget):
+    """Read-only conversation list and local restored view for one AI provider."""
+
+    def __init__(self, repository: AiLibraryRepository, provider: str) -> None:
         super().__init__()
-        self.repository = AiLibraryRepository(data_dir)
+        self.repository = repository
+        self.provider = provider
+        self.provider_label = _PROVIDER_LABELS[provider]
         self._conversations: tuple[AiConversationSummary, ...] = ()
         self._build_ui()
         self.refresh()
 
     def _build_ui(self) -> None:
-        root = QVBoxLayout(self)
-        root.setContentsMargins(0, 0, 0, 0)
-        root.setSpacing(12)
-
-        notice = QFrame(objectName="Card")
-        notice_layout = QHBoxLayout(notice)
-        notice_layout.setContentsMargins(16, 11, 16, 11)
-        title = QLabel("AI conversation library", objectName="SectionTitle")
-        detail = QLabel(
-            "Encrypted locally  •  Local only  •  Not shared through MCP",
-            objectName="Muted",
-        )
-        detail.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-        notice_layout.addWidget(title)
-        notice_layout.addStretch(1)
-        notice_layout.addWidget(detail)
-        root.addWidget(notice)
-
-        self.provider_tabs = QTabWidget()
-        self.provider_tabs.addTab(self._build_chatgpt_page(), "ChatGPT")
-        root.addWidget(self.provider_tabs, 1)
-
-    def _build_chatgpt_page(self) -> QWidget:
-        page = QWidget()
-        layout = QVBoxLayout(page)
+        layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 12, 0, 0)
         layout.setSpacing(10)
 
         intro_row = QHBoxLayout()
         intro = QLabel(
-            "Protected browser conversations saved by PrivacyGate. "
+            f"Protected {self.provider_label} browser conversations saved by PrivacyGate. "
             "Real values remain encrypted at rest on this device.",
             objectName="Muted",
         )
         intro.setWordWrap(True)
         self.refresh_button = QPushButton("Refresh", objectName="Secondary")
+        self.refresh_button.setMinimumHeight(34)
         self.refresh_button.clicked.connect(self.refresh)
         intro_row.addWidget(intro, 1)
         intro_row.addWidget(self.refresh_button)
@@ -82,7 +68,7 @@ class AiLibraryPanel(QWidget):
         list_card = QFrame(objectName="Card")
         list_layout = QVBoxLayout(list_card)
         list_layout.setContentsMargins(12, 12, 12, 12)
-        list_layout.addWidget(QLabel("ChatGPT conversations", objectName="SectionTitle"))
+        list_layout.addWidget(QLabel("Conversations", objectName="SectionTitle"))
 
         self.table = QTableWidget(0, 4)
         self.table.setHorizontalHeaderLabels(
@@ -102,7 +88,7 @@ class AiLibraryPanel(QWidget):
         preview_card = QFrame(objectName="Card")
         preview_layout = QVBoxLayout(preview_card)
         preview_layout.setContentsMargins(14, 14, 14, 14)
-        self.preview_title = QLabel("Select a ChatGPT conversation", objectName="SectionTitle")
+        self.preview_title = QLabel("Local conversation", objectName="SectionTitle")
         self.meta = QLabel(objectName="Muted")
         self.meta.setWordWrap(True)
         self.restore_values = QCheckBox("Show local restored values")
@@ -122,7 +108,7 @@ class AiLibraryPanel(QWidget):
         actions = QHBoxLayout()
         actions.addWidget(
             QLabel(
-                "AI replies are not duplicated here; ChatGPT keeps only protected placeholders.",
+                "Encrypted locally  •  Local only  •  Not shared through MCP",
                 objectName="Muted",
             ),
             1,
@@ -135,11 +121,10 @@ class AiLibraryPanel(QWidget):
         splitter.setSizes([520, 650])
         layout.addWidget(splitter, 1)
         self._set_preview_enabled(False)
-        return page
 
     def refresh(self, *_args) -> None:
         selected_id = self._current_session_id()
-        self._conversations = self.repository.list_conversations(provider="chatgpt")
+        self._conversations = self.repository.list_conversations(provider=self.provider)
         self.table.setRowCount(len(self._conversations))
 
         selected_row = -1
@@ -162,10 +147,10 @@ class AiLibraryPanel(QWidget):
         if self._conversations:
             self.table.selectRow(selected_row if selected_row >= 0 else 0)
         else:
-            self.preview_title.setText("No protected ChatGPT conversations yet")
+            self.preview_title.setText("Local conversation")
             self.meta.setText(
-                "Use PrivacyGate Browser Protection with ChatGPT. Conversations with protected "
-                "sensitive values will appear here automatically."
+                f"No protected {self.provider_label} conversations yet. "
+                "New protected conversations will appear here automatically when browser support is active."
             )
             self.preview.clear()
             self.restore_values.setChecked(False)
@@ -212,11 +197,11 @@ class AiLibraryPanel(QWidget):
             timestamp = message.created_at.astimezone().strftime("%Y-%m-%d %H:%M")
             chunks.append(f"{role} · TURN {message.turn} · {timestamp}\n{text}")
 
-        self.preview_title.setText(summary.display_name)
+        self.preview_title.setText("Local conversation")
         mode = "LOCAL RESTORED" if self.restore_values.isChecked() else "PROTECTED"
         self.meta.setText(
-            f"ChatGPT  •  {summary.turn} protected turn(s)  •  "
-            f"{summary.message_count} saved prompt(s)  •  {mode}  •  "
+            f"{self.provider_label}  •  {summary.display_name}  •  "
+            f"{summary.turn} protected turn(s)  •  {mode}  •  "
             f"Session {summary.session_id[:8].upper()}…"
         )
         self.preview.setPlainText(
@@ -234,3 +219,55 @@ class AiLibraryPanel(QWidget):
         self.restore_values.setEnabled(enabled)
         self.preview.setEnabled(enabled)
         self.copy_button.setEnabled(enabled)
+
+
+class AiLibraryPanel(QWidget):
+    """Personal Library view for browser-protected AI conversations."""
+
+    def __init__(self, data_dir) -> None:
+        super().__init__()
+        self.repository = AiLibraryRepository(data_dir)
+        self._provider_pages: dict[str, _ProviderConversationPage] = {}
+        self._build_ui()
+        self.refresh()
+
+    def _build_ui(self) -> None:
+        root = QVBoxLayout(self)
+        root.setContentsMargins(0, 0, 0, 0)
+        root.setSpacing(12)
+
+        notice = QFrame(objectName="Card")
+        notice_layout = QHBoxLayout(notice)
+        notice_layout.setContentsMargins(16, 11, 16, 11)
+        title = QLabel("AI Conversations", objectName="SectionTitle")
+        detail = QLabel(
+            "Encrypted locally  •  Local only  •  Not shared through MCP",
+            objectName="Muted",
+        )
+        detail.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        notice_layout.addWidget(title)
+        notice_layout.addStretch(1)
+        notice_layout.addWidget(detail)
+        root.addWidget(notice)
+
+        self.provider_tabs = QTabWidget()
+        self.provider_tabs.tabBar().setMinimumHeight(38)
+        self.provider_tabs.tabBar().setStyleSheet(
+            "QTabBar::tab { min-width: 118px; padding: 8px 18px; font-weight: 700; }"
+        )
+        for provider, label in _PROVIDER_LABELS.items():
+            page = _ProviderConversationPage(self.repository, provider)
+            self._provider_pages[provider] = page
+            self.provider_tabs.addTab(page, label)
+        self.provider_tabs.currentChanged.connect(self._provider_changed)
+        root.addWidget(self.provider_tabs, 1)
+
+    def _provider_changed(self, index: int) -> None:
+        page = self.provider_tabs.widget(index)
+        if isinstance(page, _ProviderConversationPage):
+            page.refresh()
+
+    def refresh(self, *_args) -> None:
+        page = self.provider_tabs.currentWidget()
+        if isinstance(page, _ProviderConversationPage):
+            page.refresh()
