@@ -6,8 +6,10 @@ const pairButton = document.getElementById("pairButton");
 const forgetButton = document.getElementById("forgetButton");
 const message = document.getElementById("message");
 const protectionState = document.getElementById("protectionState");
+const protectionToggle = document.getElementById("protectionToggle");
 
 const PROTECTION_STORAGE_KEY = "privacygateProtectionEnabled";
+let protectionEnabled = true;
 
 function setState(kind, text) {
   state.className = kind;
@@ -19,12 +21,24 @@ function setMessage(text, isError = false) {
   message.style.color = isError ? "#B54747" : "#61798A";
 }
 
+function renderProtectionState(enabled) {
+  protectionEnabled = Boolean(enabled);
+  protectionState.textContent = protectionEnabled ? "ON" : "OFF";
+  protectionState.style.color = protectionEnabled ? "#23824B" : "#61798A";
+  protectionToggle.setAttribute("aria-checked", protectionEnabled ? "true" : "false");
+  protectionToggle.title = protectionEnabled
+    ? "Turn Browser Protection off"
+    : "Turn Browser Protection on";
+}
+
 async function refreshProtectionState() {
   const values = await chrome.storage.local.get({ [PROTECTION_STORAGE_KEY]: true });
-  const enabled = values?.[PROTECTION_STORAGE_KEY] !== false;
-  protectionState.textContent = enabled ? "ON" : "OFF";
-  protectionState.style.background = enabled ? "#EAF8F1" : "#EEF3F7";
-  protectionState.style.color = enabled ? "#23824B" : "#61798A";
+  renderProtectionState(values?.[PROTECTION_STORAGE_KEY] !== false);
+}
+
+async function setProtectionState(enabled) {
+  renderProtectionState(enabled);
+  await chrome.storage.local.set({ [PROTECTION_STORAGE_KEY]: Boolean(enabled) });
 }
 
 function renderStatus(response) {
@@ -94,6 +108,13 @@ pairButton.addEventListener("click", () => {
   });
 });
 
+protectionToggle.addEventListener("click", () => {
+  setProtectionState(!protectionEnabled).catch(() => {
+    setMessage("Could not change Browser Protection state.", true);
+    refreshProtectionState();
+  });
+});
+
 forgetButton.addEventListener("click", () => {
   chrome.runtime.sendMessage({ type: "PG_FORGET_PAIRING" }, () => {
     setMessage("This browser has been disconnected from PrivacyGate.");
@@ -101,4 +122,10 @@ forgetButton.addEventListener("click", () => {
   });
 });
 
+chrome.storage.onChanged.addListener((changes, areaName) => {
+  if (areaName !== "local" || !changes[PROTECTION_STORAGE_KEY]) return;
+  renderProtectionState(changes[PROTECTION_STORAGE_KEY].newValue !== false);
+});
+
+refreshProtectionState();
 refreshStatus();
