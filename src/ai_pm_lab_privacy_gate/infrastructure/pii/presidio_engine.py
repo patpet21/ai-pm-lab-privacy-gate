@@ -135,6 +135,16 @@ class PresidioPrivacyEngine:
 
             results = filter_italian_ner_results(page.text, results)
             results = self._prefer_specific_italian_results(results)
+        elif self._language == "en":
+            from ai_pm_lab_privacy_gate.infrastructure.pii.recognizers.english.guardrails import (
+                filter_english_ner_results,
+            )
+
+            results = filter_english_ner_results(
+                page.text,
+                results,
+                profile_key=profile.key,
+            )
         resolved = self._without_overlaps(results)
         return [self._to_finding(page, result, index) for index, result in enumerate(resolved)]
 
