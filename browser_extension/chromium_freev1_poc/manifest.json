@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "PrivacyGate FreeV1 POC",
-  "version": "0.0.26",
+  "version": "0.0.27",
   "description": "PrivacyGate local browser protection proof of concept.",
   "permissions": [
     "storage"
@@ -47,6 +47,7 @@
         "network_gate_bridge.js",
         "legacy_restore_blocker.js",
         "content.js",
+        "protection_state_sync.js",
         "assistant_restore_guard.js"
       ],
       "run_at": "document_start"
