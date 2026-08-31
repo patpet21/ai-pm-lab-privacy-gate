@@ -4,6 +4,33 @@ const BRIDGE = "http://127.0.0.1:8765";
 const BROWSER_TOKEN_KEY = "privacygateBrowserCredentialV1";
 const SessionRegistry = globalThis.PrivacyGateSessionRegistry;
 
+async function installPrivacyGateActionIcon() {
+  try {
+    const response = await fetch(chrome.runtime.getURL("privacygate-mark.svg"), {
+      cache: "no-store"
+    });
+    if (!response.ok) return;
+
+    const bitmap = await createImageBitmap(await response.blob());
+    const imageData = {};
+    for (const size of [16, 32, 48, 128]) {
+      const canvas = new OffscreenCanvas(size, size);
+      const context = canvas.getContext("2d");
+      if (!context) continue;
+      context.clearRect(0, 0, size, size);
+      context.drawImage(bitmap, 0, 0, size, size);
+      imageData[size] = context.getImageData(0, 0, size, size);
+    }
+    bitmap.close?.();
+
+    if (Object.keys(imageData).length) {
+      await chrome.action.setIcon({ imageData });
+    }
+  } catch (_error) {
+    // Branding must never interfere with browser protection.
+  }
+}
+
 const ITALIAN_HINTS = new Set([
   "a", "ad", "anche", "allora", "che", "chi", "come", "con", "cosa", "da",
   "di", "e", "è", "gli", "ho", "i", "il", "in", "io", "la", "le", "lo",
@@ -279,6 +306,14 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 });
+
+chrome.runtime.onInstalled.addListener(() => {
+  installPrivacyGateActionIcon();
+});
+chrome.runtime.onStartup.addListener(() => {
+  installPrivacyGateActionIcon();
+});
+installPrivacyGateActionIcon();
 
 // Only the temporary draft mapping is tab-specific. Permanent conversation
 // mappings remain available while the browser session and PrivacyGate process
