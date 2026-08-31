@@ -3,15 +3,24 @@
 
   if (window.top !== window) return;
 
-  let scanTimer = null;
-  const pendingTokens = new Set();
-
-  // Accept canonical placeholders and Markdown-escaped variants, including
-  // placeholders split across several DOM text nodes in ChatGPT's final cards.
+  const STORAGE_KEY = "privacygateProtectionEnabled";
+  const FRAME_CLASS = "privacygate-secure-restore-frame";
+  const OVERLAY_SOURCE = "privacygate-secure-restore";
   const PLACEHOLDER_RE = /\[\[PG(?:\\?_[A-Z0-9]+)+\]\]/g;
+  const views = new Map();
+  const pending = new WeakSet();
+  let protectionEnabled = true;
+  let scanTimer = null;
 
-  function canonicalToken(token) {
-    return String(token || "").replace(/\\_/g, "_");
+  function canonicalizePlaceholders(text) {
+    return String(text || "").replace(PLACEHOLDER_RE, token =>
+      token.replace(/\\_/g, "_")
+    );
+  }
+
+  function hasPlaceholder(text) {
+    PLACEHOLDER_RE.lastIndex = 0;
+    return PLACEHOLDER_RE.test(String(text || ""));
   }
 
   function excludedElement(element) {
@@ -20,188 +29,211 @@
       element.closest?.(
         '[data-message-author-role="user"], #prompt-textarea, ' +
         '#privacygate-freev1-bar, #privacygate-freev1-review, #privacygate-freev1-checking, ' +
-        '#privacygate-freev1-notice, #privacygate-composer-sync-error'
+        '#privacygate-freev1-notice, #privacygate-composer-sync-error, .' + FRAME_CLASS
       )
     );
   }
 
-  function textMap(root) {
-    const entries = [];
-    let text = "";
-    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
-    let node = walker.nextNode();
-
-    while (node) {
-      if (!excludedElement(node.parentElement)) {
-        const value = node.nodeValue || "";
-        if (value) {
-          entries.push({ node, start: text.length, end: text.length + value.length });
-          text += value;
-        }
-      }
-      node = walker.nextNode();
-    }
-
-    return { text, entries };
+  function visibleText(root) {
+    if (!(root instanceof Element)) return "";
+    return root.innerText || root.textContent || "";
   }
 
-  function locateBoundary(entries, offset, isEnd = false) {
-    for (const entry of entries) {
-      if (offset < entry.end || (isEnd && offset === entry.end)) {
-        return {
-          node: entry.node,
-          offset: Math.max(0, Math.min(offset - entry.start, (entry.node.nodeValue || "").length))
-        };
-      }
+  function assistantContentRoot(root) {
+    if (!(root instanceof Element)) return null;
+
+    if (root.matches?.('[data-message-author-role="assistant"]')) {
+      const markdown = Array.from(root.querySelectorAll?.(".markdown") || [])
+        .find(node => hasPlaceholder(visibleText(node)));
+      return markdown || root;
     }
-    return null;
+
+    return root;
   }
 
-  function findCanonicalRange(root, wantedCanonical) {
-    if (!(root instanceof Element) || !root.isConnected || excludedElement(root)) return null;
+  function candidateRoots(scope = document) {
+    const roots = [];
+    const seen = new Set();
+    const queryScope = scope instanceof Element || scope instanceof Document ? scope : document;
 
-    const { text, entries } = textMap(root);
-    PLACEHOLDER_RE.lastIndex = 0;
-    let match;
-
-    while ((match = PLACEHOLDER_RE.exec(text))) {
-      if (canonicalToken(match[0]) !== wantedCanonical) continue;
-
-      const start = locateBoundary(entries, match.index, false);
-      const end = locateBoundary(entries, match.index + match[0].length, true);
-      if (!start || !end || !start.node.isConnected || !end.node.isConnected) return null;
-
-      return {
-        visibleToken: match[0],
-        start,
-        end
-      };
+    for (const assistant of queryScope.querySelectorAll?.('[data-message-author-role="assistant"]') || []) {
+      const root = assistantContentRoot(assistant);
+      if (!root || excludedElement(root) || !hasPlaceholder(visibleText(root))) continue;
+      seen.add(root);
+      roots.push(root);
     }
 
-    return null;
-  }
-
-  function replaceRange(root, wantedCanonical, restoredValue) {
-    const located = findCanonicalRange(root, wantedCanonical);
-    if (!located) return false;
-
-    const range = document.createRange();
-    try {
-      range.setStart(located.start.node, located.start.offset);
-      range.setEnd(located.end.node, located.end.offset);
-      range.deleteContents();
-      const replacement = document.createTextNode(restoredValue);
-      range.insertNode(replacement);
-      replacement.parentElement?.setAttribute("data-privacygate-restored", "true");
-      return true;
-    } catch (_error) {
-      return false;
-    } finally {
-      range.detach?.();
-    }
-  }
-
-  function restoreToken(root, visibleToken) {
-    const canonical = canonicalToken(visibleToken);
-    if (!canonical.startsWith("[[PG_") || pendingTokens.has(canonical)) return;
-
-    pendingTokens.add(canonical);
-    chrome.runtime.sendMessage(
-      {
-        type: "PG_RESTORE",
-        text: canonical
-      },
-      response => {
-        pendingTokens.delete(canonical);
-        if (chrome.runtime.lastError || !response?.ok || !root.isConnected) return;
-
-        const restored = response.data?.restored_text;
-        if (
-          typeof restored !== "string" ||
-          !restored ||
-          restored === canonical
-        ) {
-          return;
-        }
-
-        replaceRange(root, canonical, restored);
-      }
-    );
-  }
-
-  function scanRoot(root) {
-    if (!(root instanceof Element) || !root.isConnected || excludedElement(root)) return;
-
-    const { text } = textMap(root);
-    if (!text.includes("PG")) return;
-
-    PLACEHOLDER_RE.lastIndex = 0;
-    const tokens = [];
-    let match;
-    while ((match = PLACEHOLDER_RE.exec(text))) {
-      tokens.push(match[0]);
-    }
-
-    // Restore from the last token backwards. This keeps earlier flattened
-    // offsets stable when several placeholders exist in the same long card.
-    for (let index = tokens.length - 1; index >= 0; index -= 1) {
-      restoreToken(root, tokens[index]);
-    }
-  }
-
-  function candidateRoots(root = document) {
-    const roots = new Set();
-    const scope = root instanceof Element || root instanceof Document ? root : document;
-
-    if (root instanceof Element && !excludedElement(root)) {
-      const ownText = root.textContent || "";
-      if (ownText.includes("PG")) roots.add(root);
-    }
-
-    for (const element of scope.querySelectorAll?.(
-      '[data-message-author-role="assistant"], [contenteditable="true"]'
-    ) || []) {
-      if (excludedElement(element)) continue;
-      if ((element.textContent || "").includes("PG")) roots.add(element);
-    }
-
-    // Fallback for final cards that are neither assistant roots nor explicitly
-    // contenteditable. Start from a text fragment containing PG and climb to the
-    // smallest ancestor whose concatenated text contains a complete placeholder.
-    const walkerRoot = root instanceof Element ? root : (document.body || document.documentElement);
-    if (walkerRoot) {
-      const walker = document.createTreeWalker(walkerRoot, NodeFilter.SHOW_TEXT);
-      let node = walker.nextNode();
-      while (node) {
-        if ((node.nodeValue || "").includes("PG") && !excludedElement(node.parentElement)) {
-          let element = node.parentElement;
-          let depth = 0;
-          while (element && depth < 7 && element !== document.body) {
-            if (excludedElement(element)) break;
-            const value = element.textContent || "";
-            PLACEHOLDER_RE.lastIndex = 0;
-            if (PLACEHOLDER_RE.test(value)) {
-              roots.add(element);
-              break;
-            }
-            element = element.parentElement;
-            depth += 1;
-          }
-        }
-        node = walker.nextNode();
-      }
+    for (const editable of queryScope.querySelectorAll?.('[contenteditable="true"]') || []) {
+      if (excludedElement(editable) || !hasPlaceholder(visibleText(editable))) continue;
+      if (editable.closest?.('[data-message-author-role="assistant"]')) continue;
+      if (seen.has(editable)) continue;
+      seen.add(editable);
+      roots.push(editable);
     }
 
     return roots;
   }
 
-  function scan(root = document) {
-    for (const candidate of candidateRoots(root)) {
-      scanRoot(candidate);
+  function removeView(root) {
+    const state = views.get(root);
+    if (!state) return;
+    state.frame?.remove();
+    views.delete(root);
+  }
+
+  function removeAllViews() {
+    for (const root of Array.from(views.keys())) removeView(root);
+    document.querySelectorAll?.(`.${FRAME_CLASS}`).forEach(frame => frame.remove());
+  }
+
+  function cleanupViews() {
+    for (const [root, state] of Array.from(views.entries())) {
+      if (!root.isConnected || !state.frame?.isConnected || !protectionEnabled) {
+        removeView(root);
+      }
     }
   }
 
-  function scheduleScan(delay = 80) {
+  function anchorFor(root) {
+    return (
+      root.closest?.('[data-message-author-role="assistant"]') ||
+      root.closest?.("article") ||
+      root.parentElement ||
+      root
+    );
+  }
+
+  function ensureFrame(root) {
+    let state = views.get(root);
+    if (state?.frame?.isConnected) return state;
+
+    const frame = document.createElement("iframe");
+    frame.className = FRAME_CLASS;
+    frame.src = chrome.runtime.getURL("restore_overlay.html");
+    frame.setAttribute("title", "PrivacyGate local restored view");
+    frame.setAttribute("aria-label", "PrivacyGate local restored view");
+    frame.setAttribute("referrerpolicy", "no-referrer");
+    Object.assign(frame.style, {
+      display: "block",
+      width: "100%",
+      minHeight: "92px",
+      height: "140px",
+      margin: "10px 0 14px",
+      border: "0",
+      borderRadius: "14px",
+      background: "transparent",
+      overflow: "hidden"
+    });
+
+    const anchor = anchorFor(root);
+    anchor.insertAdjacentElement?.("afterend", frame);
+    if (!frame.isConnected && anchor.parentElement) {
+      anchor.parentElement.insertBefore(frame, anchor.nextSibling);
+    }
+
+    state = {
+      frame,
+      lastProtectedText: "",
+      lastRestoredText: "",
+      pendingText: null
+    };
+    views.set(root, state);
+
+    frame.addEventListener("load", () => {
+      const current = views.get(root);
+      if (!current || current.frame !== frame || !current.lastRestoredText) return;
+      sendToFrame(frame, current.lastRestoredText);
+    });
+
+    return state;
+  }
+
+  function sendToFrame(frame, restoredText) {
+    if (!frame?.contentWindow || typeof restoredText !== "string") return;
+    const targetOrigin = new URL(chrome.runtime.getURL("/")).origin;
+    frame.contentWindow.postMessage(
+      {
+        source: OVERLAY_SOURCE,
+        type: "PG_RENDER_RESTORED_TEXT",
+        text: restoredText
+      },
+      targetOrigin
+    );
+  }
+
+  function renderRestored(root, protectedText, restoredText) {
+    if (!protectionEnabled || !root.isConnected) return;
+    const state = ensureFrame(root);
+    state.lastProtectedText = protectedText;
+    state.lastRestoredText = restoredText;
+    sendToFrame(state.frame, restoredText);
+  }
+
+  function restoreRoot(root) {
+    if (!protectionEnabled || !(root instanceof Element) || !root.isConnected || excludedElement(root)) {
+      return;
+    }
+
+    const rawText = visibleText(root);
+    if (!hasPlaceholder(rawText)) {
+      removeView(root);
+      return;
+    }
+
+    const protectedText = canonicalizePlaceholders(rawText);
+    const state = views.get(root);
+    if (state?.lastProtectedText === protectedText && state.lastRestoredText) return;
+    if (state?.pendingText === protectedText || pending.has(root)) return;
+
+    const nextState = ensureFrame(root);
+    nextState.pendingText = protectedText;
+    pending.add(root);
+
+    chrome.runtime.sendMessage(
+      {
+        type: "PG_RESTORE",
+        text: protectedText
+      },
+      response => {
+        pending.delete(root);
+        const current = views.get(root);
+        if (current) current.pendingText = null;
+
+        if (
+          chrome.runtime.lastError ||
+          !response?.ok ||
+          !root.isConnected ||
+          !protectionEnabled
+        ) {
+          if (current && !current.lastRestoredText) removeView(root);
+          return;
+        }
+
+        const restoredText = response.data?.restored_text;
+        if (
+          typeof restoredText !== "string" ||
+          !restoredText ||
+          restoredText === protectedText
+        ) {
+          if (current && !current.lastRestoredText) removeView(root);
+          return;
+        }
+
+        // SECURITY BOUNDARY: never write restoredText into ChatGPT's DOM.
+        // It is sent only into a chrome-extension:// iframe, which the page
+        // cannot read because of the browser same-origin boundary.
+        renderRestored(root, protectedText, restoredText);
+      }
+    );
+  }
+
+  function scan(scope = document) {
+    if (!protectionEnabled) return;
+    cleanupViews();
+    for (const root of candidateRoots(scope)) restoreRoot(root);
+  }
+
+  function scheduleScan(delay = 100) {
     clearTimeout(scanTimer);
     scanTimer = setTimeout(() => {
       scanTimer = null;
@@ -209,34 +241,39 @@
     }, delay);
   }
 
-  const observer = new MutationObserver(mutations => {
-    for (const mutation of mutations) {
-      if (mutation.type === "characterData") {
-        const parent = mutation.target?.parentElement;
-        if (parent) scan(parent);
-        continue;
-      }
-
-      for (const added of mutation.addedNodes) {
-        if (added instanceof Element) {
-          scan(added);
-        } else if (added instanceof Text && added.parentElement) {
-          scan(added.parentElement);
-        }
-      }
+  window.addEventListener("message", event => {
+    const frameEntry = Array.from(views.values()).find(state => state.frame?.contentWindow === event.source);
+    if (!frameEntry) return;
+    const data = event.data;
+    if (!data || data.source !== OVERLAY_SOURCE || data.type !== "PG_OVERLAY_HEIGHT") return;
+    const height = Math.max(72, Math.min(Number(data.height || 0), 1200));
+    if (Number.isFinite(height) && height > 0) {
+      frameEntry.frame.style.height = `${Math.ceil(height)}px`;
     }
-    scheduleScan(120);
   });
 
+  const observer = new MutationObserver(() => scheduleScan(100));
   observer.observe(document.documentElement, {
     childList: true,
     subtree: true,
     characterData: true
   });
 
-  // ChatGPT can replace the streamed tree with a different final card tree.
-  // Keep reconciling locally; user messages and the real prompt composer are
-  // explicitly excluded above.
-  setInterval(() => scan(document), 350);
-  scheduleScan(60);
+  chrome.storage.local.get({ [STORAGE_KEY]: true }, values => {
+    protectionEnabled = values?.[STORAGE_KEY] !== false;
+    if (protectionEnabled) scheduleScan(40);
+    else removeAllViews();
+  });
+
+  chrome.storage.onChanged.addListener((changes, areaName) => {
+    if (areaName !== "local" || !changes[STORAGE_KEY]) return;
+    protectionEnabled = changes[STORAGE_KEY].newValue !== false;
+    if (protectionEnabled) scheduleScan(30);
+    else removeAllViews();
+  });
+
+  setInterval(() => {
+    cleanupViews();
+    if (protectionEnabled) scan(document);
+  }, 700);
 })();
