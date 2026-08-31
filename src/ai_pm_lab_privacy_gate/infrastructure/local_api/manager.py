@@ -15,7 +15,11 @@ from ai_pm_lab_privacy_gate.infrastructure.settings.preferences import (
     AppPreferences,
     PreferencesStore,
 )
+from ai_pm_lab_privacy_gate.infrastructure.storage.ai_library_repository import (
+    AiLibraryRepository,
+)
 
+from .browser_ai_persistence import install_browser_ai_persistence
 from .browser_pairing import (
     BrowserPairingChallenge,
     BrowserPairingRegistry,
@@ -51,6 +55,9 @@ class LocalApiManager:
         self.preferences = PreferencesStore(self.data_dir)
         self.secrets = secret_store or platform_secret_store(self.data_dir)
         self.browser_pairing = BrowserPairingRegistry(self.secrets)
+        # Uses the same library.db as Personal Library, but dedicated AI tables.
+        # Real values and protected chat text are encrypted with LocalProtector.
+        self.ai_library = AiLibraryRepository(self.data_dir)
         self._server_factory = server_factory
         self.allowed_origins = tuple(allowed_origins)
         self._lock = threading.RLock()
@@ -98,6 +105,9 @@ class LocalApiManager:
                 allowed_origins=self.allowed_origins,
                 browser_pairing=self.browser_pairing,
             )
+            # Production LocalApiHttpServer gets browser-only persistence. Custom
+            # test factories remain untouched because the installer safely no-ops.
+            install_browser_ai_persistence(server, self.ai_library)
         except Exception as error:
             with self._lock:
                 self._status = LocalApiStatus(
