@@ -3,8 +3,10 @@
 
   const SOURCE = "privacygate-secure-restore";
   const output = document.getElementById("restored");
+  let hasRenderedText = false;
 
   function reportHeight() {
+    if (!hasRenderedText) return;
     const height = Math.max(
       document.documentElement.scrollHeight,
       document.body?.scrollHeight || 0
@@ -26,9 +28,15 @@
     if (typeof data.text !== "string") return;
 
     output.textContent = data.text;
+    hasRenderedText = true;
     requestAnimationFrame(reportHeight);
-    setTimeout(reportHeight, 50);
+    setTimeout(reportHeight, 60);
   });
 
-  window.addEventListener("load", reportHeight);
+  // Do not report an empty iframe height on load. The parent reserves an
+  // estimated height and we resize only after real restored content exists.
+  if (typeof ResizeObserver === "function") {
+    const observer = new ResizeObserver(() => reportHeight());
+    observer.observe(document.documentElement);
+  }
 })();
