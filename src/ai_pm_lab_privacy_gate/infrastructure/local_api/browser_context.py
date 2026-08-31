@@ -15,6 +15,29 @@ _CONTEXTUAL_PERSON_PATTERN = re.compile(
     r"(?:\s+[A-ZÀ-ÖØ-Þ][A-Za-zÀ-ÖØ-öø-ÿ'’\-]{1,39}){0,2})"
 )
 
+_ITALIAN_RELATION_ROLE = (
+    r"socio|socia|collega|amico|amica|fratello|sorella|marito|moglie|"
+    r"padre|madre|figlio|figlia|capo|supervisore|supervisora"
+)
+
+_ITALIAN_RELATIONAL_PERSON_PATTERN = re.compile(
+    r"\b(?P<person>[A-ZÀ-ÖØ-Þ][A-Za-zÀ-ÖØ-öø-ÿ'’\-]{1,39}"
+    r"(?:\s+[A-ZÀ-ÖØ-Þ][A-Za-zÀ-ÖØ-öø-ÿ'’\-]{1,39}){0,2})"
+    r"\s+(?i:è|e')\s+"
+    r"(?:(?i:il|la|un|una)\s+)?"
+    r"(?:(?i:mio|mia|nostro|nostra)\s+)?"
+    rf"(?i:{_ITALIAN_RELATION_ROLE})\b"
+)
+
+_ITALIAN_RELATIONAL_PERSON_REVERSE_PATTERN = re.compile(
+    r"\b(?:(?i:il|la|un|una)\s+)?"
+    r"(?:(?i:mio|mia|nostro|nostra)\s+)?"
+    rf"(?i:{_ITALIAN_RELATION_ROLE})\s+"
+    r"(?i:è|e')\s+"
+    r"(?P<person>[A-ZÀ-ÖØ-Þ][A-Za-zÀ-ÖØ-öø-ÿ'’\-]{1,39}"
+    r"(?:\s+[A-ZÀ-ÖØ-Þ][A-Za-zÀ-ÖØ-öø-ÿ'’\-]{1,39}){0,2})\b"
+)
+
 _ITALIAN_STREET_PATTERN = re.compile(
     r"\b(?i:via|viale|piazza|corso|largo|vicolo)\s+"
     r"(?P<street>[A-ZÀ-ÖØ-Þ][A-Za-zÀ-ÖØ-öø-ÿ'’\-]{1,49}"
@@ -110,6 +133,48 @@ def _keep_statistical_organization(item: Finding) -> bool:
     return any(padded.endswith(suffix) for suffix in _ORGANIZATION_SUFFIXES)
 
 
+def _add_contextual_person(
+    text: str,
+    merged: list[Finding],
+    *,
+    start: int,
+    end: int,
+    value: str,
+) -> list[Finding]:
+    if any(
+        item.entity_type == "PERSON"
+        and item.start <= start
+        and item.end >= end
+        for item in merged
+    ):
+        return merged
+
+    merged = [
+        item
+        for item in merged
+        if not (
+            item.entity_type == "ORGANIZATION"
+            and _overlaps(item, start, end)
+        )
+    ]
+
+    context_start = max(0, start - 32)
+    context_end = min(len(text), end + 32)
+    merged.append(
+        Finding(
+            finding_id=f"browser-person-{start}-{end}",
+            entity_type="PERSON",
+            text=value,
+            start=start,
+            end=end,
+            score=0.98,
+            page_number=1,
+            context=text[context_start:context_end],
+        )
+    )
+    return merged
+
+
 def augment_browser_findings(
     text: str,
     findings: tuple[Finding, ...],
@@ -120,8 +185,9 @@ def augment_browser_findings(
 
     Browser chat uses a conservative interruption policy for statistical
     PERSON/ORGANIZATION findings: weak lowercase NER guesses are allowed to
-    pass, while explicit name/address context and stronger name/company shapes
-    still trigger review. Document analysis is left untouched.
+    pass, while explicit name/address/relationship context and stronger
+    name/company shapes still trigger review. Document analysis is left
+    untouched.
     """
 
     merged = []
@@ -134,41 +200,29 @@ def augment_browser_findings(
 
     for match in _CONTEXTUAL_PERSON_PATTERN.finditer(text):
         start, end = match.span("person")
-        value = match.group("person")
-
-        if any(
-            item.entity_type == "PERSON"
-            and item.start <= start
-            and item.end >= end
-            for item in merged
-        ):
-            continue
-
-        merged = [
-            item
-            for item in merged
-            if not (
-                item.entity_type == "ORGANIZATION"
-                and _overlaps(item, start, end)
-            )
-        ]
-
-        context_start = max(0, start - 32)
-        context_end = min(len(text), end + 32)
-        merged.append(
-            Finding(
-                finding_id=f"browser-person-{start}-{end}",
-                entity_type="PERSON",
-                text=value,
-                start=start,
-                end=end,
-                score=0.98,
-                page_number=1,
-                context=text[context_start:context_end],
-            )
+        merged = _add_contextual_person(
+            text,
+            merged,
+            start=start,
+            end=end,
+            value=match.group("person"),
         )
 
     if language == "it":
+        for pattern in (
+            _ITALIAN_RELATIONAL_PERSON_PATTERN,
+            _ITALIAN_RELATIONAL_PERSON_REVERSE_PATTERN,
+        ):
+            for match in pattern.finditer(text):
+                start, end = match.span("person")
+                merged = _add_contextual_person(
+                    text,
+                    merged,
+                    start=start,
+                    end=end,
+                    value=match.group("person"),
+                )
+
         for match in _ITALIAN_STREET_PATTERN.finditer(text):
             start, end = match.span(0)
             value = match.group(0)
