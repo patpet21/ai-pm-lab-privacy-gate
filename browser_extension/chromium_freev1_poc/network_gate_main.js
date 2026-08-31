@@ -8,6 +8,10 @@
   const BLOCKED_TYPE = "PG_NETWORK_GATE_BLOCKED";
   const MAX_AGE_MS = 10000;
   const MAX_FLEX_PATTERN_CHARS = 50000;
+  const PROMPT_KEYS = new Set([
+    "message", "messages", "content", "parts", "prompt", "input", "text",
+    "author", "role", "user_message", "user_input"
+  ]);
 
   let pending = null;
 
@@ -98,7 +102,7 @@
           return value.replace(pattern, item.protectedText);
         }
       } catch (_error) {
-        // Fail closed later if this was the prompt request.
+        // Fail closed later if this is proven to be the actual prompt request.
       }
     }
 
@@ -172,6 +176,106 @@
       value.includes("/messages") ||
       value.includes("chat/complet")
     );
+  }
+
+  function stringLooksLikeOriginal(value) {
+    const item = activePending();
+    if (!item || typeof value !== "string") return false;
+    const compact = compactWhitespace(value);
+    if (!compact) return false;
+    if (compact === item.compactOriginal) return true;
+    if (compact.includes(item.compactOriginal)) return true;
+
+    // Require a substantial fragment so metadata words cannot accidentally
+    // classify an accessory request as the actual prompt.
+    const original = item.compactOriginal;
+    const fragmentLength = Math.min(Math.max(32, Math.floor(original.length * 0.35)), 160);
+    if (original.length >= fragmentLength) {
+      const start = original.slice(0, fragmentLength);
+      const end = original.slice(-fragmentLength);
+      if (compact.includes(start) || compact.includes(end)) return true;
+    }
+    return false;
+  }
+
+  function promptEvidence(value, depth = 0) {
+    if (depth > 8 || value == null) return 0;
+    if (typeof value === "string") return stringLooksLikeOriginal(value) ? 6 : 0;
+
+    if (Array.isArray(value)) {
+      let score = 0;
+      const strings = [];
+      for (const entry of value) {
+        if (typeof entry === "string") strings.push(entry);
+        score = Math.max(score, promptEvidence(entry, depth + 1));
+      }
+      if (strings.length > 1 && stringLooksLikeOriginal(strings.join(" "))) score = Math.max(score, 6);
+      return score;
+    }
+
+    if (typeof value === "object") {
+      let score = 0;
+      const leafStrings = [];
+      for (const [rawKey, entry] of Object.entries(value)) {
+        const key = String(rawKey || "").toLowerCase();
+        if (typeof entry === "string") leafStrings.push(entry);
+
+        if (key === "role" && String(entry || "").toLowerCase() === "user") {
+          score += 4;
+        } else if (key === "author" && entry && typeof entry === "object") {
+          const role = String(entry.role || "").toLowerCase();
+          if (role === "user") score += 4;
+        } else if (PROMPT_KEYS.has(key)) {
+          score += 1;
+        }
+
+        score = Math.max(score, promptEvidence(entry, depth + 1));
+      }
+      if (leafStrings.length > 1 && stringLooksLikeOriginal(leafStrings.join(" "))) score = Math.max(score, 6);
+      return score;
+    }
+
+    return 0;
+  }
+
+  function bodyLooksLikePrompt(body) {
+    if (body == null) return false;
+
+    if (typeof body === "string") {
+      try {
+        const parsed = JSON.parse(body);
+        return promptEvidence(parsed) >= 4;
+      } catch (_error) {
+        return stringLooksLikeOriginal(body);
+      }
+    }
+
+    if (body instanceof URLSearchParams) {
+      return stringLooksLikeOriginal(body.toString());
+    }
+
+    if (body instanceof FormData) {
+      let score = 0;
+      const strings = [];
+      for (const [key, value] of body.entries()) {
+        if (typeof value !== "string") continue;
+        strings.push(value);
+        if (PROMPT_KEYS.has(String(key || "").toLowerCase())) score += 1;
+        if (stringLooksLikeOriginal(value)) score += 6;
+      }
+      if (strings.length > 1 && stringLooksLikeOriginal(strings.join(" "))) score += 6;
+      return score >= 4;
+    }
+
+    return false;
+  }
+
+  function shouldBlockUnverified(url, body) {
+    if (!conversationLike(url)) return false;
+    // A conversation-like URL alone is not enough. ChatGPT issues metadata,
+    // telemetry and lifecycle requests on similar endpoints. Only fail closed
+    // when the body itself proves this is the user's prompt request.
+    return bodyLooksLikePrompt(body);
   }
 
   function completeApplied(kind) {
@@ -254,8 +358,8 @@
       }
     }
 
-    if (conversationLike(url)) {
-      blockPending("fetch-unverified");
+    if (shouldBlockUnverified(url, body)) {
+      blockPending("fetch-unverified-prompt");
       throw new Error("PrivacyGate blocked an unverified prompt request");
     }
 
@@ -288,8 +392,8 @@
       }
     }
 
-    if (conversationLike(meta.url)) {
-      blockPending("xhr-unverified");
+    if (shouldBlockUnverified(meta.url, body)) {
+      blockPending("xhr-unverified-prompt");
       queueMicrotask(() => this.dispatchEvent(new ProgressEvent("error")));
       return;
     }
@@ -305,6 +409,10 @@
         completeApplied("websocket");
         return nativeWebSocketSend.call(this, transformed.body);
       }
+      if (bodyLooksLikePrompt(data)) {
+        blockPending("websocket-unverified-prompt");
+        return;
+      }
     }
     return nativeWebSocketSend.call(this, data);
   };
@@ -319,8 +427,8 @@
           return nativeBeacon(url, transformed.body);
         }
       }
-      if (activePending() && conversationLike(url)) {
-        blockPending("beacon-unverified");
+      if (activePending() && shouldBlockUnverified(url, data)) {
+        blockPending("beacon-unverified-prompt");
         return false;
       }
       return nativeBeacon(url, data);
