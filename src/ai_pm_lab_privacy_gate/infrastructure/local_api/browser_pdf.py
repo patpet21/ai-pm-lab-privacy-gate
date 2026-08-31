@@ -23,7 +23,6 @@ from ai_pm_lab_privacy_gate.infrastructure.storage.ai_library_repository import 
 )
 
 from .browser_ai_persistence import PersistentBrowserAiRequestHandler
-from .browser_pdf_ocr import BrowserPdfOcrTextExtractor
 from .server import LocalApiHttpServer
 from .session_store import LocalSessionNotFound
 
@@ -45,7 +44,6 @@ class BrowserPdfAnalysis:
     profile_key: str
     language: str
     created_at: float
-    ocr_pages: tuple[int, ...] = ()
 
 
 class BrowserPdfAnalysisStore:
@@ -72,7 +70,6 @@ class BrowserPdfAnalysisStore:
         findings: tuple[Finding, ...],
         profile_key: str,
         language: str,
-        ocr_pages: tuple[int, ...] = (),
     ) -> BrowserPdfAnalysis:
         with self._lock:
             now = self._clock()
@@ -89,7 +86,6 @@ class BrowserPdfAnalysisStore:
                 profile_key=profile_key,
                 language=language,
                 created_at=now,
-                ocr_pages=tuple(ocr_pages),
             )
             self._items[analysis_id] = item
             return item
@@ -195,7 +191,7 @@ def _protected_filename(filename: str) -> str:
 
 
 class PersistentBrowserPdfRequestHandler(PersistentBrowserAiRequestHandler):
-    """Browser-only PDF protection, isolated from the proven text transport."""
+    """Browser-only text-PDF protection, isolated from the proven text transport."""
 
     @property
     def _pdf_store(self) -> BrowserPdfAnalysisStore:
@@ -203,13 +199,6 @@ class PersistentBrowserPdfRequestHandler(PersistentBrowserAiRequestHandler):
         if not isinstance(store, BrowserPdfAnalysisStore):
             raise RuntimeError("browser PDF store is unavailable")
         return store
-
-    @property
-    def _pdf_ocr(self) -> BrowserPdfOcrTextExtractor:
-        value = getattr(self.server, "browser_pdf_ocr", None)
-        if value is None or not callable(getattr(value, "fill_missing_pages", None)):
-            raise RuntimeError("browser PDF OCR is unavailable")
-        return value
 
     @property
     def _ai_repository(self) -> AiLibraryRepository | None:
@@ -262,18 +251,14 @@ class PersistentBrowserPdfRequestHandler(PersistentBrowserAiRequestHandler):
                 return
             self._send_json(400, {"error": "invalid_request"})
             return
-        except RuntimeError as error:
-            message = str(error)
-            if "OCR" in message or "ocr" in message:
-                self._send_json(503, {"error": "pdf_ocr_unavailable", "message": message})
-                return
-            self._send_json(500, {"error": "local_service_error"})
-            return
         except ValueError as error:
             message = str(error)
-            code = "pdf_ocr_failed" if "Local OCR" in message else "invalid_request"
-            status = 422 if code == "pdf_ocr_failed" else 400
-            self._send_json(status, {"error": code, "message": message})
+            code = (
+                "pdf_requires_ocr"
+                if "No selectable text was found" in message
+                else "invalid_request"
+            )
+            self._send_json(422 if code == "pdf_requires_ocr" else 400, {"error": code, "message": message})
             return
         except Exception:
             self._send_json(500, {"error": "local_service_error"})
@@ -290,7 +275,6 @@ class PersistentBrowserPdfRequestHandler(PersistentBrowserAiRequestHandler):
             source = Path(temporary) / "source.pdf"
             source.write_bytes(raw)
             document = self.server.privacy_service.document_from_pdf(source)
-            document, ocr_pages = self._pdf_ocr.fill_missing_pages(source, document)
             findings = tuple(
                 self.server.privacy_service.analyze(
                     document,
@@ -305,7 +289,6 @@ class PersistentBrowserPdfRequestHandler(PersistentBrowserAiRequestHandler):
             findings=findings,
             profile_key=profile_key,
             language=language,
-            ocr_pages=ocr_pages,
         )
         return {
             "analysis_id": item.analysis_id,
@@ -321,8 +304,6 @@ class PersistentBrowserPdfRequestHandler(PersistentBrowserAiRequestHandler):
                 for finding in findings
             ],
             "requires_protection": bool(findings),
-            "ocr_used": bool(ocr_pages),
-            "ocr_pages": list(ocr_pages),
             "local_only": True,
         }
 
@@ -389,9 +370,9 @@ class PersistentBrowserPdfRequestHandler(PersistentBrowserAiRequestHandler):
 
         with tempfile.TemporaryDirectory(prefix="privacygate-browser-pdf-output-") as temporary:
             destination = Path(temporary) / "protected.pdf"
-            # Browser AI copies deliberately use a clean reflow PDF.  This is
-            # especially important for OCR input: original scanned page pixels,
-            # selectable objects and metadata are never embedded in the AI copy.
+            # Browser AI copies deliberately use a clean reflow PDF: the output
+            # contains only the analyzed/protected text and never embeds original
+            # selectable PDF objects or metadata.
             self.server.privacy_service.save_protected_pdf(result, destination)
             protected_bytes = destination.read_bytes()
 
@@ -403,17 +384,14 @@ class PersistentBrowserPdfRequestHandler(PersistentBrowserAiRequestHandler):
             "applied_finding_ids": [finding.finding_id for finding in result.applied_findings],
             "entity_types": sorted({finding.entity_type for finding in result.applied_findings}),
             "session_id": session_id,
-            "ocr_used": bool(item.ocr_pages),
-            "ocr_pages": list(item.ocr_pages),
             "local_only": True,
         }
 
 
 def install_browser_pdf_support(server: object) -> bool:
-    """Install PDF + local OCR routes after browser AI persistence."""
+    """Install PDF routes after browser AI persistence without changing server.py."""
     if not isinstance(server, LocalApiHttpServer):
         return False
     server.browser_pdf_store = BrowserPdfAnalysisStore()
-    server.browser_pdf_ocr = BrowserPdfOcrTextExtractor()
     server.RequestHandlerClass = PersistentBrowserPdfRequestHandler
     return True
