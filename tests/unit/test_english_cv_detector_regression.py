@@ -84,6 +84,55 @@ New York
     }
 
 
+def test_general_business_cv_filters_ai_concepts_and_wrapped_skill_tools() -> None:
+    text = """PROFILE
+Applied AI builder creating AI-powered tools and local AI models.
+Business documents are shared with AI systems.
+Built a proof of concept connecting POS data with AI-based operational analysis.
+Prototype practical uses of AI-assisted workflows.
+AI & LLMs:
+ChatGPT, Claude, OpenAI Codex, Gemini, prompt design, Microsoft Presidio, spaCy
+Technical & Project Tools:
+GitHub, Supabase, Cloudflare, Replit, Notion, Asana, ClickUp, Trello
+PROFESSIONAL EXPERIENCE
+Coordinated technical activities across private and public projects.
+Prepared technical plans, estimates, drawings, reports, and project documentation.
+Supported multidisciplinary teams on major infrastructure projects.
+Impresa Pizzarotti
+Italy
+"""
+    results = [
+        _result(text, "AI-powered tools", "ORGANIZATION"),
+        _result(text, "local AI models", "ORGANIZATION"),
+        _result(text, "AI systems", "LOCATION"),
+        _result(text, "AI-based operational analysis", "LOCATION"),
+        _result(text, "AI-assisted workflows", "LOCATION"),
+        _result(text, "ChatGPT", "ORGANIZATION"),
+        _result(text, "Claude", "PERSON"),
+        _result(text, "Microsoft Presidio", "ORGANIZATION"),
+        _result(text, "spaCy", "PERSON"),
+        _result(text, "GitHub", "ORGANIZATION"),
+        _result(text, "Supabase", "PERSON"),
+        _result(text, "Coordinated technical activities", "ORGANIZATION"),
+        _result(text, "Prepared technical plans", "ORGANIZATION"),
+        _result(text, "Supported multidisciplinary teams", "ORGANIZATION"),
+        _result(text, "Impresa Pizzarotti", "ORGANIZATION"),
+        _result(text, "Italy", "LOCATION"),
+    ]
+
+    filtered = filter_english_ner_results(
+        text,
+        results,
+        profile_key="general_business",
+    )
+    kept = {(item.entity_type, text[item.start : item.end]) for item in filtered}
+
+    assert kept == {
+        ("ORGANIZATION", "Impresa Pizzarotti"),
+        ("LOCATION", "Italy"),
+    }
+
+
 def test_personal_email_recovers_repeated_full_name_in_cv() -> None:
     text = (
         "Marco Bianchi | AI Talent Intern\n"
