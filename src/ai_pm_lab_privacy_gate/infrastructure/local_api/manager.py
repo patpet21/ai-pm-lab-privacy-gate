@@ -26,6 +26,7 @@ from .browser_pairing import (
     BrowserPairingStatus,
 )
 from .browser_pdf import install_browser_pdf_support
+from .browser_pdf_integrity import install_browser_pdf_integrity
 from .server import create_local_api_server
 
 
@@ -107,9 +108,11 @@ class LocalApiManager:
                 browser_pairing=self.browser_pairing,
             )
             # Production LocalApiHttpServer gets browser-only persistence first,
-            # then the isolated PDF routes. Custom test factories safely no-op.
+            # then isolated PDF routes, then a fail-closed output integrity gate.
+            # Custom test factories safely no-op.
             install_browser_ai_persistence(server, self.ai_library)
             install_browser_pdf_support(server)
+            install_browser_pdf_integrity(server)
         except Exception as error:
             with self._lock:
                 self._status = LocalApiStatus(
