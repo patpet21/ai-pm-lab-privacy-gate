@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 import importlib.util
+from dataclasses import replace
 
 import pytest
 
 from ai_pm_lab_privacy_gate.domain.models import PageContent
-from ai_pm_lab_privacy_gate.domain.profiles import get_profile
+from ai_pm_lab_privacy_gate.domain.profiles import entities_for_scope, get_profile
 from ai_pm_lab_privacy_gate.infrastructure.pii.presidio_engine import PresidioPrivacyEngine
 from ai_pm_lab_privacy_gate.infrastructure.pii.recognizers.italian.amounts import (
     build_amount_recognizers,
@@ -85,11 +86,15 @@ def test_contextual_codice_fiscale_protects_cf_shaped_test_data() -> None:
     recognizers = build_fiscal_recognizers()
     fake_but_cf_shaped = "FRSPTR84H14F205X"
 
-    assert _values(
-        recognizers,
+    variants = (
         f"Il suo codice fiscale è {fake_but_cf_shaped}.",
-        "IT_FISCAL_CODE",
-    ) == [fake_but_cf_shaped]
+        f"Il codice fiscale del cliente è {fake_but_cf_shaped}.",
+        f"CF intestatario: {fake_but_cf_shaped}",
+        f"C.F. del proprietario n. {fake_but_cf_shaped}",
+        f"Codice fiscale dell'intestatario: {fake_but_cf_shaped}",
+    )
+    for text in variants:
+        assert _values(recognizers, text, "IT_FISCAL_CODE") == [fake_but_cf_shaped]
 
     # Keep checksum-invalid CF-shaped strings out of generic prose: the fallback
     # is intentionally privacy-first only when an explicit fiscal-code label is present.
@@ -103,21 +108,28 @@ def test_contextual_codice_fiscale_protects_cf_shaped_test_data() -> None:
 def test_italian_case_reference_is_contextual() -> None:
     recognizers = build_reference_recognizers()
 
-    assert _values(
-        recognizers,
-        "La pratica di riferimento è RE-2026-45871 e riguarda l'immobile.",
-        "CASE_REFERENCE",
-    ) == ["RE-2026-45871"]
-    assert _values(
-        recognizers,
-        "Numero pratica: PM-2026-0042",
-        "CASE_REFERENCE",
-    ) == ["PM-2026-0042"]
+    variants = (
+        ("La pratica di riferimento è RE-2026-45871 e riguarda l'immobile.", "RE-2026-45871"),
+        ("Numero pratica: PM-2026-0042", "PM-2026-0042"),
+        ("Pratica del cliente: RE-2026-45871", "RE-2026-45871"),
+        ("Pratica n. PM-2026-0042", "PM-2026-0042"),
+        ("Case ID: NYC-RE-2026-45871", "NYC-RE-2026-45871"),
+    )
+    for text, expected in variants:
+        assert _values(recognizers, text, "CASE_REFERENCE") == [expected]
+
     assert _values(
         recognizers,
         "La costruzione è stata completata nel 2026.",
         "CASE_REFERENCE",
     ) == []
+
+
+def test_property_management_financial_scope_keeps_case_reference() -> None:
+    base_profile = get_profile("property_management")
+    scoped_entities = entities_for_scope(base_profile, "financial")
+
+    assert "CASE_REFERENCE" in scoped_entities
 
 
 @pytest.mark.skipif(
@@ -150,14 +162,19 @@ def test_real_fixture_classifies_pec_birth_date_and_monthly_rent() -> None:
 )
 def test_property_management_fixture_masks_fiscal_code_and_case_reference() -> None:
     engine = PresidioPrivacyEngine(language="it")
+    base_profile = get_profile("property_management")
+    profile = replace(
+        base_profile,
+        entities=entities_for_scope(base_profile, "financial"),
+    )
     text = (
-        "Il suo codice fiscale è FRSPTR84H14F205X. "
+        "Il codice fiscale del cliente è FRSPTR84H14F205X. "
         "La pratica di riferimento è RE-2026-45871 e riguarda l'immobile."
     )
 
     findings = engine.analyze_page(
         PageContent(page_number=1, text=text),
-        get_profile("property_management"),
+        profile,
     )
     pairs = {(item.entity_type, item.text) for item in findings}
 
