@@ -30,6 +30,18 @@ _CF_EVEN_VALUES = {
     **{chr(ord("A") + index): index for index in range(26)},
 }
 
+# A checksum-invalid but CF-shaped value is still sensitive when an explicit
+# fiscal-code label is present. Natural business text commonly inserts a role
+# between the label and value ("codice fiscale del cliente", "CF intestatario").
+_CF_CONTEXT_ROLE = (
+    r"(?:cliente|intestatario|proprietario|locatore|conduttore|richiedente|"
+    r"beneficiario|soggetto|persona|dipendente|fornitore)"
+)
+_CF_CONTEXT_QUALIFIER = (
+    rf"(?:\s+(?:(?:del|della|dello|di)\s+{_CF_CONTEXT_ROLE}|"
+    rf"dell['’]\s*{_CF_CONTEXT_ROLE}|{_CF_CONTEXT_ROLE}))?"
+)
+
 
 def is_structurally_plausible_codice_fiscale(value: str) -> bool:
     """Accept CF-shaped values when explicit context already proves sensitivity."""
@@ -75,17 +87,18 @@ def build_fiscal_recognizers() -> tuple[
             pattern=r"(?<![A-Z0-9])[A-Z]{6}[0-9LMNPQRSTUV]{2}[A-Z][0-9LMNPQRSTUV]{2}[A-Z][0-9LMNPQRSTUV]{3}[A-Z](?![A-Z0-9])",
             validator=is_valid_codice_fiscale,
         ),
-        # Privacy-first contextual fallback: a CF-shaped value explicitly
-        # labelled as codice fiscale must still be protected even when the
-        # checksum is invalid (for example synthetic/test or mistyped data).
+        # Privacy-first contextual fallback. Keep the context explicit, but
+        # accept ordinary wording around the label instead of requiring the
+        # value to follow "codice fiscale" immediately.
         ItalianContextValueRecognizer(
             entity_type="IT_FISCAL_CODE",
             pattern=(
-                r"\b(?:codice\s+fiscale|c\.?\s*f\.?|cf)\b"
-                r"\s*(?:è|e|:|#|-)?\s*"
-                r"(?P<value>[A-Z]{6}[0-9LMNPQRSTUV]{2}[A-Z]"
-                r"[0-9LMNPQRSTUV]{2}[A-Z][0-9LMNPQRSTUV]{3}[A-Z])"
-                r"(?![A-Z0-9])"
+                r"(?<!\w)(?:codice\s+fiscale|c\.?\s*f\.?|cf)(?!\w)"
+                + _CF_CONTEXT_QUALIFIER
+                + r"\s*(?:n(?:umero)?\.?\s*)?(?:è|e|:|#|-)?\s*"
+                + r"(?P<value>[A-Z]{6}[0-9LMNPQRSTUV]{2}[A-Z]"
+                + r"[0-9LMNPQRSTUV]{2}[A-Z][0-9LMNPQRSTUV]{3}[A-Z])"
+                + r"(?![A-Z0-9])"
             ),
             score=0.985,
             validator=is_structurally_plausible_codice_fiscale,
