@@ -7,6 +7,7 @@ import threading
 from pathlib import Path
 
 from pypdf import PdfReader
+from reportlab.pdfgen import canvas as reportlab_canvas
 
 from ai_pm_lab_privacy_gate.domain.models import (
     AnalysisDocument,
@@ -101,6 +102,32 @@ class _FakePdfPrivacyService:
         return restored
 
 
+class _FakePdfOcrExtractor:
+    def fill_missing_pages(self, _path, document: AnalysisDocument):
+        ocr_pages: list[int] = []
+        pages: list[PageContent] = []
+        for page in document.pages:
+            if page.text.strip():
+                pages.append(page)
+                continue
+            pages.append(
+                PageContent(
+                    page_number=page.page_number,
+                    text="Scanned tenant Alice\nLocal OCR recovered this page.",
+                    location="pdf-ocr",
+                )
+            )
+            ocr_pages.append(page.page_number)
+        return (
+            AnalysisDocument(
+                source_kind=document.source_kind,
+                source_path=document.source_path,
+                pages=tuple(pages),
+            ),
+            tuple(ocr_pages),
+        )
+
+
 def _paired_registry():
     origin = "chrome-extension://privacygate-pdf-test"
     registry = BrowserPairingRegistry(MemorySecretStore())
@@ -181,6 +208,8 @@ def test_browser_pdf_is_scanned_protected_and_persisted_locally(tmp_path: Path) 
         assert analyzed["findings_count"] == 1
         assert analyzed["findings"][0]["entity_type"] == "PERSON"
         assert analyzed["findings"][0]["page_number"] == 1
+        assert analyzed["ocr_used"] is False
+        assert analyzed["ocr_pages"] == []
 
         status, protected = _post(
             server,
@@ -196,6 +225,7 @@ def test_browser_pdf_is_scanned_protected_and_persisted_locally(tmp_path: Path) 
         assert status == 200
         assert protected["protected_filename"] == "tenant_PrivacyGate.pdf"
         assert protected["applied_findings_count"] == 1
+        assert protected["ocr_used"] is False
         session_id = protected["session_id"]
         assert isinstance(session_id, str) and len(session_id) == 32
 
@@ -223,5 +253,75 @@ def test_browser_pdf_is_scanned_protected_and_persisted_locally(tmp_path: Path) 
         )
         assert status == 200
         assert restored["restored_text"] == "The tenant is Alice."
+    finally:
+        _stop(server, thread)
+
+
+def test_scanned_pdf_uses_local_ocr_before_protection(tmp_path: Path) -> None:
+    source = tmp_path / "scanned.pdf"
+    output = reportlab_canvas.Canvas(str(source))
+    output.showPage()
+    output.save()
+    assert not (PdfReader(str(source)).pages[0].extract_text() or "").strip()
+
+    repository = AiLibraryRepository(tmp_path / "library-ocr")
+    registry, origin, token = _paired_registry()
+    server = create_local_api_server(
+        service=_FakePdfPrivacyService(),
+        port=0,
+        auth_token="q" * 32,
+        browser_pairing=registry,
+    )
+    assert install_browser_ai_persistence(server, repository) is True
+    assert install_browser_pdf_support(server) is True
+    server.browser_pdf_ocr = _FakePdfOcrExtractor()
+    thread = _serve(server)
+
+    try:
+        status, analyzed = _post(
+            server,
+            origin,
+            token,
+            "/v1/browser/pdf/analyze",
+            {
+                "filename": "scanned.pdf",
+                "file_base64": base64.b64encode(source.read_bytes()).decode("ascii"),
+                "profile_key": "property_management",
+                "language": "en",
+            },
+        )
+        assert status == 200
+        assert analyzed["ocr_used"] is True
+        assert analyzed["ocr_pages"] == [1]
+        assert analyzed["findings_count"] == 1
+        assert analyzed["findings"][0]["entity_type"] == "PERSON"
+
+        status, protected = _post(
+            server,
+            origin,
+            token,
+            "/v1/browser/pdf/protect",
+            {
+                "analysis_id": analyzed["analysis_id"],
+                "finding_ids": [analyzed["findings"][0]["finding_id"]],
+                "session_id": None,
+            },
+        )
+        assert status == 200
+        assert protected["ocr_used"] is True
+        assert protected["ocr_pages"] == [1]
+        assert protected["protected_filename"] == "scanned_PrivacyGate.pdf"
+
+        protected_path = tmp_path / "scanned-protected.pdf"
+        protected_path.write_bytes(base64.b64decode(protected["protected_file_base64"]))
+        protected_text = "\n".join(
+            page.extract_text() or "" for page in PdfReader(str(protected_path)).pages
+        )
+        assert "Alice" not in protected_text
+        assert "[[PG_B" in protected_text
+
+        snapshot = repository.load_session(protected["session_id"])
+        assert snapshot is not None
+        assert tuple(mapping.original_text for mapping in snapshot.mappings) == ("Alice",)
     finally:
         _stop(server, thread)
