@@ -138,6 +138,17 @@ def test_italian_relationship_context_becomes_person() -> None:
     assert text[finding.start:finding.end] == "Michele"
 
 
+def test_lowercase_italian_relationship_context_becomes_person() -> None:
+    text = "michele è il mio socio"
+    findings = augment_browser_findings(text, (), language="it")
+
+    assert len(findings) == 1
+    finding = findings[0]
+    assert finding.entity_type == "PERSON"
+    assert finding.text == "michele"
+    assert text[finding.start:finding.end] == "michele"
+
+
 def test_italian_reverse_relationship_context_becomes_person() -> None:
     text = "il mio socio è Michele"
     findings = augment_browser_findings(text, (), language="it")
@@ -147,6 +158,20 @@ def test_italian_reverse_relationship_context_becomes_person() -> None:
     assert findings[0].text == "Michele"
 
 
+def test_lowercase_italian_reverse_relationship_context_becomes_person() -> None:
+    text = "il mio socio è michele"
+    findings = augment_browser_findings(text, (), language="it")
+
+    assert len(findings) == 1
+    assert findings[0].entity_type == "PERSON"
+    assert findings[0].text == "michele"
+
+
 def test_italian_unrelated_capitalized_word_does_not_create_person() -> None:
     text = "Michele è finalmente qui"
+    assert augment_browser_findings(text, (), language="it") == ()
+
+
+def test_italian_non_relational_lowercase_chat_still_passes() -> None:
+    text = "ciao finalmente"
     assert augment_browser_findings(text, (), language="it") == ()
