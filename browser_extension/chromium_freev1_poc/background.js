@@ -1,6 +1,8 @@
+importScripts("session_registry.js");
+
 const BRIDGE = "http://127.0.0.1:8765";
 const BROWSER_TOKEN_KEY = "privacygateBrowserCredentialV1";
-const LAST_SESSION_KEY = "privacygateLastSessionIdV1";
+const SessionRegistry = globalThis.PrivacyGateSessionRegistry;
 
 const ITALIAN_HINTS = new Set([
   "a", "ad", "anche", "allora", "che", "chi", "come", "con", "cosa", "da",
@@ -43,22 +45,6 @@ async function setBrowserToken(token) {
     await chrome.storage.local.set({ [BROWSER_TOKEN_KEY]: token });
   } else {
     await chrome.storage.local.remove(BROWSER_TOKEN_KEY);
-  }
-}
-
-async function getLastSessionId() {
-  const values = await chrome.storage.local.get(LAST_SESSION_KEY);
-  const sessionId = values?.[LAST_SESSION_KEY];
-  return typeof sessionId === "string" && /^[a-f0-9]{32}$/.test(sessionId)
-    ? sessionId
-    : null;
-}
-
-async function setLastSessionId(sessionId) {
-  if (typeof sessionId === "string" && /^[a-f0-9]{32}$/.test(sessionId)) {
-    await chrome.storage.local.set({ [LAST_SESSION_KEY]: sessionId });
-  } else {
-    await chrome.storage.local.remove(LAST_SESSION_KEY);
   }
 }
 
@@ -137,7 +123,7 @@ async function bridgeStatus() {
       const paired = Boolean(data?.paired);
       if (!paired) {
         await setBrowserToken(null);
-        await setLastSessionId(null);
+        await SessionRegistry.clearAll();
       }
       return {
         ok: paired,
@@ -166,6 +152,68 @@ async function bridgeStatus() {
   }
 }
 
+async function protectForConversation(message, sender) {
+  const language = detectPromptLanguage(message.text);
+  let sessionId = await SessionRegistry.getSessionForSender(sender);
+
+  const request = id => bridgeJson("/v1/browser/protect", {
+    text: message.text,
+    profile_key: "property_management",
+    language,
+    finding_ids: Array.isArray(message.findingIds) ? message.findingIds : [],
+    replacement_mode: "reversible",
+    session_id: id || null
+  });
+
+  let response = await request(sessionId);
+
+  // Desktop sessions are intentionally RAM-only. If PrivacyGate was restarted
+  // while the browser stayed open, discard the stale conversation session and
+  // transparently create a fresh one for the next protected message.
+  if (
+    !response.ok &&
+    sessionId &&
+    response.status === 404 &&
+    response.data?.error === "session_not_found"
+  ) {
+    await SessionRegistry.clearSessionForSender(sender);
+    sessionId = null;
+    response = await request(null);
+  }
+
+  if (response.ok && response.data?.session_id) {
+    await SessionRegistry.setSessionForSender(sender, response.data.session_id);
+  }
+
+  return { ...response, detectedLanguage: language };
+}
+
+async function restoreForConversation(message, sender) {
+  const sessionId = await SessionRegistry.getSessionForSender(sender);
+  if (!sessionId) {
+    return {
+      ok: false,
+      status: 404,
+      data: { error: "browser_session_unavailable" }
+    };
+  }
+
+  const response = await bridgeJson("/v1/browser/restore", {
+    text: message.text,
+    session_id: sessionId
+  });
+
+  if (
+    !response.ok &&
+    response.status === 404 &&
+    response.data?.error === "session_not_found"
+  ) {
+    await SessionRegistry.clearSessionForSender(sender);
+  }
+
+  return response;
+}
+
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message?.type === "PG_BRIDGE_STATUS") {
     bridgeStatus()
@@ -188,7 +236,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         const token = response.data?.browser_token;
         if (response.ok && typeof token === "string") {
           await setBrowserToken(token);
-          await setLastSessionId(null);
+          await SessionRegistry.clearAll();
           sendResponse({ ok: true, paired: true });
           return;
         }
@@ -199,7 +247,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 
   if (message?.type === "PG_FORGET_PAIRING") {
-    Promise.all([setBrowserToken(null), setLastSessionId(null)])
+    Promise.all([setBrowserToken(null), SessionRegistry.clearAll()])
       .then(() => sendResponse({ ok: true }))
       .catch(error => sendResponse({ ok: false, error: String(error) }));
     return true;
@@ -218,43 +266,23 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 
   if (message?.type === "PG_PROTECT") {
-    const language = detectPromptLanguage(message.text);
-    bridgeJson("/v1/browser/protect", {
-      text: message.text,
-      profile_key: "property_management",
-      language,
-      finding_ids: Array.isArray(message.findingIds) ? message.findingIds : [],
-      replacement_mode: "reversible",
-      session_id: message.sessionId || null
-    })
-      .then(async response => {
-        if (response.ok && response.data?.session_id) {
-          await setLastSessionId(response.data.session_id);
-        }
-        sendResponse(response);
-      })
+    protectForConversation(message, sender)
+      .then(sendResponse)
       .catch(error => sendResponse({ ok: false, error: String(error) }));
     return true;
   }
 
   if (message?.type === "PG_RESTORE") {
-    (async () => {
-      const sessionId = message.sessionId || await getLastSessionId();
-      if (!sessionId) {
-        sendResponse({
-          ok: false,
-          status: 404,
-          data: { error: "browser_session_unavailable" }
-        });
-        return;
-      }
-
-      const response = await bridgeJson("/v1/browser/restore", {
-        text: message.text,
-        session_id: sessionId
-      });
-      sendResponse(response);
-    })().catch(error => sendResponse({ ok: false, error: String(error) }));
+    restoreForConversation(message, sender)
+      .then(sendResponse)
+      .catch(error => sendResponse({ ok: false, error: String(error) }));
     return true;
   }
+});
+
+// Only the temporary draft mapping is tab-specific. Permanent conversation
+// mappings remain available while the browser session and PrivacyGate process
+// stay alive, so reopening the same ChatGPT conversation can still restore it.
+chrome.tabs?.onRemoved?.addListener(tabId => {
+  SessionRegistry.clearDraftForTab(tabId).catch(() => {});
 });
