@@ -5,8 +5,13 @@
   const MAX_ENTRIES = 96;
   const SESSION_ID_RE = /^[a-f0-9]{32}$/;
 
+  // Persist only the opaque conversation -> local session id association.
+  // No PII, prompt text, mappings, or restored values are stored here.
+  // chrome.storage.local survives normal extension reloads/updates so a browser
+  // refresh does not lose the ability to reconnect to a still-live desktop RAM
+  // session. Stale ids are rejected by the Bridge and cleared by background.js.
   function store() {
-    return chrome.storage.session || chrome.storage.local;
+    return chrome.storage.local;
   }
 
   function validSessionId(value) {
