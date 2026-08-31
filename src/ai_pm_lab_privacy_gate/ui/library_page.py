@@ -44,7 +44,7 @@ class LibraryPage(QWidget):
         root = QVBoxLayout(self)
         root.setContentsMargins(24, 22, 24, 18)
         root.setSpacing(14)
-        root.addWidget(QLabel("Personal Library", objectName="PageTitle"))
+        root.addWidget(QLabel("Local Library", objectName="PageTitle"))
         root.addWidget(
             QLabel(
                 "Protected documents and encrypted AI conversation data stored only on this PC.",
@@ -53,6 +53,10 @@ class LibraryPage(QWidget):
         )
 
         self.sections = QTabWidget()
+        self.sections.tabBar().setMinimumHeight(40)
+        self.sections.tabBar().setStyleSheet(
+            "QTabBar::tab { min-width: 150px; padding: 9px 20px; font-weight: 700; }"
+        )
         documents_page = QWidget()
         documents_root = QVBoxLayout(documents_page)
         documents_root.setContentsMargins(0, 10, 0, 0)
@@ -128,7 +132,7 @@ class LibraryPage(QWidget):
 
         self.ai_panel = AiLibraryPanel(self.library.data_dir)
         self.sections.addTab(documents_page, "Documents")
-        self.sections.addTab(self.ai_panel, "AI")
+        self.sections.addTab(self.ai_panel, "AI Conversations")
         self.sections.currentChanged.connect(self._section_changed)
         root.addWidget(self.sections, 1)
 
