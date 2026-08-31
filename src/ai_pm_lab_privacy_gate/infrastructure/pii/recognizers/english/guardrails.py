@@ -35,6 +35,38 @@ _GLOBAL_NER_NOISE = {
     "prompt design",
 }
 
+# Common professional/AI phrases that compact statistical NER may classify as
+# PERSON/ORG/LOC in resumes. These are concepts or work descriptions, not named
+# private entities. Keep the list semantic rather than user/document-specific.
+_PROFESSIONAL_TECH_PHRASES = {
+    "ai builder",
+    "ai integration",
+    "ai models",
+    "ai research",
+    "ai systems",
+    "ai tools",
+    "ai workflows",
+    "ai-powered tools",
+    "ai-assisted research",
+    "ai-assisted workflows",
+    "ai-based operational analysis",
+    "automation workflows",
+    "api integrations",
+    "api-driven reporting",
+    "local ai models",
+    "local llms",
+    "mcp integrations",
+    "mcp-based local workflows",
+    "operational prototypes",
+    "research frameworks",
+}
+
+_AI_CONCEPT_RE = re.compile(
+    r"^ai(?:[-\s]+(?:powered|assisted|based|driven|enabled|generated))?"
+    r"(?:\s+(?:analysis|builder|integration|models?|research|systems?|tools?|workflows?))?$",
+    re.IGNORECASE,
+)
+
 # Resume / professional-document structure seen frequently in General Business.
 _GENERAL_BUSINESS_HEADINGS = {
     "profile",
@@ -82,17 +114,31 @@ _TECH_TERMS = {
     "github",
     "google workspace",
     "make.com",
+    "mcp",
     "microsoft office",
+    "microsoft presidio",
     "n8n",
     "notion",
     "ollama",
     "openai",
+    "openai api",
     "openai codex",
     "python",
     "replit",
+    "spacy",
+    "square pos",
     "supabase",
     "trello",
 }
+
+_SKILL_MARKERS = (
+    "ai & llms",
+    "agents & automation",
+    "technical & project tools",
+    "workflow skills",
+    "ai, research & workflow skills",
+    "ai research & workflow skills",
+)
 
 _LEGAL_SUFFIX_RE = re.compile(
     r"(?:\binc\.?\b|\bllc\b|\bltd\.?\b|\bcorp\.?\b|\bcompany\b|\bco\.?\b)",
@@ -126,20 +172,26 @@ def _line_bounds(text: str, start: int, end: int) -> tuple[int, int]:
     return left, right
 
 
+def _context_window(text: str, start: int, end: int, *, before: int = 320, after: int = 120) -> str:
+    left = max(0, start - before)
+    right = min(len(text), end + after)
+    return text[left:right]
+
+
 def _is_skill_context(text: str, start: int, end: int) -> bool:
     left, right = _line_bounds(text, start, end)
     line = text[left:right]
     normalized = _normalize(line)
-    if any(
-        marker in normalized
-        for marker in (
-            "ai & llms",
-            "agents & automation",
-            "technical & project tools",
-            "workflow skills",
-        )
-    ):
+    if any(marker in normalized for marker in _SKILL_MARKERS):
         return True
+
+    # PDF/DOCX extraction often wraps a single skills row across multiple text
+    # lines. Look back a few hundred characters for the section label instead of
+    # assuming the tool and heading survive on the same extracted line.
+    nearby = _normalize(_context_window(text, start, end, before=320, after=40))
+    if any(marker in nearby for marker in _SKILL_MARKERS):
+        return True
+
     # Compact CV skill rows commonly use comma-separated tools and pipes.
     return line.count(",") >= 2 or ("|" in line and ":" in line)
 
@@ -148,6 +200,16 @@ def _starts_line(text: str, start: int) -> bool:
     left, _ = _line_bounds(text, start, start)
     prefix = text[left:start]
     return not prefix.strip(" \t•-*–—")
+
+
+def _is_professional_tech_concept(clean: str) -> bool:
+    if clean in _PROFESSIONAL_TECH_PHRASES:
+        return True
+    if _AI_CONCEPT_RE.fullmatch(clean):
+        return True
+    if clean.startswith(("ai-powered ", "ai-assisted ", "ai-based ", "ai-driven ")):
+        return True
+    return False
 
 
 def is_english_ner_false_positive(
@@ -169,6 +231,9 @@ def is_english_ner_false_positive(
     if clean in _GLOBAL_NER_NOISE:
         return True
 
+    if profile_key == "general_business" and _is_professional_tech_concept(clean):
+        return True
+
     if profile_key == "general_business" and clean in _GENERAL_BUSINESS_HEADINGS:
         return True
 
@@ -185,9 +250,9 @@ def is_english_ner_false_positive(
         ):
             return True
 
-    # A technology/product name in an explicit skills row is not a human name
-    # or geographic location even if the statistical model maps it that way.
-    if entity_type in {"PERSON", "LOCATION"} and clean in _TECH_TERMS:
+    # A technology/product name in an explicit skills row is not a human name,
+    # company or geographic location even if the statistical model maps it there.
+    if entity_type in {"PERSON", "ORGANIZATION", "LOCATION"} and clean in _TECH_TERMS:
         if _is_skill_context(text, start, end):
             return True
 
@@ -226,9 +291,9 @@ def email_linked_person_findings(
 ) -> tuple[Finding, ...]:
     """Recover full names repeated in a document from a matching personal email.
 
-    Example: ``pietro.forestieri@example.com`` provides deterministic evidence
-    for standalone occurrences of ``Pietro Forestieri``. Generic mailbox local
-    parts are ignored. This is local document analysis only.
+    Example: ``marco.bianchi@example.com`` provides deterministic evidence for
+    standalone occurrences of ``Marco Bianchi``. Generic mailbox local parts are
+    ignored. This is local document analysis only.
     """
     base = list(findings)
     existing = {(item.page_number, item.start, item.end) for item in base}
