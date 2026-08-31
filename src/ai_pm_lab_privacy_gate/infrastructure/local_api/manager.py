@@ -26,6 +26,7 @@ from .browser_pairing import (
     BrowserPairingStatus,
 )
 from .browser_pdf import install_browser_pdf_support
+from .browser_pdf_review import install_browser_pdf_review
 from .server import create_local_api_server
 
 
@@ -107,11 +108,12 @@ class LocalApiManager:
                 browser_pairing=self.browser_pairing,
             )
             # Keep production on the already validated browser stack:
-            # durable AI session persistence + browser PDF support.
-            # Experimental PDF integrity/OCR layers remain out of the runtime
-            # until they are independently proven.
+            # durable AI session persistence + browser PDF support. The review
+            # layer only exposes exact detected values back to the authenticated
+            # local extension; it does not change detection or PDF generation.
             install_browser_ai_persistence(server, self.ai_library)
             install_browser_pdf_support(server)
+            install_browser_pdf_review(server)
         except Exception as error:
             with self._lock:
                 self._status = LocalApiStatus(
