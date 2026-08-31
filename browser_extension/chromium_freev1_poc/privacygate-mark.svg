@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="PrivacyGate">
+  <rect x="2" y="2" width="60" height="60" rx="15" fill="#071F36"/>
+  <rect x="5.5" y="5.5" width="53" height="53" rx="12" fill="#FFFFFF" stroke="#BD9850" stroke-width="2"/>
+  <path d="M32 13.5 46 18v11.8c0 9.1-5.7 16.6-14 20.7-8.3-4.1-14-11.6-14-20.7V18l14-4.5Z" fill="#062B4F"/>
+  <path d="M26 27.2v10.1M38 27.2v10.1M26 32.2h12" fill="none" stroke="#A9ECE8" stroke-width="3.2" stroke-linecap="round"/>
+  <path d="m27.3 22.9 4.7-2 4.7 2" fill="none" stroke="#BD9850" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="32" cy="40.8" r="2.2" fill="#BD9850"/>
+</svg>
