@@ -2,7 +2,8 @@ from __future__ import annotations
 
 """One ordered activation point for the post-mockup Protect refinements."""
 
-from PySide6.QtWidgets import QHBoxLayout
+from PySide6.QtCore import QTimer
+from PySide6.QtWidgets import QFrame, QHBoxLayout, QPushButton, QVBoxLayout
 
 from .mockup_protect_workspace_refinement_2026 import (
     apply_mockup_protect_workspace_refinement_2026,
@@ -81,6 +82,99 @@ def _keep_source_actions_in_unified_row(main_window) -> None:
         button.show()
 
 
+def _install_back_to_options(page) -> None:
+    """Add one clear return affordance while the manual Paste editor is open.
+
+    This is presentation-only: returning delegates to the existing Clear action,
+    which already resets the Protect source/session and restores the EMPTY entry
+    surface. No source, scan, detector or protection behavior is duplicated here.
+    """
+    if page is None or getattr(page, "_protect_back_to_options_row", None) is not None:
+        return
+
+    panel = getattr(page, "original_document_panel", None)
+    empty_state = getattr(page, "_protect_source_empty_state", None)
+    text_input = getattr(page, "text_input", None)
+    clear_button = getattr(page, "clear_button", None)
+    if panel is None or empty_state is None or text_input is None or clear_button is None:
+        return
+
+    layout = panel.layout()
+    if not isinstance(layout, QVBoxLayout):
+        return
+
+    row_host = QFrame(objectName="ProtectBackToOptionsRow")
+    row_host.setStyleSheet(
+        "QFrame#ProtectBackToOptionsRow{background:transparent;border:none;}"
+    )
+    row = QHBoxLayout(row_host)
+    row.setContentsMargins(0, 0, 0, 2)
+    row.setSpacing(0)
+    row.addStretch(1)
+
+    button = QPushButton("←  Back to options")
+    button.setObjectName("ProtectBackToOptionsButton")
+    button.setMinimumHeight(32)
+    button.setToolTip("Return to Upload, Paste text, and drag & drop options.")
+    button.setStyleSheet(
+        "QPushButton#ProtectBackToOptionsButton{background:#FFFFFF;color:#344054;"
+        "border:1px solid #D0D5DD;border-radius:8px;padding:5px 10px;"
+        "font-size:8px;font-weight:850;}"
+        "QPushButton#ProtectBackToOptionsButton:hover{background:#F8FAFC;"
+        "color:#1D4ED8;border-color:#AFC7FA;}"
+    )
+    row.addWidget(button)
+
+    # Heading remains index 0. Put this compact return row immediately beneath
+    # it and above whichever source surface (EMPTY/PASTE/DOCUMENT) is active.
+    layout.insertWidget(1, row_host, 0)
+
+    def refresh() -> None:
+        # setVisible() in the entry-surface state machine changes the widget's
+        # hidden flag, so this remains truthful even before the whole window is
+        # exposed by Qt.
+        paste_visible = not text_input.isHidden()
+        empty_visible = not empty_state.isHidden()
+        row_host.setVisible(paste_visible and not empty_visible)
+
+    def schedule(*_args) -> None:
+        QTimer.singleShot(0, refresh)
+
+    def back_to_options() -> None:
+        # The approved behavior is a true return to source choice, not another
+        # parallel reset path. Reuse the existing Clear controller so any pasted
+        # draft/result/session state is cleared consistently.
+        clear_button.click()
+        QTimer.singleShot(0, refresh)
+        QTimer.singleShot(120, refresh)
+
+    button.clicked.connect(back_to_options)
+    text_input.textChanged.connect(schedule)
+    page.pdf_path.textChanged.connect(schedule)
+    clear_button.clicked.connect(schedule)
+
+    for toggle_name in ("_redesign_paste_mode", "_redesign_document_mode"):
+        toggle = getattr(page, toggle_name, None)
+        if toggle is not None:
+            toggle.toggled.connect(schedule)
+
+    for action_name in (
+        "_protect_source_upload",
+        "_protect_source_paste",
+        "_protect_source_connected",
+        "_protect_empty_upload",
+        "_protect_empty_paste",
+    ):
+        action = getattr(page, action_name, None)
+        if action is not None:
+            action.clicked.connect(schedule)
+
+    row_host.hide()
+    QTimer.singleShot(0, refresh)
+    page._protect_back_to_options_row = row_host
+    page._protect_back_to_options_button = button
+
+
 def apply_mockup_protect_refinement_suite_2026(main_window) -> None:
     """Apply the approved presentation and local-only review behavior in order."""
     apply_mockup_protect_workspace_refinement_2026(main_window)
@@ -107,3 +201,5 @@ def apply_mockup_protect_refinement_suite_2026(main_window) -> None:
     # Keep those styled actions in the visible compact row, in the approved order:
     # Workflow | Upload | Paste text | Connected source | workspace context ...
     _keep_source_actions_in_unified_row(main_window)
+    # When manual Paste is open, offer an explicit return to the source choices.
+    _install_back_to_options(getattr(main_window, "protection_page", None))
