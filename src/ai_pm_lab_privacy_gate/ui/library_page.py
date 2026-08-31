@@ -21,11 +21,13 @@ from PySide6.QtWidgets import (
     QSplitter,
     QTableWidget,
     QTableWidgetItem,
+    QTabWidget,
     QVBoxLayout,
     QWidget,
 )
 
 from ai_pm_lab_privacy_gate.infrastructure.storage.library_repository import LibraryRepository
+from ai_pm_lab_privacy_gate.ui.ai_library_panel import AiLibraryPanel
 
 
 class LibraryPage(QWidget):
@@ -42,10 +44,19 @@ class LibraryPage(QWidget):
         root = QVBoxLayout(self)
         root.setContentsMargins(24, 22, 24, 18)
         root.setSpacing(14)
-        root.addWidget(QLabel("Local library", objectName="PageTitle"))
+        root.addWidget(QLabel("Personal Library", objectName="PageTitle"))
         root.addWidget(
-            QLabel("Protected documents and encrypted restore mappings stored only on this PC.", objectName="Muted")
+            QLabel(
+                "Protected documents and encrypted AI conversation data stored only on this PC.",
+                objectName="Muted",
+            )
         )
+
+        self.sections = QTabWidget()
+        documents_page = QWidget()
+        documents_root = QVBoxLayout(documents_page)
+        documents_root.setContentsMargins(0, 10, 0, 0)
+        documents_root.setSpacing(14)
 
         toolbar = QHBoxLayout()
         self.search = QLineEdit()
@@ -61,7 +72,7 @@ class LibraryPage(QWidget):
         toolbar.addWidget(self.backup_button)
         toolbar.addWidget(self.import_backup_button)
         toolbar.addWidget(self.refresh_button)
-        root.addLayout(toolbar)
+        documents_root.addLayout(toolbar)
 
         splitter = QSplitter(Qt.Orientation.Horizontal)
         table_card = QFrame(objectName="Card")
@@ -113,7 +124,13 @@ class LibraryPage(QWidget):
         splitter.addWidget(table_card)
         splitter.addWidget(preview_card)
         splitter.setSizes([650, 520])
-        root.addWidget(splitter, 1)
+        documents_root.addWidget(splitter, 1)
+
+        self.ai_panel = AiLibraryPanel(self.library.data_dir)
+        self.sections.addTab(documents_page, "Documents")
+        self.sections.addTab(self.ai_panel, "AI")
+        self.sections.currentChanged.connect(self._section_changed)
+        root.addWidget(self.sections, 1)
 
         self.search.textChanged.connect(self.refresh)
         self.favorites_only.toggled.connect(self.refresh)
@@ -131,6 +148,10 @@ class LibraryPage(QWidget):
         self.restore_trash_button.clicked.connect(self._restore_from_trash)
         self.delete_button.clicked.connect(self._delete)
         self._set_actions(False)
+
+    def _section_changed(self, index: int) -> None:
+        if index == 1:
+            self.ai_panel.refresh()
 
     def refresh(self, *_args) -> None:
         self._documents = self.library.list_documents(
@@ -159,8 +180,11 @@ class LibraryPage(QWidget):
             self.preview_title.setText("No protected documents yet")
             self.meta.setText("Use Save + Copy or Save + Download from the Protect page.")
             self._set_actions(False)
+        if self.sections.currentIndex() == 1:
+            self.ai_panel.refresh()
 
     def select_document(self, document_id: str) -> None:
+        self.sections.setCurrentIndex(0)
         self.refresh()
         for row in range(self.table.rowCount()):
             if self.table.item(row, 2).data(Qt.ItemDataRole.UserRole) == document_id:
