@@ -27,7 +27,12 @@ class _Session:
 
 
 class LocalProtectionSessionStore:
-    """Keep reversible browser mappings in memory only, never in the Library/database."""
+    """Keep the active reversible mapping working set in process memory.
+
+    Persistence, when enabled for browser AI history, is deliberately owned by a
+    separate encrypted Library adapter. This store remains the authoritative hot
+    session used by Protect/Restore and is still cleared when the Bridge stops.
+    """
 
     def __init__(
         self,
@@ -46,13 +51,17 @@ class LocalProtectionSessionStore:
         self._lock = threading.Lock()
         self._sessions: dict[str, _Session] = {}
 
+    def _make_room_locked(self) -> None:
+        if len(self._sessions) < self.max_sessions:
+            return
+        oldest = min(self._sessions.values(), key=lambda item: item.last_access)
+        self._sessions.pop(oldest.session_id, None)
+
     def create(self) -> str:
         with self._lock:
             now = self._clock()
             self._purge_expired_locked(now)
-            if len(self._sessions) >= self.max_sessions:
-                oldest = min(self._sessions.values(), key=lambda item: item.last_access)
-                self._sessions.pop(oldest.session_id, None)
+            self._make_room_locked()
             session_id = secrets.token_hex(16)
             while session_id in self._sessions:
                 session_id = secrets.token_hex(16)
@@ -62,6 +71,44 @@ class LocalProtectionSessionStore:
                 last_access=now,
             )
             return session_id
+
+    def rehydrate(
+        self,
+        session_id: str,
+        mappings: Iterable[ReplacementMapping],
+        *,
+        turn: int = 0,
+    ) -> None:
+        """Recreate one encrypted-Library browser session in the RAM working set."""
+        restored: dict[str, ReplacementMapping] = {}
+        for mapping in mappings:
+            existing = restored.get(mapping.token)
+            if existing is not None and existing.original_text != mapping.original_text:
+                raise ValueError("Local session token collision")
+            restored[mapping.token] = mapping
+
+        with self._lock:
+            now = self._clock()
+            self._purge_expired_locked(now)
+            current = self._sessions.get(session_id)
+            if current is not None:
+                for token, mapping in restored.items():
+                    existing = current.mappings.get(token)
+                    if existing is not None and existing.original_text != mapping.original_text:
+                        raise ValueError("Local session token collision")
+                    current.mappings[token] = mapping
+                current.turn = max(current.turn, max(0, int(turn)))
+                current.last_access = now
+                return
+
+            self._make_room_locked()
+            self._sessions[session_id] = _Session(
+                session_id=session_id,
+                created_at=now,
+                last_access=now,
+                turn=max(0, int(turn)),
+                mappings=restored,
+            )
 
     def next_namespace(self, session_id: str) -> str:
         with self._lock:
@@ -89,6 +136,13 @@ class LocalProtectionSessionStore:
             session = self._get_locked(session_id)
             session.last_access = self._clock()
             return tuple(session.mappings.values())
+
+    def snapshot(self, session_id: str) -> tuple[int, tuple[ReplacementMapping, ...]]:
+        """Return the current namespace turn and mappings for encrypted persistence."""
+        with self._lock:
+            session = self._get_locked(session_id)
+            session.last_access = self._clock()
+            return session.turn, tuple(session.mappings.values())
 
     def touch(self, session_id: str) -> None:
         with self._lock:
