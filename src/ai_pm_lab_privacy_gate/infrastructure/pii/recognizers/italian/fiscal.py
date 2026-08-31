@@ -82,7 +82,7 @@ def build_fiscal_recognizers() -> tuple[
             entity_type="IT_FISCAL_CODE",
             pattern=(
                 r"\b(?:codice\s+fiscale|c\.?\s*f\.?|cf)\b"
-                r"\s*(?:è|e|:|#|-)??\s*"
+                r"\s*(?:è|e|:|#|-)?\s*"
                 r"(?P<value>[A-Z]{6}[0-9LMNPQRSTUV]{2}[A-Z]"
                 r"[0-9LMNPQRSTUV]{2}[A-Z][0-9LMNPQRSTUV]{3}[A-Z])"
                 r"(?![A-Z0-9])"
