@@ -8,7 +8,8 @@
   const OVERLAY_SOURCE = "privacygate-secure-restore";
   const PLACEHOLDER_RE = /\[\[PG(?:\\?_[A-Z0-9]+)+\]\]/g;
   const views = new Map();
-  const pending = new WeakSet();
+  const pendingTextByRoot = new WeakMap();
+  const retryAfterByRoot = new WeakMap();
   let protectionEnabled = true;
   let scanTimer = null;
 
@@ -103,6 +104,12 @@
     );
   }
 
+  function estimatedFrameHeight(root) {
+    const rectHeight = Number(root?.getBoundingClientRect?.().height || 0);
+    if (!Number.isFinite(rectHeight) || rectHeight <= 0) return 140;
+    return Math.max(92, Math.min(Math.ceil(rectHeight + 54), 2400));
+  }
+
   function ensureFrame(root) {
     let state = views.get(root);
     if (state?.frame?.isConnected) return state;
@@ -117,12 +124,13 @@
       display: "block",
       width: "100%",
       minHeight: "92px",
-      height: "140px",
+      height: `${estimatedFrameHeight(root)}px`,
       margin: "10px 0 14px",
       border: "0",
       borderRadius: "14px",
       background: "transparent",
-      overflow: "hidden"
+      overflow: "hidden",
+      overflowAnchor: "none"
     });
 
     const anchor = anchorFor(root);
@@ -134,8 +142,7 @@
     state = {
       frame,
       lastProtectedText: "",
-      lastRestoredText: "",
-      pendingText: null
+      lastRestoredText: ""
     };
     views.set(root, state);
 
@@ -183,11 +190,16 @@
     const protectedText = canonicalizePlaceholders(rawText);
     const state = views.get(root);
     if (state?.lastProtectedText === protectedText && state.lastRestoredText) return;
-    if (state?.pendingText === protectedText || pending.has(root)) return;
+    if (pendingTextByRoot.get(root) === protectedText) return;
 
-    const nextState = ensureFrame(root);
-    nextState.pendingText = protectedText;
-    pending.add(root);
+    const retryAfter = Number(retryAfterByRoot.get(root) || 0);
+    if (retryAfter > Date.now()) return;
+
+    // Do not create any iframe yet. A local restored view is mounted only after
+    // the Bridge has successfully restored the text. This prevents a stale or
+    // missing session from repeatedly inserting/removing blank frames and
+    // causing ChatGPT to jump during page hydration or extension reloads.
+    pendingTextByRoot.set(root, protectedText);
 
     chrome.runtime.sendMessage(
       {
@@ -195,9 +207,9 @@
         text: protectedText
       },
       response => {
-        pending.delete(root);
-        const current = views.get(root);
-        if (current) current.pendingText = null;
+        if (pendingTextByRoot.get(root) === protectedText) {
+          pendingTextByRoot.delete(root);
+        }
 
         if (
           chrome.runtime.lastError ||
@@ -205,7 +217,7 @@
           !root.isConnected ||
           !protectionEnabled
         ) {
-          if (current && !current.lastRestoredText) removeView(root);
+          retryAfterByRoot.set(root, Date.now() + 5000);
           return;
         }
 
@@ -215,9 +227,19 @@
           !restoredText ||
           restoredText === protectedText
         ) {
-          if (current && !current.lastRestoredText) removeView(root);
+          retryAfterByRoot.set(root, Date.now() + 5000);
           return;
         }
+
+        // If ChatGPT changed the streamed/final response while the Bridge call
+        // was in flight, discard this result and let the next scan restore the
+        // current text instead of mounting an outdated view.
+        if (canonicalizePlaceholders(visibleText(root)) !== protectedText) {
+          scheduleScan(80);
+          return;
+        }
+
+        retryAfterByRoot.delete(root);
 
         // SECURITY BOUNDARY: never write restoredText into ChatGPT's DOM.
         // It is sent only into a chrome-extension:// iframe, which the page
@@ -233,7 +255,7 @@
     for (const root of candidateRoots(scope)) restoreRoot(root);
   }
 
-  function scheduleScan(delay = 100) {
+  function scheduleScan(delay = 120) {
     clearTimeout(scanTimer);
     scanTimer = setTimeout(() => {
       scanTimer = null;
@@ -246,13 +268,29 @@
     if (!frameEntry) return;
     const data = event.data;
     if (!data || data.source !== OVERLAY_SOURCE || data.type !== "PG_OVERLAY_HEIGHT") return;
-    const height = Math.max(72, Math.min(Number(data.height || 0), 1200));
-    if (Number.isFinite(height) && height > 0) {
-      frameEntry.frame.style.height = `${Math.ceil(height)}px`;
+    const height = Math.max(72, Math.min(Number(data.height || 0), 2400));
+    if (!Number.isFinite(height) || height <= 0) return;
+
+    const nextHeight = Math.ceil(height);
+    const currentHeight = Number.parseFloat(frameEntry.frame.style.height || "0");
+    if (!Number.isFinite(currentHeight) || Math.abs(currentHeight - nextHeight) >= 10) {
+      frameEntry.frame.style.height = `${nextHeight}px`;
     }
   });
 
-  const observer = new MutationObserver(() => scheduleScan(100));
+  const observer = new MutationObserver(mutations => {
+    // Ignore mutation batches generated solely by our own frame insertion.
+    const meaningful = mutations.some(mutation => {
+      if (mutation.target instanceof Element && mutation.target.closest?.(`.${FRAME_CLASS}`)) {
+        return false;
+      }
+      return Array.from(mutation.addedNodes || []).some(node => {
+        return !(node instanceof Element && node.classList?.contains(FRAME_CLASS));
+      }) || mutation.type === "characterData";
+    });
+    if (meaningful) scheduleScan(140);
+  });
+
   observer.observe(document.documentElement, {
     childList: true,
     subtree: true,
@@ -261,19 +299,22 @@
 
   chrome.storage.local.get({ [STORAGE_KEY]: true }, values => {
     protectionEnabled = values?.[STORAGE_KEY] !== false;
-    if (protectionEnabled) scheduleScan(40);
+    if (protectionEnabled) scheduleScan(120);
     else removeAllViews();
   });
 
   chrome.storage.onChanged.addListener((changes, areaName) => {
     if (areaName !== "local" || !changes[STORAGE_KEY]) return;
     protectionEnabled = changes[STORAGE_KEY].newValue !== false;
-    if (protectionEnabled) scheduleScan(30);
+    if (protectionEnabled) scheduleScan(120);
     else removeAllViews();
   });
 
+  // Mutation observation handles live streaming. This slower reconciliation is
+  // only a safety net for provider-side rerenders that do not surface as a
+  // useful local mutation sequence.
   setInterval(() => {
     cleanupViews();
     if (protectionEnabled) scan(document);
-  }, 700);
+  }, 1800);
 })();
