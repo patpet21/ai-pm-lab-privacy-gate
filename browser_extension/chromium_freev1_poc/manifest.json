@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "PrivacyGate FreeV1 POC",
-  "version": "0.0.29",
+  "version": "0.0.30",
   "description": "PrivacyGate local browser protection proof of concept.",
   "permissions": [
     "storage"
@@ -12,9 +12,19 @@
   "background": {
     "service_worker": "background.js"
   },
+  "icons": {
+    "16": "privacygate-16.png",
+    "32": "privacygate-32.png",
+    "48": "privacygate-48.png",
+    "128": "privacygate-128.png"
+  },
   "action": {
     "default_title": "PrivacyGate Browser Protection",
-    "default_popup": "popup.html"
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "privacygate-16.png",
+      "32": "privacygate-32.png"
+    }
   },
   "web_accessible_resources": [
     {
