@@ -17,11 +17,16 @@ _CONTEXTUAL_PERSON_PATTERN = re.compile(
 
 _ITALIAN_RELATION_ROLE = (
     r"socio|socia|collega|amico|amica|fratello|sorella|marito|moglie|"
-    r"padre|madre|figlio|figlia|capo|supervisore|supervisora"
+    r"padre|madre|figlio|figlia|capo|supervisore|supervisora|cliente|"
+    r"inquilino|inquilina|proprietario|proprietaria|agente|broker"
 )
 
+# In explicit human-relation phrases we also accept a lowercase first name.
+# Casual chat users often write "michele è il mio socio". The relation phrase
+# itself is the strong signal; this is intentionally narrower than a generic
+# lowercase-name recognizer.
 _ITALIAN_RELATIONAL_PERSON_PATTERN = re.compile(
-    r"\b(?P<person>[A-ZÀ-ÖØ-Þ][A-Za-zÀ-ÖØ-öø-ÿ'’\-]{1,39}"
+    r"\b(?P<person>[A-Za-zÀ-ÖØ-öø-ÿ][A-Za-zÀ-ÖØ-öø-ÿ'’\-]{1,39}"
     r"(?:\s+[A-ZÀ-ÖØ-Þ][A-Za-zÀ-ÖØ-öø-ÿ'’\-]{1,39}){0,2})"
     r"\s+(?i:è|e')\s+"
     r"(?:(?i:il|la|un|una)\s+)?"
@@ -34,7 +39,7 @@ _ITALIAN_RELATIONAL_PERSON_REVERSE_PATTERN = re.compile(
     r"(?:(?i:mio|mia|nostro|nostra)\s+)?"
     rf"(?i:{_ITALIAN_RELATION_ROLE})\s+"
     r"(?i:è|e')\s+"
-    r"(?P<person>[A-ZÀ-ÖØ-Þ][A-Za-zÀ-ÖØ-öø-ÿ'’\-]{1,39}"
+    r"(?P<person>[A-Za-zÀ-ÖØ-öø-ÿ][A-Za-zÀ-ÖØ-öø-ÿ'’\-]{1,39}"
     r"(?:\s+[A-ZÀ-ÖØ-Þ][A-Za-zÀ-ÖØ-öø-ÿ'’\-]{1,39}){0,2})\b"
 )
 
