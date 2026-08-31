@@ -125,3 +125,28 @@ def test_italian_street_context_becomes_street_address() -> None:
     assert finding.entity_type == "STREET_ADDRESS"
     assert finding.text == "via Mazzini"
     assert text[finding.start:finding.end] == "via Mazzini"
+
+
+def test_italian_relationship_context_becomes_person() -> None:
+    text = "Michele è il mio socio"
+    findings = augment_browser_findings(text, (), language="it")
+
+    assert len(findings) == 1
+    finding = findings[0]
+    assert finding.entity_type == "PERSON"
+    assert finding.text == "Michele"
+    assert text[finding.start:finding.end] == "Michele"
+
+
+def test_italian_reverse_relationship_context_becomes_person() -> None:
+    text = "il mio socio è Michele"
+    findings = augment_browser_findings(text, (), language="it")
+
+    assert len(findings) == 1
+    assert findings[0].entity_type == "PERSON"
+    assert findings[0].text == "Michele"
+
+
+def test_italian_unrelated_capitalized_word_does_not_create_person() -> None:
+    text = "Michele è finalmente qui"
+    assert augment_browser_findings(text, (), language="it") == ()
