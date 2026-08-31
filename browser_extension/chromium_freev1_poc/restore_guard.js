@@ -16,19 +16,15 @@
     );
   }
 
-  function insideComposer(node) {
+  function insideAssistantMessage(node) {
     const element = node instanceof Element ? node : node?.parentElement;
-    return Boolean(
-      element?.closest?.(
-        "#prompt-textarea, textarea, input, [contenteditable='true']"
-      )
-    );
+    return Boolean(element?.closest?.('[data-message-author-role="assistant"]'));
   }
 
   function eligibleTextNode(node) {
     if (!(node instanceof Text)) return false;
     if (!node.isConnected || pendingNodes.has(node)) return false;
-    if (privacyGateUi(node) || insideComposer(node)) return false;
+    if (privacyGateUi(node) || !insideAssistantMessage(node)) return false;
     return (node.nodeValue || "").includes(PLACEHOLDER_MARKER);
   }
 
@@ -118,8 +114,8 @@
     characterData: true
   });
 
-  // ChatGPT may re-render streamed response chunks after a local DOM replacement.
-  // A light periodic pass makes the local view resilient without touching network data.
+  // ChatGPT may re-render streamed assistant response chunks after a local DOM replacement.
+  // A light periodic pass makes the assistant-only local view resilient without touching user bubbles.
   setInterval(() => scan(), 700);
   scheduleScan(50);
 })();
