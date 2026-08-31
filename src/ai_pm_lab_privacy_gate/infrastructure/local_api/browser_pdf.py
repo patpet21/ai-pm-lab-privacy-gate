@@ -253,12 +253,13 @@ class PersistentBrowserPdfRequestHandler(PersistentBrowserAiRequestHandler):
             return
         except ValueError as error:
             message = str(error)
-            code = (
-                "pdf_requires_ocr"
-                if "No selectable text was found" in message
-                else "invalid_request"
-            )
-            self._send_json(422 if code == "pdf_requires_ocr" else 400, {"error": code, "message": message})
+            if "Protected PDF integrity check failed" in message:
+                self._send_json(422, {"error": "pdf_integrity_failed", "message": message})
+                return
+            if "No selectable text was found" in message:
+                self._send_json(422, {"error": "pdf_requires_ocr", "message": message})
+                return
+            self._send_json(400, {"error": "invalid_request", "message": message})
             return
         except Exception:
             self._send_json(500, {"error": "local_service_error"})
