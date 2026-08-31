@@ -18,6 +18,7 @@ from ai_pm_lab_privacy_gate.infrastructure.local_api.browser_pairing import Brow
 from ai_pm_lab_privacy_gate.infrastructure.local_api.server import create_local_api_server
 from ai_pm_lab_privacy_gate.infrastructure.security.secret_store import MemorySecretStore
 from ai_pm_lab_privacy_gate.infrastructure.storage.ai_library_repository import AiLibraryRepository
+from ai_pm_lab_privacy_gate.infrastructure.storage.protected_library import ProtectedLibraryRepository
 
 
 class _FakePrivacyService:
@@ -147,6 +148,11 @@ def test_browser_mapping_survives_bridge_restart(tmp_path) -> None:
     assert stored.turn == 1
     assert tuple(mapping.original_text for mapping in stored.mappings) == ("Alice",)
     assert repository.list_conversations(provider="chatgpt")[0].message_count == 1
+
+    # Browser AI history is intentionally absent from the physically separate
+    # MCP-readable Protected Library.
+    protected_library = ProtectedLibraryRepository(tmp_path / "Protected")
+    assert protected_library.list_mcp_documents() == ()
 
     # Closing the server explicitly destroys the in-memory working set.
     _stop(first, first_thread)
