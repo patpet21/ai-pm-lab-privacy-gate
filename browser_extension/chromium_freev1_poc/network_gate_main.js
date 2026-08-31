@@ -7,15 +7,33 @@
   const APPLIED_TYPE = "PG_NETWORK_GATE_APPLIED";
   const BLOCKED_TYPE = "PG_NETWORK_GATE_BLOCKED";
   const MAX_AGE_MS = 10000;
+  const MAX_FLEX_PATTERN_CHARS = 50000;
 
   let pending = null;
 
   function normalized(value) {
     return String(value || "")
+      .normalize("NFC")
       .replace(/\r\n?/g, "\n")
       .replace(/\u00a0/g, " ")
       .replace(/[ \t]+$/gm, "")
       .trim();
+  }
+
+  function compactWhitespace(value) {
+    return normalized(value).replace(/\s+/gu, " ");
+  }
+
+  function escapeRegExp(value) {
+    return String(value || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  }
+
+  function flexiblePatternSource(value) {
+    const original = normalized(value);
+    if (!original || original.length > MAX_FLEX_PATTERN_CHARS) return "";
+    const parts = original.split(/\s+/u).filter(Boolean);
+    if (parts.length < 2) return "";
+    return parts.map(escapeRegExp).join("\\s+");
   }
 
   function activePending() {
@@ -45,6 +63,8 @@
       token,
       originalText,
       protectedText,
+      compactOriginal: compactWhitespace(originalText),
+      flexibleSource: flexiblePatternSource(originalText),
       createdAt: Date.now()
     };
     post(ACK_TYPE, token);
@@ -64,12 +84,44 @@
       return item.protectedText;
     }
 
+    if (compactWhitespace(value) === item.compactOriginal) {
+      state.replaced = true;
+      return item.protectedText;
+    }
+
+    if (item.flexibleSource) {
+      try {
+        const pattern = new RegExp(item.flexibleSource, "gu");
+        if (pattern.test(value)) {
+          state.replaced = true;
+          pattern.lastIndex = 0;
+          return value.replace(pattern, item.protectedText);
+        }
+      } catch (_error) {
+        // Fail closed later if this was the prompt request.
+      }
+    }
+
     return value;
   }
 
   function replaceValue(value, state) {
     if (typeof value === "string") return replaceString(value, state);
-    if (Array.isArray(value)) return value.map(item => replaceValue(item, state));
+
+    if (Array.isArray(value)) {
+      const output = value.map(item => replaceValue(item, state));
+      if (state.replaced) return output;
+
+      if (value.length > 1 && value.every(item => typeof item === "string")) {
+        const item = activePending();
+        if (item && compactWhitespace(value.join(" ")) === item.compactOriginal) {
+          state.replaced = true;
+          return [item.protectedText];
+        }
+      }
+      return output;
+    }
+
     if (value && typeof value === "object") {
       const output = {};
       for (const [key, item] of Object.entries(value)) {
