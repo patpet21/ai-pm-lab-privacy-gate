@@ -70,9 +70,10 @@ class _Service:
     def save_protected_pdf(self, result, path, source_document=None):  # noqa: ARG002
         text = result.protected_pages[0].text
         if self.leak_output:
-            # Simulate the selected first occurrence leaking back into the output;
-            # the unselected second occurrence is present in both safe/leak cases.
-            text = text.replace("[[PG_PERSON_001]]", "Alice")
+            # Simulate a real post-protection leak after the result has already
+            # been namespaced. Replacing a hard-coded pre-namespace token would
+            # not create a leak and would make this regression test meaningless.
+            text = "Tenant Alice. Public alias Alice remains visible."
         return self.pdf.write_protected((PageContent(1, text),), path)
 
     @staticmethod
@@ -177,6 +178,6 @@ def test_integrity_gate_allows_identical_unselected_occurrence(tmp_path: Path) -
 
 def test_integrity_gate_blocks_selected_occurrence_that_survives(tmp_path: Path) -> None:
     status, blocked = _exercise(tmp_path, leak_output=True)
-    assert status == 400
-    assert blocked["error"] == "invalid_request"
+    assert status == 422
+    assert blocked["error"] == "pdf_integrity_failed"
     assert "integrity check failed" in blocked["message"].lower()
