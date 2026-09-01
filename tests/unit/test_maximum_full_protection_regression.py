@@ -2,7 +2,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from ai_pm_lab_privacy_gate.domain.models import AnalysisDocument, PageContent
+from ai_pm_lab_privacy_gate.application.privacy_service import PrivacyGateService
+from ai_pm_lab_privacy_gate.domain.models import AnalysisDocument, Finding, PageContent
 from ai_pm_lab_privacy_gate.domain.profiles import (
     DEFAULT_PROFILE_KEY,
     DEFAULT_SCOPE_KEY,
@@ -26,6 +27,21 @@ class _Result:
 def _result(text: str, value: str, entity_type: str) -> _Result:
     start = text.index(value)
     return _Result(entity_type=entity_type, start=start, end=start + len(value))
+
+
+def _finding(page_number: int, text: str, value: str, entity_type: str) -> Finding:
+    start = text.index(value)
+    end = start + len(value)
+    return Finding(
+        finding_id=f"test-{page_number}-{start}-{end}-{entity_type}",
+        entity_type=entity_type,
+        text=text[start:end],
+        start=start,
+        end=end,
+        score=0.97,
+        page_number=page_number,
+        context=text,
+    )
 
 
 def test_default_maximum_scans_core_and_installed_vertical_categories() -> None:
@@ -126,3 +142,33 @@ def test_adjacent_segment_recovery_does_not_cross_pdf_pages() -> None:
     enabled = entities_for_scope(general, DEFAULT_SCOPE_KEY)
 
     assert adjacent_segment_findings(document, enabled) == ()
+
+
+def test_final_en_cleanup_blocks_propagated_schema_noise_and_preserves_punctuation() -> None:
+    schema = "NYC property IDs: borough / block / lot / BBL / unit"
+    procedure = "Scan & Protect."
+    synthetic = "Synthetic test data only - PrivacyGate English / NYC real estate detector validation"
+    access = "Building access credential: NYC-8B-4821. Authorized vehicle plate: KNY-4821."
+    document = AnalysisDocument(
+        source_kind="docx",
+        pages=(
+            PageContent(1, schema),
+            PageContent(2, procedure),
+            PageContent(3, synthetic),
+            PageContent(4, access),
+        ),
+    )
+    findings = (
+        _finding(1, schema, "NYC", "LOCATION"),
+        _finding(2, procedure, "Scan & Protect", "ORGANIZATION"),
+        _finding(3, synthetic, "NYC", "LOCATION"),
+        _finding(4, access, "NYC-8B-4821.", "PROPERTY_ACCESS_CODE"),
+    )
+
+    cleaned = PrivacyGateService._filter_english_document_findings(document, findings)
+
+    assert len(cleaned) == 1
+    access_finding = cleaned[0]
+    assert access_finding.entity_type == "PROPERTY_ACCESS_CODE"
+    assert access_finding.text == "NYC-8B-4821"
+    assert access[access_finding.end] == "."
