@@ -57,3 +57,25 @@ def test_money_amount_allows_normal_sentence_punctuation() -> None:
         "MONEY_AMOUNT",
         "Monthly rent amount: USD 4,850.00.",
     ) == {"USD 4,850.00"}
+
+
+def test_general_driver_license_accepts_no_dot_colon_separator() -> None:
+    assert _values(
+        "US_DRIVER_LICENSE",
+        "New York State Driver License No.: 123 456 789.",
+    ) == {"123 456 789"}
+
+
+def test_north_american_addresses_keep_hyphenated_house_numbers_and_structured_tail() -> None:
+    assert _pattern_values(
+        "STREET_ADDRESS",
+        "Tenant address: 77-12 31st Avenue, Apt 4A, Jackson Heights, NY 11370.",
+    ) == {"77-12 31st Avenue, Apt 4A, Jackson Heights, NY 11370"}
+    assert _pattern_values(
+        "STREET_ADDRESS",
+        "Company: 350 Fifth Avenue, Suite 4800, New York, NY 10118. EIN: 12-3456789.",
+    ) == {"350 Fifth Avenue, Suite 4800, New York, NY 10118"}
+    assert _pattern_values(
+        "STREET_ADDRESS",
+        "Payment memo: Rent - 245 West 74th Street Apt 8B - New York.",
+    ) == {"245 West 74th Street Apt 8B"}
