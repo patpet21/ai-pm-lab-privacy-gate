@@ -146,7 +146,7 @@ def test_adjacent_segment_recovery_does_not_cross_pdf_pages() -> None:
 
 def test_final_en_cleanup_blocks_propagated_schema_noise_and_preserves_punctuation() -> None:
     schema = "NYC property IDs: borough / block / lot / BBL / unit"
-    procedure = "Scan & Protect."
+    procedure = "Run Scan & Protect."
     synthetic = "Synthetic test data only - PrivacyGate English / NYC real estate detector validation"
     access = "Building access credential: NYC-8B-4821. Authorized vehicle plate: KNY-4821."
     document = AnalysisDocument(
@@ -160,7 +160,7 @@ def test_final_en_cleanup_blocks_propagated_schema_noise_and_preserves_punctuati
     )
     findings = (
         _finding(1, schema, "NYC", "LOCATION"),
-        _finding(2, procedure, "Scan & Protect", "ORGANIZATION"),
+        _finding(2, procedure, "Run Scan & Protect", "ORGANIZATION"),
         _finding(3, synthetic, "NYC", "LOCATION"),
         _finding(4, access, "NYC-8B-4821.", "PROPERTY_ACCESS_CODE"),
     )

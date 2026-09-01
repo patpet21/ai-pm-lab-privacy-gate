@@ -179,7 +179,10 @@ class PrivacyGateService:
                 normalized_line = " ".join(line.split()).casefold()
                 tail = page.text[end : min(len(page.text), end + 64)]
 
-                if normalized in {"scan & protect", "scan and protect"}:
+                if re.fullmatch(
+                    r"(?:(?:run|execute|start)\s+)?scan\s*(?:&|and)\s*protect",
+                    normalized,
+                ):
                     continue
                 if re.match(
                     r"\s+property\s+(?:ids?|identifiers?)\b",
