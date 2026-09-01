@@ -17,6 +17,25 @@ _ORGANIZATION_WITH_LEGAL_SUFFIX = (
     r"(?=\s|[,;:]|\.?$)"
 )
 
+# High-precision organization shapes learned from the local neural benchmark.
+# These are semantic institution/company prefixes rather than a generic
+# "capitalized words = organization" rule. The organization body is explicitly
+# case-sensitive even though labels elsewhere are matched case-insensitively.
+_ORGANIZATION_LEAD = (
+    r"(?:Agenzia\s+Immobiliare|Impresa\s+Edile|Studio\s+(?:Tecnico|Legale)|"
+    r"Fondazione|Cooperativa|Amministrazioni|Consorzio|Condominio|Banca|"
+    r"Politecnico|Associazione)"
+)
+_ORGANIZATION_NAME_TOKEN = r"[A-ZÀ-ÖØ-Þ][A-Za-zÀ-ÖØ-öø-ÿ'’-]{1,30}"
+_ORGANIZATION_CONNECTOR = r"(?:di|del|della|dei|degli|delle|e|&)"
+_ORGANIZATION_BODY = (
+    rf"(?:(?:{_ORGANIZATION_CONNECTOR})\s+)?{_ORGANIZATION_NAME_TOKEN}"
+    rf"(?:\s+(?:(?:{_ORGANIZATION_CONNECTOR})\s+)?{_ORGANIZATION_NAME_TOKEN}){{0,5}}"
+)
+_SEMANTIC_ORGANIZATION = (
+    rf"(?-i:{_ORGANIZATION_LEAD}\s+{_ORGANIZATION_BODY})"
+)
+
 
 def _looks_like_registry_number(value: str) -> bool:
     compact = "".join(char for char in value if char.isalnum())
@@ -29,6 +48,11 @@ def build_business_recognizers() -> tuple[ItalianContextValueRecognizer, ...]:
             entity_type="ORGANIZATION",
             pattern=rf"(?P<value>{_ORGANIZATION_WITH_LEGAL_SUFFIX})",
             score=0.998,
+        ),
+        ItalianContextValueRecognizer(
+            entity_type="ORGANIZATION",
+            pattern=rf"(?P<value>{_SEMANTIC_ORGANIZATION})(?=\s*[,.;:]|$)",
+            score=0.992,
         ),
         ItalianContextValueRecognizer(
             entity_type="IT_REA_NUMBER",

@@ -7,7 +7,30 @@ from ai_pm_lab_privacy_gate.infrastructure.pii.recognizers.italian.contextual im
 )
 
 
-_STREET_PATTERN = r"(?i)\b(?:via|viale|piazza|piazzale|corso|largo|vicolo|strada|lungomare|contrada|frazione)\s+(?:[A-ZÀ-ÖØ-öø-ÿ0-9][\wÀ-ÖØ-öø-ÿ'’.-]*\s+){1,8}\d{1,5}[A-Z]?(?:[/\-][A-Z0-9]{1,4})?\b"
+# Numbered civic addresses are strong enough to recognize without an additional
+# label. Support punctuation/"n." variants and Località, which are common in
+# Italian property documents. Provincial-road addresses need a dedicated shape
+# so the road number is not mistaken for the civic number.
+_STREET_PATTERN = (
+    r"(?i)\b(?:via|viale|piazza|piazzale|corso|largo|vicolo|strada|lungomare|"
+    r"contrada|frazione|località|localita)\s+"
+    r"(?:[A-ZÀ-ÖØ-öø-ÿ0-9][\wÀ-ÖØ-öø-ÿ'’.-]*)"
+    r"(?:\s+[A-ZÀ-ÖØ-öø-ÿ0-9][\wÀ-ÖØ-öø-ÿ'’.-]*){0,7}"
+    r"\s*,?\s*(?:n(?:umero)?\.?\s*)?\d{1,5}[A-Z]?(?:[/\-][A-Z0-9]{1,4})?\b"
+)
+_PROVINCIAL_ROAD_PATTERN = (
+    r"(?i)\bstrada\s+provinciale\s+\d{1,4}\s+"
+    r"(?:n(?:umero)?\.?\s*)\d{1,5}[A-Z]?\b"
+)
+# A street without a civic number is too broad to detect globally ("via libera"
+# is ordinary Italian). Accept it only after explicit residence/address context,
+# and require normal capitalization inside the street name.
+_NAMED_STREET_NO_NUMBER = (
+    r"(?-i:(?:Via|Viale|Piazza|Piazzale|Corso|Largo|Vicolo|Strada|Lungomare|"
+    r"Contrada|Frazione|Località)\s+"
+    r"[A-ZÀ-ÖØ-Þ][A-Za-zÀ-ÖØ-öø-ÿ'’-]*"
+    r"(?:\s+[A-ZÀ-ÖØ-Þ][A-Za-zÀ-ÖØ-öø-ÿ'’-]*){0,5})"
+)
 
 
 def build_address_recognizers() -> tuple[object, ...]:
@@ -15,7 +38,21 @@ def build_address_recognizers() -> tuple[object, ...]:
         PatternRecognizer(
             supported_entity="STREET_ADDRESS",
             supported_language="it",
-            patterns=[Pattern("italian_street_address", _STREET_PATTERN, 0.95)],
+            patterns=[
+                Pattern("italian_provincial_road_address", _PROVINCIAL_ROAD_PATTERN, 0.975),
+                Pattern("italian_street_address", _STREET_PATTERN, 0.96),
+            ],
+        ),
+        ItalianContextValueRecognizer(
+            entity_type="STREET_ADDRESS",
+            pattern=(
+                rf"\b(?:risiede|residente|domiciliat[oa]|"
+                rf"domicilio\s+(?:indicato\s+)?(?:è|:)?|"
+                rf"indirizzo\s+(?:indicato\s+)?(?:è|:)?)"
+                rf"\s+(?:in|a)?\s*(?P<value>{_NAMED_STREET_NO_NUMBER})"
+                rf"(?=\s*[,.;:]|$)"
+            ),
+            score=0.965,
         ),
         ItalianContextValueRecognizer(
             entity_type="IT_POSTAL_CODE",
