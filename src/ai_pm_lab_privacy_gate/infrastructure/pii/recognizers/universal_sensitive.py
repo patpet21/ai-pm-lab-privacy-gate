@@ -129,7 +129,7 @@ PATTERN_RECOGNIZERS = (
         patterns=[
             Pattern(
                 "currency_amount",
-                r"(?<![\w.])(?:[-+]?\s*(?:[$€£]|USD\s*|EUR\s*|GBP\s*))?\d{1,3}(?:,\d{3})*\.\d{2}(?:\s*(?:USD|EUR|GBP))?(?!\w)",
+                r"(?<![\w.])(?:[-+]\s*)?(?:(?:[$€£])\s*|(?:USD|EUR|GBP)\s*)?\d{1,3}(?:,\d{3})*\.\d{2}(?:\s*(?:USD|EUR|GBP))?(?!\w)",
                 0.88,
             )
         ],
