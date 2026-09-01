@@ -59,6 +59,17 @@ def _split_bio_label(label: str) -> tuple[str, str | None]:
     return "O", None
 
 
+def _trim_text_span(text: str, start: int, end: int) -> tuple[int, int]:
+    """Trim tokenizer boundary whitespace without altering internal entity text."""
+    start = max(0, int(start))
+    end = min(len(text), int(end))
+    while start < end and text[start].isspace():
+        start += 1
+    while end > start and text[end - 1].isspace():
+        end -= 1
+    return start, end
+
+
 def _collect_bio_results(
     *,
     text: str,
@@ -85,12 +96,17 @@ def _collect_bio_results(
             and current_end > current_start
         ):
             raw_score = float(sum(current_scores) / max(1, len(current_scores)))
-            value = text[current_start:current_end]
+            span_start, span_end = _trim_text_span(text, current_start, current_end)
+            value = text[span_start:span_end]
             from ai_pm_lab_privacy_gate.infrastructure.pii.recognizers.italian.guardrails import (
                 is_italian_ner_false_positive,
             )
 
-            if raw_score < 0.55 or is_italian_ner_false_positive(current_entity, value):
+            if (
+                span_end <= span_start
+                or raw_score < 0.55
+                or is_italian_ner_false_positive(current_entity, value)
+            ):
                 current_entity = None
                 current_start = None
                 current_end = None
@@ -104,8 +120,8 @@ def _collect_bio_results(
             results.append(
                 RecognizerResult(
                     entity_type=current_entity,
-                    start=base_offset + current_start,
-                    end=base_offset + current_end,
+                    start=base_offset + span_start,
+                    end=base_offset + span_end,
                     score=score,
                     recognition_metadata={
                         RecognizerResult.RECOGNIZER_NAME_KEY: recognizer_name,
