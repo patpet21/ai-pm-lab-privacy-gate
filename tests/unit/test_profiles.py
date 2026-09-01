@@ -38,6 +38,7 @@ def test_general_recommended_is_a_true_universal_core():
     assert "ORGANIZATION" in general.entities
     assert "EMAIL_ADDRESS" in general.entities
     assert "US_ROUTING_NUMBER" in general.entities
+    assert "US_EIN" in general.entities
     assert "CONTRACT_ID" in general.entities
     assert "DATE_TIME" in general.entities
 
