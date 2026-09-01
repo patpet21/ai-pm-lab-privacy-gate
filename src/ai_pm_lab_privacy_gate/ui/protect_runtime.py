@@ -47,6 +47,48 @@ def _completed_stages(main_window) -> set[str]:
     return stages
 
 
+def _apply_recommended_protect_defaults(page) -> None:
+    """Apply the product default once without removing Advanced choices.
+
+    General is the universal core profile and Maximum means every category that
+    profile enables. Advanced users can still choose a narrower scope, another
+    vertical profile, a different protection mode, or another confidence value
+    after startup; this helper intentionally runs only once per Protect page.
+    """
+    if page is None or getattr(page, "_privacygate_recommended_defaults_applied", False):
+        return
+
+    from ai_pm_lab_privacy_gate.domain.profiles import (
+        DEFAULT_PROFILE_KEY,
+        DEFAULT_SCOPE_KEY,
+        get_profile,
+    )
+
+    profile_combo = getattr(page, "profile_combo", None)
+    if profile_combo is not None:
+        profile_index = profile_combo.findData(DEFAULT_PROFILE_KEY)
+        if profile_index >= 0:
+            profile_combo.setCurrentIndex(profile_index)
+
+    scope_combo = getattr(page, "scope_combo", None)
+    if scope_combo is not None:
+        scope_index = scope_combo.findData(DEFAULT_SCOPE_KEY)
+        if scope_index >= 0:
+            scope_combo.setCurrentIndex(scope_index)
+
+    mode_combo = getattr(page, "mode_combo", None)
+    if mode_combo is not None:
+        reversible_index = mode_combo.findData("reversible")
+        if reversible_index >= 0:
+            mode_combo.setCurrentIndex(reversible_index)
+
+    threshold_input = getattr(page, "threshold_input", None)
+    if threshold_input is not None:
+        threshold_input.setValue(get_profile(DEFAULT_PROFILE_KEY).threshold)
+
+    page._privacygate_recommended_defaults_applied = True
+
+
 def _wire_privacy_check_refresh_triggers(page) -> None:
     """Refresh Privacy Check after the authoritative protected-copy update.
 
@@ -237,5 +279,11 @@ def apply_protect_runtime(main_window, stage: str) -> None:
         # Must be last. It observes the final widget tree rather than trying to
         # guess which intermediate patch may still show a detached legacy child.
         apply_protect_surface_guard(main_window)
+
+        # Product default: start broad and let the user narrow the review if they
+        # want. This changes startup selection only; Advanced remains fully usable.
+        _apply_recommended_protect_defaults(
+            getattr(main_window, "protection_page", None)
+        )
 
     completed.add(stage)
