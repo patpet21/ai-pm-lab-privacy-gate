@@ -22,6 +22,10 @@ _PROVINCIAL_ROAD_PATTERN = (
     r"(?i)\bstrada\s+provinciale\s+\d{1,4}\s+"
     r"(?:n(?:umero)?\.?\s*)\d{1,5}[A-Z]?\b"
 )
+_PROVINCIAL_ROAD_VALUE = (
+    r"(?-i:Strada\s+Provinciale\s+\d{1,4}\s+"
+    r"n(?:umero)?\.?\s*\d{1,5}[A-Z]?)"
+)
 # A street without a civic number is too broad to detect globally ("via libera"
 # is ordinary Italian). Accept it only after explicit residence/address context,
 # and require normal capitalization inside the street name.
@@ -42,6 +46,16 @@ def build_address_recognizers() -> tuple[object, ...]:
                 Pattern("italian_provincial_road_address", _PROVINCIAL_ROAD_PATTERN, 0.975),
                 Pattern("italian_street_address", _STREET_PATTERN, 0.96),
             ],
+        ),
+        ItalianContextValueRecognizer(
+            entity_type="STREET_ADDRESS",
+            pattern=(
+                rf"\b(?:ingresso\s+da|accesso\s+da|sito\s+in|ubicat[oa]\s+in|"
+                rf"si\s+trova\s+in|indirizzo\s+(?:indicato\s+)?(?:è|:)?)"
+                rf"\s*(?P<value>{_PROVINCIAL_ROAD_VALUE})"
+                rf"(?=\s*[,.;:]|$)"
+            ),
+            score=0.985,
         ),
         ItalianContextValueRecognizer(
             entity_type="STREET_ADDRESS",
