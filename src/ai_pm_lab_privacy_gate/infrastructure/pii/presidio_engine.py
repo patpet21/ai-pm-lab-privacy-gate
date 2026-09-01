@@ -175,22 +175,22 @@ class PresidioPrivacyEngine:
 
     @staticmethod
     def _filter_context_value_false_positives(text: str, results: Iterable[Any]) -> list[Any]:
-        """Drop structurally impossible values emitted by broad context rules.
+        """Drop structurally impossible values emitted by broad EN rules/NER.
 
         Some vertical recognizers intentionally accept label/value forms without
         punctuation (for example ``Unit 8B``). That recall can also make ordinary
         grammar such as ``unit is located`` look like a value. Likewise a leading
         dash in ``Rent - 245 West 74th Street`` can be mistaken for a signed rent
-        amount. Keep this correction at the shared engine boundary so every UI,
-        extension and document pipeline gets the same deterministic behavior.
+        amount. This boundary also removes obvious schema/procedure phrases which
+        statistical NER can mislabel as organizations.
         """
         filtered: list[Any] = []
         for result in results:
             entity_type = str(result.entity_type)
             value = text[int(result.start) : int(result.end)].strip()
+            normalized = " ".join(value.split()).casefold().strip(" .,:;#")
 
             if entity_type == "UNIT_NUMBER":
-                normalized = value.casefold().strip(" .,:;#")
                 if normalized in _UNIT_FALSE_VALUES:
                     continue
 
@@ -201,6 +201,13 @@ class PresidioPrivacyEngine:
                     same_sentence_tail = re.split(r"[\r\n.;]", tail, maxsplit=1)[0]
                     if _STREET_SUFFIX_RE.search(same_sentence_tail):
                         continue
+
+            if entity_type == "ORGANIZATION":
+                if normalized in {"scan & protect", "scan and protect"}:
+                    continue
+                tail = text[int(result.end) : min(len(text), int(result.end) + 48)]
+                if re.match(r"\s+property\s+(?:ids?|identifiers?)\b", tail, re.IGNORECASE):
+                    continue
 
             filtered.append(result)
         return filtered

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from ai_pm_lab_privacy_gate.domain.models import AnalysisDocument, PageContent
 from ai_pm_lab_privacy_gate.domain.profiles import (
     DEFAULT_PROFILE_KEY,
     DEFAULT_SCOPE_KEY,
@@ -9,6 +10,9 @@ from ai_pm_lab_privacy_gate.domain.profiles import (
     get_profile,
 )
 from ai_pm_lab_privacy_gate.infrastructure.pii.presidio_engine import PresidioPrivacyEngine
+from ai_pm_lab_privacy_gate.infrastructure.pii.recognizers.universal_sensitive import (
+    adjacent_segment_findings,
+)
 
 
 @dataclass
@@ -69,3 +73,56 @@ def test_vertical_context_filter_rejects_street_number_as_signed_rent() -> None:
         real_text,
         [real_result],
     ) == [real_result]
+
+
+def test_schema_and_procedure_phrases_are_not_organizations() -> None:
+    schema_text = "NYC property IDs: borough / block / lot / BBL / unit"
+    schema_result = _result(schema_text, "NYC", "ORGANIZATION")
+    assert PresidioPrivacyEngine._filter_context_value_false_positives(
+        schema_text,
+        [schema_result],
+    ) == []
+
+    procedure_text = "Scan & Protect."
+    procedure_result = _result(procedure_text, "Scan & Protect", "ORGANIZATION")
+    assert PresidioPrivacyEngine._filter_context_value_false_positives(
+        procedure_text,
+        [procedure_result],
+    ) == []
+
+
+def test_office_adjacent_segments_recover_property_table_values() -> None:
+    document = AnalysisDocument(
+        source_kind="docx",
+        pages=(
+            PageContent(1, "Block"),
+            PageContent(2, "1165"),
+            PageContent(3, "Lot"),
+            PageContent(4, "42"),
+            PageContent(5, "BBL"),
+            PageContent(6, "1011650042"),
+            PageContent(7, "Unit"),
+            PageContent(8, "8B"),
+        ),
+    )
+    general = get_profile(DEFAULT_PROFILE_KEY)
+    enabled = entities_for_scope(general, DEFAULT_SCOPE_KEY)
+
+    findings = adjacent_segment_findings(document, enabled)
+    assert {(item.page_number, item.entity_type, item.text) for item in findings} == {
+        (2, "PROPERTY_IDENTIFIER", "1165"),
+        (4, "PROPERTY_IDENTIFIER", "42"),
+        (6, "NYC_BBL", "1011650042"),
+        (8, "UNIT_NUMBER", "8B"),
+    }
+
+
+def test_adjacent_segment_recovery_does_not_cross_pdf_pages() -> None:
+    document = AnalysisDocument(
+        source_kind="pdf",
+        pages=(PageContent(1, "BBL"), PageContent(2, "1011650042")),
+    )
+    general = get_profile(DEFAULT_PROFILE_KEY)
+    enabled = entities_for_scope(general, DEFAULT_SCOPE_KEY)
+
+    assert adjacent_segment_findings(document, enabled) == ()

@@ -1,7 +1,11 @@
 from __future__ import annotations
 
+import re
+from collections.abc import Iterable
+
 from presidio_analyzer import Pattern, PatternRecognizer
 
+from ai_pm_lab_privacy_gate.domain.models import AnalysisDocument, Finding
 from ai_pm_lab_privacy_gate.infrastructure.pii.recognizers.real_estate import (
     ContextRule,
     ContextValueRecognizer,
@@ -63,6 +67,22 @@ CONTEXT_RULES = (
         "BUSINESS_REGISTRATION_NUMBER",
         rf"(?:(?:[A-Z]{{2}}\s+)?(?:department\s+of\s+state|dos)|secretary\s+of\s+state)\s+(?:entity|business)?\s*(?:id|number|no\.?)(?=\s|:|#|$){_SEP}(?P<value>[A-Z0-9][A-Z0-9-]{{5,30}})\b",
         score=0.995,
+    ),
+    ContextRule(
+        "PROPERTY_IDENTIFIER",
+        r"(?im)^\s*(?:tax\s+)?block\s*[:#-]?\s*(?P<value>\d{1,6})\s*$",
+        score=0.997,
+    ),
+    ContextRule(
+        "PROPERTY_IDENTIFIER",
+        r"(?im)^\s*(?:tax\s+)?lot\s*[:#-]?\s*(?P<value>(?=[A-Z0-9-]*\d)[A-Z0-9-]{1,10})\s*$",
+        score=0.997,
+    ),
+    ContextRule(
+        "PROPERTY_ACCESS_CODE",
+        r"(?i)\b(?:(?:building|property|door|gate|entry)\s+access|access)\s+(?:credential|code|pin)\s*[:#=-]?\s*"
+        r"(?P<value>(?=[A-Z0-9#*.-]*\d)[A-Z0-9#*.-]{4,32})(?=$|[\s,;.)\]}])",
+        score=0.998,
     ),
     ContextRule(
         "INVOICE_NUMBER",
@@ -169,6 +189,81 @@ PATTERN_RECOGNIZERS = (
         ],
     ),
 )
+
+
+_ADJACENT_FIELDS: tuple[tuple[str, frozenset[str], re.Pattern[str], float], ...] = (
+    (
+        "PROPERTY_IDENTIFIER",
+        frozenset({"block", "tax block"}),
+        re.compile(r"\d{1,6}"),
+        0.997,
+    ),
+    (
+        "PROPERTY_IDENTIFIER",
+        frozenset({"lot", "tax lot"}),
+        re.compile(r"(?=[A-Z0-9-]*\d)[A-Z0-9-]{1,10}", re.IGNORECASE),
+        0.997,
+    ),
+    (
+        "NYC_BBL",
+        frozenset({"bbl", "nyc bbl"}),
+        re.compile(r"[1-5]-?\d{5}-?\d{4}"),
+        0.999,
+    ),
+    (
+        "UNIT_NUMBER",
+        frozenset({"unit", "apartment", "apt", "apt."}),
+        re.compile(r"[A-Z0-9][A-Z0-9-]{0,9}", re.IGNORECASE),
+        0.995,
+    ),
+)
+
+
+def adjacent_segment_findings(
+    document: AnalysisDocument,
+    enabled_entities: Iterable[str],
+) -> tuple[Finding, ...]:
+    """Recover explicit Office label/value pairs split into adjacent segments.
+
+    Word tables and spreadsheet cells must stay as independent analysis pages so
+    safe write-back preserves the original file structure. For Office documents
+    only, this helper carries an exact field label into the immediately following
+    value segment and emits a finding on the value page itself.
+    """
+    if document.source_kind not in {"docx", "xlsx"}:
+        return ()
+
+    enabled = set(enabled_entities)
+    pages = tuple(document.pages)
+    additions: list[Finding] = []
+    for index in range(1, len(pages)):
+        previous = pages[index - 1]
+        current = pages[index]
+        label = " ".join(previous.text.strip().casefold().split()).strip(" .:;#-")
+        value = current.text.strip()
+        if not value:
+            continue
+        for entity_type, labels, pattern, score in _ADJACENT_FIELDS:
+            if entity_type not in enabled or label not in labels or pattern.fullmatch(value) is None:
+                continue
+            start = current.text.find(value)
+            end = start + len(value)
+            additions.append(
+                Finding(
+                    finding_id=(
+                        f"en-adjacent-{current.page_number}-{start}-{end}-{entity_type}"
+                    ),
+                    entity_type=entity_type,
+                    text=current.text[start:end],
+                    start=start,
+                    end=end,
+                    score=score,
+                    page_number=current.page_number,
+                    context=f"{previous.text} {current.text}",
+                )
+            )
+            break
+    return tuple(additions)
 
 
 def install_universal_sensitive_recognizers(registry) -> None:  # noqa: ANN001

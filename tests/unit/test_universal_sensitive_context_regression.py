@@ -52,6 +52,18 @@ def test_general_business_registration_labels_cover_no_colon_and_state_entity_id
     ) == {"7654321"}
 
 
+def test_property_block_and_lot_labels_are_contextual_identifiers() -> None:
+    assert _values("PROPERTY_IDENTIFIER", "Block: 1165") == {"1165"}
+    assert _values("PROPERTY_IDENTIFIER", "Lot: 42") == {"42"}
+
+
+def test_building_access_credential_is_protected_as_one_value() -> None:
+    assert _values(
+        "PROPERTY_ACCESS_CODE",
+        "Building access credential: NYC-8B-4821",
+    ) == {"NYC-8B-4821"}
+
+
 def test_money_amount_allows_normal_sentence_punctuation() -> None:
     assert _pattern_values(
         "MONEY_AMOUNT",

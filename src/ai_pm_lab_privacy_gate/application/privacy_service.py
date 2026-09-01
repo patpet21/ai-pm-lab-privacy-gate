@@ -119,6 +119,14 @@ class PrivacyGateService:
                 email_linked_person_findings,
                 propagate_known_ner_values,
             )
+            from ai_pm_lab_privacy_gate.infrastructure.pii.recognizers.universal_sensitive import (
+                adjacent_segment_findings,
+            )
+
+            # Word/Excel extraction keeps editable cells and paragraphs separate
+            # for safe write-back. Recover exact English field-label context across
+            # adjacent Office segments without merging the source pages themselves.
+            findings.extend(adjacent_segment_findings(document, profile.entities))
 
             # Personal email local-parts such as first.last provide strong local
             # evidence for repeated full-name occurrences in resumes and business
