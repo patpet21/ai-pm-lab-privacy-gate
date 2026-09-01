@@ -56,6 +56,30 @@ def test_teacher_street_gaps_transfer_without_global_numberless_street_rule() ->
         assert expected in _values(recognizers, text, "STREET_ADDRESS")
 
 
+def test_real_contract_numbered_addresses_use_full_street_span() -> None:
+    cases = (
+        (
+            "Locatore: Mario Rossi, nato a Roma il 10 dicembre 1985, residente in Via Alessandro Manzoni 24, 20121 Milano (MI).",
+            "Via Alessandro Manzoni 24",
+        ),
+        (
+            "Conduttore: Giulia Bianchi, domiciliata in Corso Vittorio Emanuele II 18, 00186 Roma (RM).",
+            "Corso Vittorio Emanuele II 18",
+        ),
+        (
+            "Società: Aurora Gestioni Immobiliari S.r.l., con sede in Piazza Galileo Galilei 7, 50125 Firenze (FI).",
+            "Piazza Galileo Galilei 7",
+        ),
+        (
+            "L’immobile oggetto della locazione è situato in Via Giuseppe Verdi 15, 20121 Milano (MI), Italia.",
+            "Via Giuseppe Verdi 15",
+        ),
+    )
+    recognizers = build_address_recognizers()
+    for text, expected in cases:
+        assert expected in _values(recognizers, text, "STREET_ADDRESS")
+
+
 def test_teacher_transfer_rules_keep_benchmark_negatives_clean() -> None:
     people = build_person_recognizers()
     businesses = build_business_recognizers()
@@ -67,3 +91,5 @@ def test_teacher_transfer_rules_keep_benchmark_negatives_clean() -> None:
     assert not _values(addresses, "Via libera alla proposta dopo la revisione tecnica.", "STREET_ADDRESS")
     assert not _values(addresses, "Il tecnico ha richiesto una via alternativa per l'accesso.", "STREET_ADDRESS")
     assert not _values(addresses, "La piazza sarà riqualificata durante il prossimo anno.", "STREET_ADDRESS")
+    assert not _values(addresses, "La società ha sede in città.", "STREET_ADDRESS")
+    assert not _values(addresses, "Il residente in via alternativa non è specificato.", "STREET_ADDRESS")
