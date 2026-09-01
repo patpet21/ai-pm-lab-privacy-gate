@@ -22,6 +22,7 @@ dependencies = [
   "pillow>=12,<13",
   "rapidocr>=3.9.2,<4",
   "onnxruntime==1.19.2",
+  "tokenizers>=0.23.1,<0.24",
   "mcp>=2,<3",
   "PyJWT[crypto]>=2.10,<3",
   "httpx>=0.28,<1",
