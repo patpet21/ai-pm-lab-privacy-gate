@@ -46,7 +46,7 @@ def test_bio_predictions_trim_tokenizer_boundary_whitespace() -> None:
     text = "nato a Roma e residente a Milano"
     results = _collect_bio_results(
         text=text,
-        offsets=[(6, 11), (23, 30)],
+        offsets=[(6, 11), (25, 32)],
         labels=["B-CITY", "B-CITY"],
         scores=[0.99, 0.99],
         requested_entities={"LOCATION"},
@@ -55,7 +55,7 @@ def test_bio_predictions_trim_tokenizer_boundary_whitespace() -> None:
 
     assert [(item.start, item.end, text[item.start : item.end]) for item in results] == [
         (7, 11, "Roma"),
-        (24, 30, "Milano"),
+        (26, 32, "Milano"),
     ]
 
 
