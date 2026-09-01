@@ -188,7 +188,7 @@ def _is_skill_context(text: str, start: int, end: int) -> bool:
     # PDF/DOCX extraction often wraps a single skills row across multiple text
     # lines. Look back a few hundred characters for the section label instead of
     # assuming the tool and heading survive on the same extracted line.
-    nearby = _normalize(_context_window(text, start, end, before=320, after=40))
+    nearby = _normalize(_context_window(text, start, end, before=420, after=80))
     if any(marker in nearby for marker in _SKILL_MARKERS):
         return True
 
@@ -212,6 +212,39 @@ def _is_professional_tech_concept(clean: str) -> bool:
     return False
 
 
+def _is_source_independent_false_positive(
+    text: str,
+    entity_type: str,
+    value: str,
+    *,
+    start: int,
+    end: int,
+    profile_key: str | None,
+) -> bool:
+    """Suppress semantic certainties even when recognizer metadata is unusual.
+
+    Presidio result metadata is not guaranteed to identify every NLP-backed
+    result as ``SpacyRecognizer``. A few EN CV false positives therefore bypassed
+    the statistical-only guardrail. This layer is intentionally narrow: it only
+    removes values that are unambiguously professional/technology concepts in
+    General Business or explicit skills context.
+    """
+    if entity_type not in _NER_ENTITIES:
+        return False
+    clean = _normalize(value)
+    if not clean:
+        return True
+    if clean in _GLOBAL_NER_NOISE:
+        return True
+    if profile_key == "general_business" and _is_professional_tech_concept(clean):
+        return True
+    if profile_key == "general_business" and clean in _GENERAL_BUSINESS_HEADINGS:
+        return True
+    if clean in _TECH_TERMS and _is_skill_context(text, start, end):
+        return True
+    return False
+
+
 def is_english_ner_false_positive(
     text: str,
     entity_type: str,
@@ -228,16 +261,14 @@ def is_english_ner_false_positive(
     if not clean:
         return True
 
-    if clean in _GLOBAL_NER_NOISE:
-        return True
-
-    if profile_key == "general_business" and _is_professional_tech_concept(clean):
-        return True
-
-    if profile_key == "general_business" and clean in _GENERAL_BUSINESS_HEADINGS:
-        return True
-
-    if clean in _TECH_TERMS and _is_skill_context(text, start, end):
+    if _is_source_independent_false_positive(
+        text,
+        entity_type,
+        value,
+        start=start,
+        end=end,
+        profile_key=profile_key,
+    ):
         return True
 
     if profile_key == "general_business" and entity_type == "ORGANIZATION":
@@ -250,12 +281,6 @@ def is_english_ner_false_positive(
         ):
             return True
 
-    # A technology/product name in an explicit skills row is not a human name,
-    # company or geographic location even if the statistical model maps it there.
-    if entity_type in {"PERSON", "ORGANIZATION", "LOCATION"} and clean in _TECH_TERMS:
-        if _is_skill_context(text, start, end):
-            return True
-
     return False
 
 
@@ -265,16 +290,34 @@ def filter_english_ner_results(
     *,
     profile_key: str | None = None,
 ) -> list[Any]:
-    """Suppress high-confidence EN statistical NER mistakes, not custom IDs."""
+    """Suppress EN NER mistakes while preserving deterministic identifiers.
+
+    Source-independent semantic certainties are filtered first. Broader
+    heuristics such as action-verb suppression remain restricted to statistical
+    NER so custom deterministic recognizers are not weakened.
+    """
     filtered: list[Any] = []
     for result in results:
+        value = text[result.start : result.end]
+        entity_type = str(result.entity_type)
+
+        if _is_source_independent_false_positive(
+            text,
+            entity_type,
+            value,
+            start=int(result.start),
+            end=int(result.end),
+            profile_key=profile_key,
+        ):
+            continue
+
         if not _is_statistical_ner_result(result):
             filtered.append(result)
             continue
-        value = text[result.start : result.end]
+
         if is_english_ner_false_positive(
             text,
-            str(result.entity_type),
+            entity_type,
             value,
             start=int(result.start),
             end=int(result.end),
