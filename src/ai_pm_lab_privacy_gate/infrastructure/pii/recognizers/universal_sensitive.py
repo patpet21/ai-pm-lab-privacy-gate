@@ -48,6 +48,13 @@ CONTEXT_RULES = (
         score=0.99,
     ),
     ContextRule(
+        "US_DRIVER_LICENSE",
+        r"(?:[A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]+){0,2}\s+State\s+)?"
+        r"driver(?:'s|s)?\s+licen[cs]e\s*(?:number|no\.?)?\s*(?::|#)?\s*"
+        r"(?P<value>[A-Z0-9][A-Z0-9 -]{5,17}[A-Z0-9])(?=$|[.,;\r\n])",
+        score=0.995,
+    ),
+    ContextRule(
         "BUSINESS_REGISTRATION_NUMBER",
         rf"(?:registered|registration|company|business)\s+(?:number|no\.?|id)(?=\s|:|#|$){_SEP}(?P<value>[A-Z0-9][A-Z0-9-]{{5,30}})\b",
         score=0.995,
@@ -141,8 +148,13 @@ PATTERN_RECOGNIZERS = (
         patterns=[
             Pattern(
                 "north_american_street",
-                r"(?i)\b\d{1,6}\s+(?:[A-Z0-9.'-]+\s+){1,8}(?:Street|St|Avenue|Ave|Road|Rd|Boulevard|Blvd|Lane|Ln|Drive|Dr|Court|Ct|Parkway|Pkwy|Highway|Hwy)\b[^\r\n]{0,30}",
-                0.92,
+                r"(?i)\b\d{1,6}(?:-\d{1,6})?\s+"
+                r"(?:[A-Z0-9.'-]+\s+){1,8}"
+                r"(?:Street|St\.?|Avenue|Ave\.?|Road|Rd\.?|Boulevard|Blvd\.?|Lane|Ln\.?|Drive|Dr\.?|Court|Ct\.?|Parkway|Pkwy\.?|Highway|Hwy)(?=\s|,|$)"
+                r"(?:\s*,?\s*(?:Apt\.?|Apartment|Unit|Suite)\s+[A-Z0-9-]+)?"
+                r"(?:\s*,\s*[A-Z][A-Za-z.' -]{1,40})?"
+                r"(?:\s*,\s*[A-Z]{2}\s+\d{5}(?:-\d{4})?)?",
+                0.94,
             ),
             Pattern(
                 "international_street",
