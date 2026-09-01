@@ -167,11 +167,13 @@ def _merge_entities(*groups: tuple[str, ...]) -> tuple[str, ...]:
 
 # Universal core used by the default profile and inherited by vertical profiles.
 # Keep vertical-only identifiers (tenant/lease/BBL/unit/etc.) out of this base.
+# US_EIN is intentionally universal: it is a general business/tax identifier,
+# not a real-estate-only concept.
 GENERAL_CORE_ENTITIES = _merge_entities(
     COMMON_US_ENTITIES,
     FINANCIAL_SENSITIVE_ENTITIES,
     BUSINESS_CONFIDENTIAL_ENTITIES,
-    ("DATE_TIME",),
+    ("US_EIN", "DATE_TIME"),
 )
 
 DEFAULT_PROFILE_KEY = "general_business"
