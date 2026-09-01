@@ -153,6 +153,59 @@ _LEGAL_SUFFIX_RE = re.compile(
     re.IGNORECASE,
 )
 
+# General document-structure guardrails. These describe field/taxonomy syntax,
+# not one fixture. Statistical NER should not turn schema labels or UI procedure
+# words into private people/organizations.
+_SCHEMA_LABEL_RE = re.compile(r"^[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+$")
+_IDENTIFIER_LABEL_RE = re.compile(
+    r"^(?:u\.s\.\s+)?(?:ssn|ein|aba|bbl|passport|driver(?:'s|s)?\s+license|"
+    r"social\s+security\s+number|(?:[a-z]{2}\s+dos\s+)?entity\s+id|tax\s+id|"
+    r"phone\s+number|email\s+address|vehicle\s+license\s+plate)$",
+    re.IGNORECASE,
+)
+_ROLE_LABELS = {
+    "landlord",
+    "tenant",
+    "owner",
+    "buyer",
+    "seller",
+    "borrower",
+    "applicant",
+    "employee",
+    "customer",
+    "client",
+    "manager",
+    "engineer",
+    "vendor",
+}
+_PROCEDURAL_NER_TERMS = {
+    "document",
+    "english",
+    "privacy check",
+    "scan & protect",
+    "txt",
+}
+_SYNTHETIC_LINE_MARKERS = (
+    "synthetic test",
+    "synthetic data only",
+    "fictitious data",
+    "testing only",
+    "test fixture",
+)
+_PERIODIC_DATE_WORDS = {
+    "daily",
+    "weekly",
+    "monthly",
+    "quarterly",
+    "annual",
+    "annually",
+    "yearly",
+}
+_PROCEDURE_LINE_RE = re.compile(
+    r"\b(?:open|select|upload|run|review|verify|save|download|inspect)\b",
+    re.IGNORECASE,
+)
+
 
 def _normalize(value: str) -> str:
     return " ".join(str(value or "").strip().split()).casefold()
@@ -220,6 +273,53 @@ def _is_professional_tech_concept(clean: str) -> bool:
     return False
 
 
+def _is_document_structure_noise(
+    text: str,
+    entity_type: str,
+    value: str,
+    *,
+    start: int,
+    end: int,
+) -> bool:
+    if entity_type not in _NER_ENTITIES:
+        return False
+
+    clean = _normalize(value)
+    raw = str(value or "").strip()
+    left, right = _line_bounds(text, start, end)
+    line = text[left:right]
+    normalized_line = _normalize(line)
+
+    if _SCHEMA_LABEL_RE.fullmatch(raw):
+        return True
+    if _IDENTIFIER_LABEL_RE.fullmatch(clean):
+        return True
+
+    # A document which explicitly marks a line as synthetic/test metadata should
+    # not have product/test words promoted to private NER entities on that line.
+    if any(marker in normalized_line for marker in _SYNTHETIC_LINE_MARKERS):
+        return not bool(_LEGAL_SUFFIX_RE.search(value))
+
+    if clean in _ROLE_LABELS and _starts_line(text, start):
+        suffix = text[end:right]
+        if re.match(r"\s*:", suffix):
+            return True
+
+    if clean == "vehicle" and "vehicle license plate" in normalized_line:
+        return True
+
+    if clean in _PROCEDURAL_NER_TERMS and _PROCEDURE_LINE_RE.search(line):
+        return True
+
+    if clean == "privacygate" and any(
+        marker in normalized_line
+        for marker in ("should detect", "detector", "testing", "scan", "protect")
+    ):
+        return True
+
+    return False
+
+
 def _is_source_independent_false_positive(
     text: str,
     entity_type: str,
@@ -232,10 +332,9 @@ def _is_source_independent_false_positive(
     """Suppress semantic certainties even when recognizer metadata is unusual.
 
     Presidio result metadata is not guaranteed to identify every NLP-backed
-    result as ``SpacyRecognizer``. A few EN CV false positives therefore bypassed
-    the statistical-only guardrail. This layer is intentionally narrow: it only
-    removes values that are unambiguously professional/technology concepts in
-    General Business or explicit skills context.
+    result as ``SpacyRecognizer``. A few EN false positives therefore bypassed
+    statistical-only guardrails. This layer removes only values that are
+    structurally or semantically certain not to be private NER values.
     """
     if entity_type not in _NER_ENTITIES:
         return False
@@ -243,6 +342,14 @@ def _is_source_independent_false_positive(
     if not clean:
         return True
     if clean in _GLOBAL_NER_NOISE:
+        return True
+    if _is_document_structure_noise(
+        text,
+        entity_type,
+        value,
+        start=start,
+        end=end,
+    ):
         return True
     if profile_key == "general_business" and _is_professional_tech_concept(clean):
         return True
@@ -333,6 +440,48 @@ def filter_english_ner_results(
             end=int(result.end),
             profile_key=profile_key,
         ):
+            continue
+        filtered.append(result)
+    return filtered
+
+
+def _looks_like_compact_date(value: str) -> bool:
+    if len(value) == 4 and value.isdigit():
+        return 1900 <= int(value) <= 2100
+    if len(value) != 8 or not value.isdigit():
+        return False
+
+    year = int(value[:4])
+    month = int(value[4:6])
+    day = int(value[6:8])
+    if 1900 <= year <= 2100 and 1 <= month <= 12 and 1 <= day <= 31:
+        return True
+
+    month = int(value[:2])
+    day = int(value[2:4])
+    year = int(value[4:])
+    return 1 <= month <= 12 and 1 <= day <= 31 and 1900 <= year <= 2100
+
+
+def filter_english_contextual_results(text: str, results: Iterable[Any]) -> list[Any]:
+    """Remove generic EN guesses that conflict with identifier semantics.
+
+    Presidio's DATE_TIME recognizer can treat long digit-only identifiers as
+    dates. A bare 6-17 digit value is not a date unless it is a plausible compact
+    YYYYMMDD/MMDDYYYY representation. Four-digit plausible years remain valid.
+    Periodic words such as ``Monthly`` are also not concrete sensitive dates.
+    """
+    filtered: list[Any] = []
+    for result in results:
+        if str(result.entity_type) != "DATE_TIME":
+            filtered.append(result)
+            continue
+
+        value = text[result.start : result.end].strip()
+        clean = value.casefold()
+        if clean in _PERIODIC_DATE_WORDS:
+            continue
+        if re.fullmatch(r"\d{4,17}", value) and not _looks_like_compact_date(value):
             continue
         filtered.append(result)
     return filtered
