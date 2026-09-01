@@ -96,6 +96,7 @@ from .mockup_personal_workspace_final_2026 import apply_mockup_personal_workspac
 from .mockup_organization_overview_safety_2026 import apply_mockup_organization_overview_safe_2026
 from .mockup_protect_final_2026 import apply_mockup_protect_final_2026
 from .mockup_protect_refinement_suite_2026 import apply_mockup_protect_refinement_suite_2026
+from .mockup_protect_preview_toolbar_2026 import apply_mockup_protect_preview_toolbar_2026
 from .mockup_restore_suite_2026 import apply_mockup_restore_suite_2026
 from .restore_document_finder_2026 import apply_restore_document_finder_2026
 from .restore_document_finder_mount_fix_2026 import apply_restore_document_finder_mount_fix_2026
@@ -217,6 +218,11 @@ def _main_window_init_with_brand(self, *args, **kwargs) -> None:
     # Post-mockup refinement suite: compact workspace context, reusable guidance,
     # color-coherent review and encrypted local-only manual sensitive rules.
     apply_mockup_protect_refinement_suite_2026(self)
+
+    # Compact the final Protect workspace without recreating controls: High-fidelity
+    # joins the VIEW actions and the existing Advanced panel occupies the recovered
+    # row immediately below the source/view toolbar.
+    apply_mockup_protect_preview_toolbar_2026(self)
 
     # Restore follows the same migration rule as Protect: the proven local
     # DocumentRestoreService/Library mapping/preview/download controllers remain
