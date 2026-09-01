@@ -137,6 +137,7 @@ class PresidioPrivacyEngine:
             results = self._prefer_specific_italian_results(results)
         elif self._language == "en":
             from ai_pm_lab_privacy_gate.infrastructure.pii.recognizers.english.guardrails import (
+                filter_english_contextual_results,
                 filter_english_ner_results,
             )
 
@@ -145,6 +146,10 @@ class PresidioPrivacyEngine:
                 results,
                 profile_key=profile.key,
             )
+            # Apply generic numeric/date conflict filtering before overlap
+            # resolution so a deterministic bank/ID recognizer can win instead
+            # of a higher-scoring DATE_TIME guess on the same characters.
+            results = filter_english_contextual_results(page.text, results)
         resolved = self._without_overlaps(results)
         return [self._to_finding(page, result, index) for index, result in enumerate(resolved)]
 
