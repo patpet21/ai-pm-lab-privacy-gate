@@ -60,3 +60,39 @@ New York
         ("ORGANIZATION", "Tenex LLC"),
         ("LOCATION", "New York"),
     }
+
+
+def test_remaining_cv_product_ai_and_education_noise_is_filtered_without_hiding_real_entities() -> None:
+    text = """SELECTED APPLIED AI PROJECTS
+PrivacyGate - local privacy protection for AI workflows.
+AI Team collaboration and AI Agent prototypes.
+Technical & Project Tools: Google ADK, GitHub, Supabase
+EDUCATION
+Degree in Civil and Environmental Engineering
+Harrisburg University
+Tenex LLC
+New York
+"""
+    results = [
+        _result(text, "PrivacyGate", "ORGANIZATION"),
+        _result(text, "AI Team", "ORGANIZATION"),
+        _result(text, "AI Agent", "PERSON"),
+        _result(text, "Google ADK", "ORGANIZATION"),
+        _result(text, "Degree in", "PERSON"),
+        _result(text, "Harrisburg University", "ORGANIZATION"),
+        _result(text, "Tenex LLC", "ORGANIZATION"),
+        _result(text, "New York", "LOCATION"),
+    ]
+
+    filtered = filter_english_ner_results(
+        text,
+        results,
+        profile_key="general_business",
+    )
+    kept = {(item.entity_type, text[item.start:item.end]) for item in filtered}
+
+    assert kept == {
+        ("ORGANIZATION", "Harrisburg University"),
+        ("ORGANIZATION", "Tenex LLC"),
+        ("LOCATION", "New York"),
+    }

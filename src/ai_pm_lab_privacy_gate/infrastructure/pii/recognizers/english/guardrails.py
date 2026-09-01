@@ -63,7 +63,12 @@ _PROFESSIONAL_TECH_PHRASES = {
 
 _AI_CONCEPT_RE = re.compile(
     r"^ai(?:[-\s]+(?:powered|assisted|based|driven|enabled|generated))?"
-    r"(?:\s+(?:analysis|builder|integration|models?|research|systems?|tools?|workflows?))?$",
+    r"(?:\s+(?:agents?|analysis|builder|integration|models?|research|systems?|teams?|tools?|workflows?))?$",
+    re.IGNORECASE,
+)
+
+_EDUCATION_CONCEPT_RE = re.compile(
+    r"^(?:(?:associate|bachelor|master|doctoral|doctorate|graduate|undergraduate)\s+)?degree(?:\s+in)?$",
     re.IGNORECASE,
 )
 
@@ -112,6 +117,7 @@ _TECH_TERMS = {
     "codex",
     "gemini",
     "github",
+    "google adk",
     "google workspace",
     "make.com",
     "mcp",
@@ -123,6 +129,7 @@ _TECH_TERMS = {
     "openai",
     "openai api",
     "openai codex",
+    "privacygate",
     "python",
     "replit",
     "spacy",
@@ -138,6 +145,7 @@ _SKILL_MARKERS = (
     "workflow skills",
     "ai, research & workflow skills",
     "ai research & workflow skills",
+    "selected applied ai projects",
 )
 
 _LEGAL_SUFFIX_RE = re.compile(
@@ -239,6 +247,8 @@ def _is_source_independent_false_positive(
     if profile_key == "general_business" and _is_professional_tech_concept(clean):
         return True
     if profile_key == "general_business" and clean in _GENERAL_BUSINESS_HEADINGS:
+        return True
+    if profile_key == "general_business" and _EDUCATION_CONCEPT_RE.fullmatch(clean):
         return True
     if clean in _TECH_TERMS and _is_skill_context(text, start, end):
         return True
