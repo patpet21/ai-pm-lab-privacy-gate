@@ -160,6 +160,24 @@ REAL_ESTATE_SENSITIVE_ENTITIES = (
 )
 
 
+def _merge_entities(*groups: tuple[str, ...]) -> tuple[str, ...]:
+    """Merge entity groups without changing their first-seen order."""
+    return tuple(dict.fromkeys(entity for group in groups for entity in group))
+
+
+# Universal core used by the default profile and inherited by vertical profiles.
+# Keep vertical-only identifiers (tenant/lease/BBL/unit/etc.) out of this base.
+GENERAL_CORE_ENTITIES = _merge_entities(
+    COMMON_US_ENTITIES,
+    FINANCIAL_SENSITIVE_ENTITIES,
+    BUSINESS_CONFIDENTIAL_ENTITIES,
+    ("DATE_TIME",),
+)
+
+DEFAULT_PROFILE_KEY = "general_business"
+DEFAULT_SCOPE_KEY = "maximum"
+
+
 @dataclass(frozen=True, slots=True)
 class PrivacyProfile:
     key: str
@@ -180,53 +198,72 @@ _SCOPES = (
     ProtectionScope("essential", "Essential PII", "Identity, contact, government IDs, addresses and payment credentials."),
     ProtectionScope("financial", "PII + Financial", "Adds accounts, transaction IDs, card endings, amounts, merchants and references."),
     ProtectionScope("business", "PII + Business Confidential", "Adds company, property, contract, project and operational identifiers."),
-    ProtectionScope("maximum", "Maximum Protection", "Scans every supported sensitive category, including dates, URLs and business data."),
-    ProtectionScope("custom", "Custom Review", "Scans every category, then lets you choose exactly what to protect."),
+    ProtectionScope("maximum", "Maximum Protection", "Scans every sensitive category enabled by the selected profile."),
+    ProtectionScope("custom", "Custom Review", "Scans every category enabled by the selected profile, then lets you choose exactly what to protect."),
 )
 
 
 _PROFILES = (
     PrivacyProfile(
+        key="general_business",
+        name="General — Recommended",
+        description="Recommended default for most documents: identity, contact, financial, organization, contract, customer and general business data.",
+        entities=GENERAL_CORE_ENTITIES,
+    ),
+    PrivacyProfile(
         key="property_management",
         name="Property Management",
-        description="Tenant, owner, vendor and property records. Includes dates and account identifiers.",
-        entities=COMMON_US_ENTITIES + FINANCIAL_SENSITIVE_ENTITIES + OPERATIONAL_IDENTIFIER_ENTITIES + BUSINESS_CONFIDENTIAL_ENTITIES + REAL_ESTATE_SENSITIVE_ENTITIES + ("DATE_TIME",),
+        description="General protection plus tenant, owner, vendor, property, lease, building-access and real-estate financial data.",
+        entities=_merge_entities(
+            GENERAL_CORE_ENTITIES,
+            OPERATIONAL_IDENTIFIER_ENTITIES,
+            REAL_ESTATE_SENSITIVE_ENTITIES,
+        ),
     ),
     PrivacyProfile(
         key="realtor_brokerage",
         name="Realtor / Brokerage",
-        description="Client, transaction and brokerage documents. Includes dates and web addresses.",
-        entities=COMMON_US_ENTITIES + FINANCIAL_SENSITIVE_ENTITIES + OPERATIONAL_IDENTIFIER_ENTITIES + BUSINESS_CONFIDENTIAL_ENTITIES + REAL_ESTATE_SENSITIVE_ENTITIES + ("DATE_TIME",),
+        description="General protection plus client, transaction, brokerage, property, offer and closing-sensitive data.",
+        entities=_merge_entities(
+            GENERAL_CORE_ENTITIES,
+            OPERATIONAL_IDENTIFIER_ENTITIES,
+            REAL_ESTATE_SENSITIVE_ENTITIES,
+        ),
     ),
     PrivacyProfile(
         key="projects_renovations",
         name="Projects & Renovations",
-        description="Owner, contractor, subcontractor and project records. Includes dates and URLs.",
-        entities=COMMON_US_ENTITIES + FINANCIAL_SENSITIVE_ENTITIES + OPERATIONAL_IDENTIFIER_ENTITIES + BUSINESS_CONFIDENTIAL_ENTITIES + REAL_ESTATE_SENSITIVE_ENTITIES + ("DATE_TIME",),
-    ),
-    PrivacyProfile(
-        key="general_business",
-        name="General Business",
-        description="Identity, contact, financial, contract, customer and operational business data.",
-        entities=COMMON_US_ENTITIES + FINANCIAL_SENSITIVE_ENTITIES + BUSINESS_CONFIDENTIAL_ENTITIES + OPERATIONAL_IDENTIFIER_ENTITIES + ("DATE_TIME",),
+        description="General protection plus owner, contractor, subcontractor, project, budget, permit and site-access data.",
+        entities=_merge_entities(
+            GENERAL_CORE_ENTITIES,
+            OPERATIONAL_IDENTIFIER_ENTITIES,
+            REAL_ESTATE_SENSITIVE_ENTITIES,
+        ),
     ),
     PrivacyProfile(
         key="construction",
         name="Construction",
-        description="Owner, contractor, vendor, project, permit, insurance and financial identifiers.",
-        entities=COMMON_US_ENTITIES + FINANCIAL_SENSITIVE_ENTITIES + BUSINESS_CONFIDENTIAL_ENTITIES + OPERATIONAL_IDENTIFIER_ENTITIES + REAL_ESTATE_SENSITIVE_ENTITIES + ("DATE_TIME",),
+        description="General protection plus owner, contractor, vendor, project, permit, insurance and construction-financial identifiers.",
+        entities=_merge_entities(
+            GENERAL_CORE_ENTITIES,
+            OPERATIONAL_IDENTIFIER_ENTITIES,
+            REAL_ESTATE_SENSITIVE_ENTITIES,
+        ),
     ),
     PrivacyProfile(
         key="legal",
         name="Legal",
-        description="General legal privacy profile for people, cases, contracts, addresses and financial identifiers.",
-        entities=COMMON_US_ENTITIES + FINANCIAL_SENSITIVE_ENTITIES + BUSINESS_CONFIDENTIAL_ENTITIES + OPERATIONAL_IDENTIFIER_ENTITIES + ("DATE_TIME",),
+        description="General protection plus case, contract and operational identifiers commonly present in legal documents.",
+        entities=_merge_entities(
+            GENERAL_CORE_ENTITIES,
+            OPERATIONAL_IDENTIFIER_ENTITIES,
+        ),
     ),
     PrivacyProfile(
         key="healthcare_general",
         name="Healthcare — General Privacy",
-        description="General identity/contact privacy for healthcare documents; not a substitute for a specialized clinical/HIPAA recognizer pack.",
-        entities=COMMON_US_ENTITIES + FINANCIAL_SENSITIVE_ENTITIES + BUSINESS_CONFIDENTIAL_ENTITIES + ("DATE_TIME",),
+        description="General identity/contact/business privacy for healthcare documents; not a substitute for a specialized clinical/HIPAA recognizer pack.",
+        entities=GENERAL_CORE_ENTITIES,
     ),
 )
 
