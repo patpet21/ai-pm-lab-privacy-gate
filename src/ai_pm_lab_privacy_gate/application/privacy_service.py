@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from collections import Counter, defaultdict
 from pathlib import Path
 from typing import Iterable
@@ -137,9 +138,85 @@ class PrivacyGateService:
             # values across exact standalone repeats so the same identity cannot
             # leak simply because spaCy classified only one occurrence.
             findings = list(propagate_known_ner_values(document, findings))
+            findings = list(self._filter_english_document_findings(document, findings))
             return self._without_overlaps(tuple(findings))
 
         return tuple(findings)
+
+    @staticmethod
+    def _filter_english_document_findings(
+        document: AnalysisDocument,
+        findings: Iterable[Finding],
+    ) -> tuple[Finding, ...]:
+        """Apply final EN document-context cleanup after cross-segment propagation.
+
+        Raw page-level NER is filtered before propagation, but an exact repeated
+        PERSON/ORGANIZATION/LOCATION value can later be copied into a schema,
+        checklist or synthetic-test line. Re-check that final occurrence here.
+        This is also the last safe place to trim sentence punctuation accidentally
+        consumed by a contextual access-code span while preserving the punctuation
+        in the protected output.
+        """
+        pages = {page.page_number: page for page in document.pages}
+        filtered: list[Finding] = []
+        for item in findings:
+            page = pages.get(item.page_number)
+            if page is None:
+                filtered.append(item)
+                continue
+
+            start = max(0, min(int(item.start), len(page.text)))
+            end = max(start, min(int(item.end), len(page.text)))
+            value = page.text[start:end]
+            normalized = " ".join(value.split()).casefold().strip(" .,:;#")
+
+            if item.entity_type in {"PERSON", "ORGANIZATION", "LOCATION"}:
+                left = page.text.rfind("\n", 0, start) + 1
+                right = page.text.find("\n", end)
+                if right < 0:
+                    right = len(page.text)
+                line = page.text[left:right]
+                normalized_line = " ".join(line.split()).casefold()
+                tail = page.text[end : min(len(page.text), end + 64)]
+
+                if normalized in {"scan & protect", "scan and protect"}:
+                    continue
+                if re.match(
+                    r"\s+property\s+(?:ids?|identifiers?)\b",
+                    tail,
+                    re.IGNORECASE,
+                ):
+                    continue
+                if any(
+                    marker in normalized_line
+                    for marker in (
+                        "synthetic test",
+                        "test fixture",
+                        "testing only",
+                        "detector validation",
+                    )
+                ):
+                    continue
+
+            if item.entity_type == "PROPERTY_ACCESS_CODE" and value.endswith("."):
+                trimmed_end = end - 1
+                if trimmed_end > start and (
+                    trimmed_end == len(page.text)
+                    or page.text[trimmed_end : trimmed_end + 1].isspace()
+                ):
+                    item = Finding(
+                        finding_id=item.finding_id,
+                        entity_type=item.entity_type,
+                        text=page.text[start:trimmed_end],
+                        start=start,
+                        end=trimmed_end,
+                        score=item.score,
+                        page_number=item.page_number,
+                        context=item.context,
+                    )
+
+            filtered.append(item)
+        return tuple(filtered)
 
     def protect(
         self,
