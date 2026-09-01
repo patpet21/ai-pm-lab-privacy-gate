@@ -27,6 +27,9 @@ from ai_pm_lab_privacy_gate.infrastructure.pii.recognizers.italian.fiscal import
 from ai_pm_lab_privacy_gate.infrastructure.pii.recognizers.italian.identity_documents import (
     build_identity_document_recognizers,
 )
+from ai_pm_lab_privacy_gate.infrastructure.pii.recognizers.italian.italian_neural import (
+    build_italian_neural_recognizers,
+)
 from ai_pm_lab_privacy_gate.infrastructure.pii.recognizers.italian.people import (
     build_person_recognizers,
 )
@@ -84,6 +87,7 @@ def install_italian_recognizers(registry) -> None:  # noqa: ANN001
         *build_person_recognizers(),
         *build_date_recognizers(),
         *build_amount_recognizers(),
+        *build_italian_neural_recognizers(),
     )
     for recognizer in recognizers:
         registry.add_recognizer(recognizer)
