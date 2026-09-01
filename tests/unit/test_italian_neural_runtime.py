@@ -42,6 +42,23 @@ def test_bio_predictions_map_only_semantic_entities() -> None:
     ]
 
 
+def test_bio_predictions_trim_tokenizer_boundary_whitespace() -> None:
+    text = "nato a Roma e residente a Milano"
+    results = _collect_bio_results(
+        text=text,
+        offsets=[(6, 11), (23, 30)],
+        labels=["B-CITY", "B-CITY"],
+        scores=[0.99, 0.99],
+        requested_entities={"LOCATION"},
+        recognizer_name="ItalianNeuralPIIRecognizer",
+    )
+
+    assert [(item.start, item.end, text[item.start : item.end]) for item in results] == [
+        (7, 11, "Roma"),
+        (24, 30, "Milano"),
+    ]
+
+
 def test_structured_neural_labels_do_not_enter_privacygate_results() -> None:
     text = "IT60X0542811101000000123456 CA12345AA"
     results = _collect_bio_results(
