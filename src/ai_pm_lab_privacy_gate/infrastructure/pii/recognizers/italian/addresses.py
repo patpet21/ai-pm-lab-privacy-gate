@@ -18,6 +18,13 @@ _STREET_PATTERN = (
     r"(?:\s+[A-ZÀ-ÖØ-öø-ÿ0-9][\wÀ-ÖØ-öø-ÿ'’.-]*){0,7}"
     r"\s*,?\s*(?:n(?:umero)?\.?\s*)?\d{1,5}[A-Z]?(?:[/\-][A-Z0-9]{1,4})?\b"
 )
+_CONTEXTUAL_NUMBERED_STREET = (
+    r"(?:via|viale|piazza|piazzale|corso|largo|vicolo|strada|lungomare|"
+    r"contrada|frazione|località|localita)\s+"
+    r"(?:[A-ZÀ-ÖØ-öø-ÿ0-9][\wÀ-ÖØ-öø-ÿ'’.-]*)"
+    r"(?:\s+[A-ZÀ-ÖØ-öø-ÿ0-9][\wÀ-ÖØ-öø-ÿ'’.-]*){0,7}"
+    r"\s*,?\s*(?:n(?:umero)?\.?\s*)?\d{1,5}[A-Z]?(?:[/\-][A-Z0-9]{1,4})?\b"
+)
 _PROVINCIAL_ROAD_PATTERN = (
     r"(?i)\bstrada\s+provinciale\s+\d{1,4}\s+"
     r"(?:n(?:umero)?\.?\s*)\d{1,5}[A-Z]?\b"
@@ -46,6 +53,19 @@ def build_address_recognizers() -> tuple[object, ...]:
                 Pattern("italian_provincial_road_address", _PROVINCIAL_ROAD_PATTERN, 0.975),
                 Pattern("italian_street_address", _STREET_PATTERN, 0.96),
             ],
+        ),
+        # In contracts and administrative documents these labels are strong
+        # evidence that the following numbered street is an address. Give this
+        # path deterministic priority over semantic NER so a street cannot be
+        # split into LOCATION/PERSON fragments while leaving the civic number.
+        ItalianContextValueRecognizer(
+            entity_type="STREET_ADDRESS",
+            pattern=(
+                rf"\b(?:residente|domiciliat[oa]|con\s+sede|sito|situat[oa]|ubicat[oa])"
+                rf"\s+(?:in|a)?\s*(?P<value>{_CONTEXTUAL_NUMBERED_STREET})"
+                rf"(?=\s*[,.;:]|$)"
+            ),
+            score=0.995,
         ),
         ItalianContextValueRecognizer(
             entity_type="STREET_ADDRESS",
