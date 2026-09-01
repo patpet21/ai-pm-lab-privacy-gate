@@ -11,6 +11,25 @@ from ai_pm_lab_privacy_gate.domain.profiles import PrivacyProfile
 from ai_pm_lab_privacy_gate.infrastructure.pii.languages import get_language_config
 
 
+_UNIT_FALSE_VALUES = {
+    "at",
+    "for",
+    "has",
+    "includes",
+    "is",
+    "located",
+    "number",
+    "of",
+    "was",
+    "will",
+}
+_STREET_SUFFIX_RE = re.compile(
+    r"\b(?:Street|St\.?|Avenue|Ave\.?|Road|Rd\.?|Boulevard|Blvd\.?|Lane|Ln\.?|"
+    r"Drive|Dr\.?|Court|Ct\.?|Parkway|Pkwy\.?|Highway|Hwy|Place|Pl\.?|Terrace|Ter\.?|Way)\b",
+    re.IGNORECASE,
+)
+
+
 class PresidioPrivacyEngine:
     """Lazy, local-only Presidio adapter shared by every application surface."""
 
@@ -150,8 +169,41 @@ class PresidioPrivacyEngine:
             # resolution so a deterministic bank/ID recognizer can win instead
             # of a higher-scoring DATE_TIME guess on the same characters.
             results = filter_english_contextual_results(page.text, results)
+            results = self._filter_context_value_false_positives(page.text, results)
         resolved = self._without_overlaps(results)
         return [self._to_finding(page, result, index) for index, result in enumerate(resolved)]
+
+    @staticmethod
+    def _filter_context_value_false_positives(text: str, results: Iterable[Any]) -> list[Any]:
+        """Drop structurally impossible values emitted by broad context rules.
+
+        Some vertical recognizers intentionally accept label/value forms without
+        punctuation (for example ``Unit 8B``). That recall can also make ordinary
+        grammar such as ``unit is located`` look like a value. Likewise a leading
+        dash in ``Rent - 245 West 74th Street`` can be mistaken for a signed rent
+        amount. Keep this correction at the shared engine boundary so every UI,
+        extension and document pipeline gets the same deterministic behavior.
+        """
+        filtered: list[Any] = []
+        for result in results:
+            entity_type = str(result.entity_type)
+            value = text[int(result.start) : int(result.end)].strip()
+
+            if entity_type == "UNIT_NUMBER":
+                normalized = value.casefold().strip(" .,:;#")
+                if normalized in _UNIT_FALSE_VALUES:
+                    continue
+
+            if entity_type == "RENT_AMOUNT":
+                compact = re.sub(r"\s+", "", value)
+                if re.fullmatch(r"-\d{1,6}(?:\.0{1,2})?", compact):
+                    tail = text[int(result.end) : min(len(text), int(result.end) + 80)]
+                    same_sentence_tail = re.split(r"[\r\n.;]", tail, maxsplit=1)[0]
+                    if _STREET_SUFFIX_RE.search(same_sentence_tail):
+                        continue
+
+            filtered.append(result)
+        return filtered
 
     @staticmethod
     def _prefer_specific_italian_results(results: list[Any]) -> list[Any]:

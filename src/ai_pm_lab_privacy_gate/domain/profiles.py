@@ -200,7 +200,7 @@ _SCOPES = (
     ProtectionScope("essential", "Essential PII", "Identity, contact, government IDs, addresses and payment credentials."),
     ProtectionScope("financial", "PII + Financial", "Adds accounts, transaction IDs, card endings, amounts, merchants and references."),
     ProtectionScope("business", "PII + Business Confidential", "Adds company, property, contract, project and operational identifiers."),
-    ProtectionScope("maximum", "Maximum Protection", "Scans every sensitive category enabled by the selected profile."),
+    ProtectionScope("maximum", "Maximum Protection", "Scans every sensitive category available in PrivacyGate, across the core and installed profile packs."),
     ProtectionScope("custom", "Custom Review", "Scans every category enabled by the selected profile, then lets you choose exactly what to protect."),
 )
 
@@ -270,6 +270,11 @@ _PROFILES = (
 )
 
 
+def _all_profile_entities() -> tuple[str, ...]:
+    """Return the deduplicated union of every currently installed profile pack."""
+    return _merge_entities(*(profile.entities for profile in _PROFILES))
+
+
 def list_profiles() -> tuple[PrivacyProfile, ...]:
     return _PROFILES
 
@@ -300,7 +305,11 @@ def entities_for_scope(profile: PrivacyProfile, scope_key: str) -> tuple[str, ..
         allowed = set(COMMON_US_ENTITIES + FINANCIAL_SENSITIVE_ENTITIES + REAL_ESTATE_SENSITIVE_ENTITIES)
     elif scope_key == "business":
         allowed = set(COMMON_US_ENTITIES + OPERATIONAL_IDENTIFIER_ENTITIES + BUSINESS_CONFIDENTIAL_ENTITIES + REAL_ESTATE_SENSITIVE_ENTITIES)
-    elif scope_key in {"maximum", "custom"}:
+    elif scope_key == "maximum":
+        # Maximum is the product-wide safety net: scan every category PrivacyGate
+        # currently knows, regardless of which profile supplied that recognizer.
+        return _all_profile_entities()
+    elif scope_key == "custom":
         allowed = set(profile.entities)
     else:
         raise KeyError(f"Unknown protection scope: {scope_key}")
