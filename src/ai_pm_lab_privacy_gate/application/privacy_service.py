@@ -201,8 +201,8 @@ class PrivacyGateService:
             if item.entity_type == "PROPERTY_ACCESS_CODE" and value.endswith("."):
                 trimmed_end = end - 1
                 if trimmed_end > start and (
-                    trimmed_end == len(page.text)
-                    or page.text[trimmed_end : trimmed_end + 1].isspace()
+                    end == len(page.text)
+                    or page.text[end : end + 1].isspace()
                 ):
                     item = Finding(
                         finding_id=item.finding_id,
