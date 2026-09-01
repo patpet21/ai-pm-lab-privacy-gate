@@ -26,3 +26,4 @@ customer-data/
 private/
 node_modules/
 .wrangler/
+resources/models/PrivacyGate-Italian-Model/
