@@ -90,6 +90,7 @@ sse-starlette==3.4.8
 starlette==1.6.0
 thinc==8.3.13
 tldextract==5.3.2
+tokenizers==0.23.1
 tqdm==4.70.0
 truststore==0.10.4
 typer==0.27.1
