@@ -8,13 +8,13 @@ from ai_pm_lab_privacy_gate.infrastructure.pii.recognizers.real_estate import (
 )
 
 
-_SEP = r"\s*(?::|#|number\b|no\.?\b)?\s*"
+_SEP = r"\s*(?:(?:number|no\.?)\s*)?(?::|#)?\s*"
 
 
 CONTEXT_RULES = (
     ContextRule(
         "US_BANK_NUMBER",
-        rf"(?im)^\s*account\s+(?:number|no\.?)\b{_SEP}(?P<value>\d{{6,17}})\b",
+        r"(?im)^\s*(?:(?:dedicated|primary|secondary)\s+)?(?:(?:bank|checking|savings|business|payment|operating|escrow|trust|deposit|rent)\s+)?account\s+(?:number|no\.?)\s*(?::|#)?\s*(?P<value>\d{6,17})\b",
         score=0.995,
     ),
     ContextRule(
@@ -49,7 +49,12 @@ CONTEXT_RULES = (
     ),
     ContextRule(
         "BUSINESS_REGISTRATION_NUMBER",
-        rf"(?:registered|registration|company|business)\s+(?:number|no\.?|id)\b{_SEP}(?P<value>[A-Z0-9][A-Z0-9-]{{5,30}})\b",
+        rf"(?:registered|registration|company|business)\s+(?:number|no\.?|id)(?=\s|:|#|$){_SEP}(?P<value>[A-Z0-9][A-Z0-9-]{{5,30}})\b",
+        score=0.995,
+    ),
+    ContextRule(
+        "BUSINESS_REGISTRATION_NUMBER",
+        rf"(?:(?:[A-Z]{{2}}\s+)?(?:department\s+of\s+state|dos)|secretary\s+of\s+state)\s+(?:entity|business)?\s*(?:id|number|no\.?)(?=\s|:|#|$){_SEP}(?P<value>[A-Z0-9][A-Z0-9-]{{5,30}})\b",
         score=0.995,
     ),
     ContextRule(
