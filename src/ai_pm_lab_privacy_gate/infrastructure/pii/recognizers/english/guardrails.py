@@ -22,17 +22,24 @@ _GENERIC_EMAIL_LOCAL_PARTS = {
     "team",
 }
 
-# These are concepts/categories, not private people/organizations/locations.
+# These are concepts/categories, public technical/auth labels, not private
+# people/organizations/locations.
 _GLOBAL_NER_NOISE = {
     "ai",
     "api",
     "apis",
+    "aws",
+    "bearer",
+    "client ip",
+    "github",
     "llm",
     "llms",
+    "mac",
     "mcp",
     "project management",
     "applied ai",
     "prompt design",
+    "social security",
 }
 
 # Common professional/AI phrases that compact statistical NER may classify as
@@ -201,6 +208,17 @@ _PERIODIC_DATE_WORDS = {
     "annually",
     "yearly",
 }
+_RELATIVE_DATE_RE = re.compile(
+    r"^(?:this|next|last)\s+(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday|week|month|quarter|year)$",
+    re.IGNORECASE,
+)
+_TIME_ONLY_RE = re.compile(r"^\d{1,2}(?::\d{2})?\s*(?:am|pm)$", re.IGNORECASE)
+_CONTEXT_FALSE_VALUES = {
+    "INSURANCE_POLICY_ID": {"requires"},
+    "CUSTOMER_ID": {"field", "fields"},
+    "TENANT_ID": {"field", "fields", "mapping"},
+    "WIFI_CREDENTIAL": {"requirement", "requirements"},
+}
 _PROCEDURE_LINE_RE = re.compile(
     r"\b(?:open|select|upload|run|review|verify|save|download|inspect)\b",
     re.IGNORECASE,
@@ -306,6 +324,9 @@ def _is_document_structure_noise(
             return True
 
     if clean == "vehicle" and "vehicle license plate" in normalized_line:
+        return True
+
+    if entity_type == "LOCATION" and clean in {"u.s", "u.s.", "us"} and "passport" in normalized_line:
         return True
 
     if clean in _PROCEDURAL_NER_TERMS and _PROCEDURE_LINE_RE.search(line):
@@ -464,22 +485,32 @@ def _looks_like_compact_date(value: str) -> bool:
 
 
 def filter_english_contextual_results(text: str, results: Iterable[Any]) -> list[Any]:
-    """Remove generic EN guesses that conflict with identifier semantics.
-
-    Presidio's DATE_TIME recognizer can treat long digit-only identifiers as
-    dates. A bare 6-17 digit value is not a date unless it is a plausible compact
-    YYYYMMDD/MMDDYYYY representation. Four-digit plausible years remain valid.
-    Periodic words such as ``Monthly`` are also not concrete sensitive dates.
-    """
+    """Remove generic EN guesses and structurally impossible context values."""
     filtered: list[Any] = []
     for result in results:
-        if str(result.entity_type) != "DATE_TIME":
+        entity_type = str(result.entity_type)
+        value = text[result.start : result.end].strip()
+        clean = _normalize(value)
+
+        invalid_values = _CONTEXT_FALSE_VALUES.get(entity_type)
+        if invalid_values and clean in invalid_values:
+            continue
+
+        # Passport and driver's-license values should contain at least one digit.
+        # This rejects prose such as "passport renewal" or "license policy is..."
+        # without narrowing any supported structured format.
+        if entity_type in {"US_PASSPORT", "US_DRIVER_LICENSE"} and not re.search(r"\d", value):
+            continue
+
+        if entity_type != "DATE_TIME":
             filtered.append(result)
             continue
 
-        value = text[result.start : result.end].strip()
-        clean = value.casefold()
         if clean in _PERIODIC_DATE_WORDS:
+            continue
+        if _RELATIVE_DATE_RE.fullmatch(clean):
+            continue
+        if _TIME_ONLY_RE.fullmatch(clean):
             continue
         if re.fullmatch(r"\d{4,17}", value) and not _looks_like_compact_date(value):
             continue
