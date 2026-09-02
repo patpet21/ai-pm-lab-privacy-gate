@@ -30,6 +30,148 @@ _STREET_SUFFIX_RE = re.compile(
 )
 _ITALIAN_SEMANTIC_ENTITIES = {"PERSON", "ORGANIZATION", "LOCATION", "STREET_ADDRESS"}
 
+# English precision-first cleanup. These values are field labels, public tool/product
+# names, roles, or document concepts rather than private PERSON/ORG/LOCATION values.
+_EN_NER_FIELD_NOISE = {
+    "amex",
+    "beneficiary iban",
+    "bic",
+    "borrower",
+    "card",
+    "dob",
+    "driver",
+    "email",
+    "hpd complaint",
+    "housing court",
+    "iban",
+    "invoice id",
+    "lien",
+    "mfa",
+    "po box",
+    "po id",
+    "project budget",
+    "projected noi",
+    "seller credit",
+    "state",
+    "suite",
+    "traveler",
+    "visa",
+}
+_EN_PUBLIC_TECH_PHRASES = {
+    "microsoft presidio",
+}
+_EN_NON_SENSITIVE_DATE_VALUES = {
+    "monday",
+    "tuesday",
+    "wednesday",
+    "thursday",
+    "friday",
+    "saturday",
+    "sunday",
+    "today",
+    "tomorrow",
+    "yesterday",
+    "noon",
+    "midnight",
+    "this morning",
+    "this afternoon",
+    "this evening",
+    "next week",
+    "next month",
+    "next quarter",
+    "next year",
+    "last week",
+    "last month",
+    "last quarter",
+    "last year",
+}
+_EN_CONTEXT_VALUE_FALSE_VALUES = {
+    "INSURANCE_POLICY_ID": {"follows", "next"},
+    "INVOICE_NUMBER": {"issued", "processing", "total"},
+    "MAINTENANCE_TICKET_ID": {"management"},
+    "VEHICLE_LICENSE_PLATE": {"is ready for"},
+}
+_EN_GENERIC_LOSES_TO = {
+    "DATE_TIME": {
+        "DATE_OF_BIRTH",
+        "US_EIN",
+        "CARD_LAST_FOUR",
+        "SECURITY_CODE",
+        "SAFE_COMBINATION",
+    },
+    "POSTAL_CODE": {
+        "BUSINESS_REGISTRATION_NUMBER",
+        "CASE_REFERENCE",
+        "CONTRACT_ID",
+        "CONTRACTOR_LICENSE",
+        "CUSTOMER_ID",
+        "HOUSING_LEGAL_CASE_ID",
+        "IBAN_CODE",
+        "INVOICE_NUMBER",
+        "LEASE_ID",
+        "LIEN_WAIVER_ID",
+        "NYC_BBL",
+        "PROPERTY_IDENTIFIER",
+        "PURCHASE_ORDER_ID",
+        "TENANT_ID",
+        "US_EIN",
+    },
+    "PHONE_NUMBER": {"US_SSN"},
+    "US_DRIVER_LICENSE": {"CONTRACTOR_LICENSE", "US_EIN"},
+    "US_BANK_NUMBER": {"US_ROUTING_NUMBER"},
+    "LOCKBOX_CODE": {"SAFE_COMBINATION"},
+    "MONEY_AMOUNT": {
+        "ACCOUNTS_PAYABLE_AMOUNT",
+        "BROKER_COMMISSION",
+        "CAPEX_BUDGET_AMOUNT",
+        "CASH_TO_CLOSE",
+        "CLOSING_COST_AMOUNT",
+        "CLOSING_CREDIT",
+        "COMMITTED_COST_AMOUNT",
+        "CONTINGENCY_AMOUNT",
+        "CONTRACTOR_BID_AMOUNT",
+        "DEBT_SERVICE_AMOUNT",
+        "EARNEST_MONEY_AMOUNT",
+        "ESCROW_AMOUNT",
+        "HOUSING_ASSISTANCE_AMOUNT",
+        "INSURANCE_CLAIM_AMOUNT",
+        "INSURANCE_DEDUCTIBLE_AMOUNT",
+        "INSURANCE_PREMIUM_AMOUNT",
+        "INVOICE_AMOUNT",
+        "LATE_FEE_AMOUNT",
+        "LOAN_AMOUNT",
+        "LOAN_BALANCE",
+        "MANAGEMENT_FEE",
+        "MATERIAL_ALLOWANCE_AMOUNT",
+        "NEGOTIATION_LIMIT_AMOUNT",
+        "NOI_AMOUNT",
+        "OFFER_PRICE",
+        "OPERATING_BALANCE",
+        "OWNER_DISTRIBUTION",
+        "PAY_APPLICATION_AMOUNT",
+        "PAYMENT_PLAN_AMOUNT",
+        "PREAPPROVAL_AMOUNT",
+        "PROJECT_BUDGET_AMOUNT",
+        "PROPERTY_TAX_AMOUNT",
+        "PURCHASE_ORDER_VALUE",
+        "PURCHASE_PRICE",
+        "REMAINING_CAPITAL_BUDGET",
+        "RENT_AMOUNT",
+        "RENT_CONCESSION_AMOUNT",
+        "RESERVE_BALANCE",
+        "RETAINAGE_AMOUNT",
+        "SECURITY_DEPOSIT_AMOUNT",
+        "SELLER_NET_PROCEEDS",
+        "SUBCONTRACT_AMOUNT",
+        "TENANT_BALANCE",
+        "TENANT_INCOME_AMOUNT",
+    },
+}
+_EN_LEGAL_SUFFIX_RE = re.compile(
+    r"\b(?:LLC|Inc\.?|Corp\.?|Corporation|Ltd\.?|Company|Co\.?)\b",
+    re.IGNORECASE,
+)
+
 
 class PresidioPrivacyEngine:
     """Lazy, local-only Presidio adapter shared by every application surface."""
@@ -171,6 +313,7 @@ class PresidioPrivacyEngine:
             # of a higher-scoring DATE_TIME guess on the same characters.
             results = filter_english_contextual_results(page.text, results)
             results = self._filter_context_value_false_positives(page.text, results)
+            results = self._prefer_specific_english_results(results)
         resolved = self._without_overlaps(results)
         return [self._to_finding(page, result, index) for index, result in enumerate(resolved)]
 
@@ -178,18 +321,29 @@ class PresidioPrivacyEngine:
     def _filter_context_value_false_positives(text: str, results: Iterable[Any]) -> list[Any]:
         """Drop structurally impossible values emitted by broad EN rules/NER.
 
-        Some vertical recognizers intentionally accept label/value forms without
-        punctuation (for example ``Unit 8B``). That recall can also make ordinary
-        grammar such as ``unit is located`` look like a value. Likewise a leading
-        dash in ``Rent - 245 West 74th Street`` can be mistaken for a signed rent
-        amount. This boundary also removes obvious schema/procedure phrases which
-        statistical NER can mislabel as organizations.
+        The filter is intentionally English-only at the call site. It rejects
+        document/field labels, non-sensitive scheduling words, fragments embedded
+        inside larger identifiers, and known context-recognizer grammar failures.
+        Deterministic sensitive values are preserved unless the emitted span is
+        structurally impossible for the claimed entity.
         """
         filtered: list[Any] = []
         for result in results:
             entity_type = str(result.entity_type)
-            value = text[int(result.start) : int(result.end)].strip()
+            start = int(result.start)
+            end = int(result.end)
+            value = text[start:end].strip()
             normalized = " ".join(value.split()).casefold().strip(" .,:;#")
+            line_left = text.rfind("\n", 0, start) + 1
+            line_right = text.find("\n", end)
+            if line_right < 0:
+                line_right = len(text)
+            line = text[line_left:line_right]
+            line_normalized = " ".join(line.split()).casefold()
+
+            invalid_values = _EN_CONTEXT_VALUE_FALSE_VALUES.get(entity_type)
+            if invalid_values and normalized in invalid_values:
+                continue
 
             if entity_type == "UNIT_NUMBER":
                 if normalized in _UNIT_FALSE_VALUES:
@@ -198,19 +352,106 @@ class PresidioPrivacyEngine:
             if entity_type == "RENT_AMOUNT":
                 compact = re.sub(r"\s+", "", value)
                 if re.fullmatch(r"-\d{1,6}(?:\.0{1,2})?", compact):
-                    tail = text[int(result.end) : min(len(text), int(result.end) + 80)]
+                    tail = text[end : min(len(text), end + 80)]
                     same_sentence_tail = re.split(r"[\r\n.;]", tail, maxsplit=1)[0]
                     if _STREET_SUFFIX_RE.search(same_sentence_tail):
                         continue
 
+            if entity_type in {"PERSON", "ORGANIZATION", "LOCATION"}:
+                if normalized in _EN_NER_FIELD_NOISE:
+                    continue
+                if normalized in _EN_PUBLIC_TECH_PHRASES:
+                    continue
+                if re.fullmatch(r"ai\s*&\s*llms?\s*:\s*chatgpt", normalized):
+                    continue
+                if (
+                    entity_type == "ORGANIZATION"
+                    and re.search(r"\b(?:password|secret|token|credential|recovery code)\b", line_normalized)
+                    and not re.search(r"\s", value)
+                    and re.search(r"\d", value)
+                ):
+                    continue
+                if entity_type == "LOCATION" and _EN_LEGAL_SUFFIX_RE.search(value):
+                    continue
+
+            if entity_type == "DATE_TIME":
+                if normalized in _EN_NON_SENSITIVE_DATE_VALUES:
+                    continue
+                if re.fullmatch(r"box\s*#?\s*\d+", normalized):
+                    continue
+                if normalized == "last 4":
+                    continue
+                if re.search(
+                    r"\b(?:ein|employer identification|card last|last four|alarm code|security code)\b",
+                    line_normalized,
+                ) and not re.search(r"\b(?:dob|date of birth|born)\b", line_normalized):
+                    continue
+                if re.fullmatch(r"\d{8}", value) and re.search(
+                    r"\b(?:version|build|release)\b",
+                    line_normalized,
+                ):
+                    continue
+                if re.fullmatch(r"\d{4}", value) and re.search(
+                    r"\b(?:project|scheduled|version|build|alarm|security|access|pin|card)\b",
+                    line_normalized,
+                ):
+                    continue
+
+            if entity_type == "POSTAL_CODE":
+                prefix = text[max(line_left, start - 12) : start]
+                embedded_directly = start > 0 and text[start - 1].isalnum()
+                embedded_after_hyphen = bool(re.search(r"[A-Za-z0-9]-$", prefix))
+                id_context = bool(
+                    re.search(
+                        r"\b(?:id|identifier|account|contract|client|matter|iban|tenant|resident|invoice|case|lease|ein|license)\b",
+                        line_normalized,
+                    )
+                )
+                if embedded_directly or (embedded_after_hyphen and id_context):
+                    continue
+
+            if entity_type == "US_DRIVER_LICENSE" and re.search(
+                r"\b(?:ein|employer identification|contractor license)\b",
+                line_normalized,
+            ):
+                prefix = text[max(line_left, start - 10) : start]
+                if start > 0 and (text[start - 1] == "-" or re.search(r"[A-Za-z0-9]-$", prefix)):
+                    continue
+
             if entity_type == "ORGANIZATION":
                 if normalized in {"scan & protect", "scan and protect"}:
                     continue
-                tail = text[int(result.end) : min(len(text), int(result.end) + 48)]
+                tail = text[end : min(len(text), end + 48)]
                 if re.match(r"\s+property\s+(?:ids?|identifiers?)\b", tail, re.IGNORECASE):
                     continue
 
             filtered.append(result)
+        return filtered
+
+    @staticmethod
+    def _prefer_specific_english_results(results: list[Any]) -> list[Any]:
+        """Prefer a specific English PrivacyGate category over a generic overlap.
+
+        Presidio can emit a high-confidence generic DATE_TIME, POSTAL_CODE,
+        PHONE_NUMBER, bank number, or amount over the same characters recognized
+        by a more specific PrivacyGate category. Remove only the generic result
+        when an explicitly compatible specific category overlaps it; all other
+        candidates keep the normal score-based arbitration.
+        """
+        items = list(results)
+        filtered: list[Any] = []
+        for candidate in items:
+            entity_type = str(getattr(candidate, "entity_type", ""))
+            winners = _EN_GENERIC_LOSES_TO.get(entity_type)
+            if winners and any(
+                other is not candidate
+                and str(getattr(other, "entity_type", "")) in winners
+                and int(candidate.start) < int(other.end)
+                and int(other.start) < int(candidate.end)
+                for other in items
+            ):
+                continue
+            filtered.append(candidate)
         return filtered
 
     @staticmethod
