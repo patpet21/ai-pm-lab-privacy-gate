@@ -27,7 +27,7 @@ CONTEXT_RULES = (
     ),
     ContextRule(
         "US_PASSPORT",
-        rf"(?:u\.s\.[ \t]+)?passport(?:[ \t]*\(us\))?(?:[ \t]+(?:number|no\.?))?{_SEP}(?P<value>[A-Z0-9]{{6,12}})\b",
+        rf"(?:u\.s\.[ \t]+passport(?:[ \t]+(?:number|no\.?))?|passport[ \t]*\(us\)|passport[ \t]+(?:number|no\.?)){_SEP}(?P<value>[A-Z0-9]{{6,12}})\b",
         score=0.999,
     ),
     ContextRule(
