@@ -17,14 +17,15 @@ _ORGANIZATION_WITH_LEGAL_SUFFIX = (
     r"(?=\s|[,;:]|\.?$)"
 )
 
-# High-precision organization shapes learned from the local neural benchmark.
-# These are semantic institution/company prefixes rather than a generic
-# "capitalized words = organization" rule. The organization body is explicitly
-# case-sensitive even though labels elsewhere are matched case-insensitively.
+# High-precision organization shapes learned from the local semantic benchmarks.
+# The lead must be an institutional/business form and the proper-name body keeps
+# normal capitalization. This intentionally avoids a generic "capitalized words"
+# rule, which would damage precision on ordinary Italian prose.
 _ORGANIZATION_LEAD = (
-    r"(?:Agenzia\s+Immobiliare|Impresa\s+Edile|Studio\s+(?:Tecnico|Legale)|"
+    r"(?:Agenzia\s+(?:Immobiliare|Casa)|Impresa\s+(?:Edile|Costruzioni)|"
+    r"Gruppo\s+Immobiliare|Studio\s+(?:Tecnico|Legale|Notarile|Associato)|"
     r"Fondazione|Cooperativa|Amministrazioni|Consorzio|Condominio|Banca|"
-    r"Politecnico|Associazione)"
+    r"Politecnico|Associazione|Università|Ordine)"
 )
 _ORGANIZATION_NAME_TOKEN = r"[A-ZÀ-ÖØ-Þ][A-Za-zÀ-ÖØ-öø-ÿ'’-]{1,30}"
 _ORGANIZATION_CONNECTOR = r"(?:di|del|della|dei|degli|delle|e|&)"
@@ -35,6 +36,10 @@ _ORGANIZATION_BODY = (
 _SEMANTIC_ORGANIZATION = (
     rf"(?-i:{_ORGANIZATION_LEAD}\s+{_ORGANIZATION_BODY})"
 )
+# A proper organization can be followed by punctuation or ordinary lowercase
+# sentence continuation ("Condominio Parco Verde è convocato..."). The strong,
+# case-sensitive lead/body remains the precision gate.
+_ORGANIZATION_BOUNDARY = r"(?=\s*(?:[,.;:]|$|(?-i:[a-zà-öø-ÿ])))"
 
 
 def _looks_like_registry_number(value: str) -> bool:
@@ -51,7 +56,7 @@ def build_business_recognizers() -> tuple[ItalianContextValueRecognizer, ...]:
         ),
         ItalianContextValueRecognizer(
             entity_type="ORGANIZATION",
-            pattern=rf"(?P<value>{_SEMANTIC_ORGANIZATION})(?=\s*[,.;:]|$)",
+            pattern=rf"(?P<value>{_SEMANTIC_ORGANIZATION}){_ORGANIZATION_BOUNDARY}",
             score=0.992,
         ),
         ItalianContextValueRecognizer(

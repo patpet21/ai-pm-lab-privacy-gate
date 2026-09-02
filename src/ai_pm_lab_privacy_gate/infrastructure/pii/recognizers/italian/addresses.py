@@ -8,19 +8,17 @@ from ai_pm_lab_privacy_gate.infrastructure.pii.recognizers.italian.contextual im
 
 
 # Numbered civic addresses are strong enough to recognize without an additional
-# label. Support punctuation/"n." variants and Località, which are common in
-# Italian property documents. Provincial-road addresses need a dedicated shape
-# so the road number is not mistaken for the civic number.
+# label. Support punctuation/"n." variants and common Italian address forms.
 _STREET_PATTERN = (
     r"(?i)\b(?:via|viale|piazza|piazzale|corso|largo|vicolo|strada|lungomare|"
-    r"contrada|frazione|località|localita)\s+"
+    r"contrada|frazione|località|localita|salita|borgo)\s+"
     r"(?:[A-ZÀ-ÖØ-öø-ÿ0-9][\wÀ-ÖØ-öø-ÿ'’.-]*)"
     r"(?:\s+[A-ZÀ-ÖØ-öø-ÿ0-9][\wÀ-ÖØ-öø-ÿ'’.-]*){0,7}"
     r"\s*,?\s*(?:n(?:umero)?\.?\s*)?\d{1,5}[A-Z]?(?:[/\-][A-Z0-9]{1,4})?\b"
 )
 _CONTEXTUAL_NUMBERED_STREET = (
     r"(?:via|viale|piazza|piazzale|corso|largo|vicolo|strada|lungomare|"
-    r"contrada|frazione|località|localita)\s+"
+    r"contrada|frazione|località|localita|salita|borgo)\s+"
     r"(?:[A-ZÀ-ÖØ-öø-ÿ0-9][\wÀ-ÖØ-öø-ÿ'’.-]*)"
     r"(?:\s+[A-ZÀ-ÖØ-öø-ÿ0-9][\wÀ-ÖØ-öø-ÿ'’.-]*){0,7}"
     r"\s*,?\s*(?:n(?:umero)?\.?\s*)?\d{1,5}[A-Z]?(?:[/\-][A-Z0-9]{1,4})?\b"
@@ -33,14 +31,29 @@ _PROVINCIAL_ROAD_VALUE = (
     r"(?-i:Strada\s+Provinciale\s+\d{1,4}\s+"
     r"n(?:umero)?\.?\s*\d{1,5}[A-Z]?)"
 )
+_SP_CIVIC_PATTERN = (
+    r"(?i)\bS\.?\s*P\.?\s*\d{1,4}\s*,?\s*civico\s+"
+    r"\d{1,5}[A-Z]?(?:[/\-][A-Z0-9]{1,4})?\b"
+)
+_SS_ADDRESS_PATTERN = (
+    r"(?i)\bS\.?\s*S\.?\s*\d{1,4}"
+    r"(?:\s+[A-ZÀ-ÖØ-öø-ÿ][\wÀ-ÖØ-öø-ÿ'’.-]*){1,5}"
+    r"\s+\d{1,5}[A-Z]?(?:[/\-][A-Z0-9]{1,4})?\b"
+)
+
 # A street without a civic number is too broad to detect globally ("via libera"
 # is ordinary Italian). Accept it only after explicit residence/address context,
-# and require normal capitalization inside the street name.
+# and require normal capitalization in the proper street name. Lowercase Italian
+# connectors such as "delle" are allowed inside the name.
+_STREET_NAME_TOKEN = r"[A-ZÀ-ÖØ-Þ][A-Za-zÀ-ÖØ-öø-ÿ'’-]*"
+_STREET_NAME_CONNECTOR = (
+    r"(?:di|del|della|dei|degli|delle|da|dal|dallo|dalla|dai|dagli|sul|sulla|sui|sulle)"
+)
 _NAMED_STREET_NO_NUMBER = (
-    r"(?-i:(?:Via|Viale|Piazza|Piazzale|Corso|Largo|Vicolo|Strada|Lungomare|"
-    r"Contrada|Frazione|Località)\s+"
-    r"[A-ZÀ-ÖØ-Þ][A-Za-zÀ-ÖØ-öø-ÿ'’-]*"
-    r"(?:\s+[A-ZÀ-ÖØ-Þ][A-Za-zÀ-ÖØ-öø-ÿ'’-]*){0,5})"
+    rf"(?-i:(?:Via|Viale|Piazza|Piazzale|Corso|Largo|Vicolo|Strada|Lungomare|"
+    rf"Contrada|Frazione|Località|Salita|Borgo)\s+"
+    rf"(?:(?:{_STREET_NAME_CONNECTOR})\s+)?{_STREET_NAME_TOKEN}"
+    rf"(?:\s+(?:(?:{_STREET_NAME_CONNECTOR})\s+)?{_STREET_NAME_TOKEN}){{0,5}})"
 )
 
 
@@ -50,6 +63,8 @@ def build_address_recognizers() -> tuple[object, ...]:
             supported_entity="STREET_ADDRESS",
             supported_language="it",
             patterns=[
+                Pattern("italian_sp_civic_address", _SP_CIVIC_PATTERN, 0.985),
+                Pattern("italian_ss_named_address", _SS_ADDRESS_PATTERN, 0.98),
                 Pattern("italian_provincial_road_address", _PROVINCIAL_ROAD_PATTERN, 0.975),
                 Pattern("italian_street_address", _STREET_PATTERN, 0.96),
             ],

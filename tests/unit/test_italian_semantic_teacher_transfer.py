@@ -44,12 +44,40 @@ def test_teacher_organization_gaps_transfer_to_semantic_prefix_rules() -> None:
         assert expected in _values(recognizers, text, "ORGANIZATION")
 
 
+def test_blind_reusable_organization_shapes_transfer_safely() -> None:
+    cases = (
+        ("L'annuncio è gestito da Agenzia Casa Navigli.", "Agenzia Casa Navigli"),
+        ("I lavori sono affidati a Impresa Costruzioni Lombarda.", "Impresa Costruzioni Lombarda"),
+        ("L'assemblea di Condominio Parco Verde è convocata venerdì.", "Condominio Parco Verde"),
+        ("La ricerca è coordinata dall'Università degli Studi di Torino.", "Università degli Studi di Torino"),
+        ("Il parere è stato richiesto all'Ordine degli Ingegneri di Napoli.", "Ordine degli Ingegneri di Napoli"),
+        ("La pratica è seguita da Studio Associato Riva e Bassi.", "Studio Associato Riva e Bassi"),
+        ("La commercializzazione è curata da Gruppo Immobiliare Levante.", "Gruppo Immobiliare Levante"),
+    )
+    recognizers = build_business_recognizers()
+    for text, expected in cases:
+        assert expected in _values(recognizers, text, "ORGANIZATION")
+
+
 def test_teacher_street_gaps_transfer_without_global_numberless_street_rule() -> None:
     cases = (
         ("Il negozio è in Piazza della Repubblica, 5.", "Piazza della Repubblica, 5"),
         ("Il terreno confina con Località Cascina Nuova 7.", "Località Cascina Nuova 7"),
         ("Il proprietario risiede in Via Monte Napoleone.", "Via Monte Napoleone"),
         ("Il cantiere ha ingresso da Strada Provinciale 46 n. 7.", "Strada Provinciale 46 n. 7"),
+    )
+    recognizers = build_address_recognizers()
+    for text, expected in cases:
+        assert expected in _values(recognizers, text, "STREET_ADDRESS")
+
+
+def test_blind_reusable_street_shapes_transfer_safely() -> None:
+    cases = (
+        ("La proprietaria risiede in Via delle Magnolie.", "Via delle Magnolie"),
+        ("Il domicilio eletto è Salita Santa Lucia 16.", "Salita Santa Lucia 16"),
+        ("Il laboratorio è ubicato in Borgo San Frediano 27.", "Borgo San Frediano 27"),
+        ("Il cantiere è raggiungibile da SP 35, civico 8.", "SP 35, civico 8"),
+        ("La struttura ricettiva è sulla SS 16 Adriatica 105.", "SS 16 Adriatica 105"),
     )
     recognizers = build_address_recognizers()
     for text, expected in cases:
@@ -93,3 +121,31 @@ def test_teacher_transfer_rules_keep_benchmark_negatives_clean() -> None:
     assert not _values(addresses, "La piazza sarà riqualificata durante il prossimo anno.", "STREET_ADDRESS")
     assert not _values(addresses, "La società ha sede in città.", "STREET_ADDRESS")
     assert not _values(addresses, "Il residente in via alternativa non è specificato.", "STREET_ADDRESS")
+
+
+def test_blind_transfer_rules_keep_generic_language_clean() -> None:
+    businesses = build_business_recognizers()
+    addresses = build_address_recognizers()
+
+    organization_negatives = (
+        "La fondazione del muro richiede un nuovo calcolo strutturale.",
+        "Il consorzio deve approvare il bilancio entro dicembre.",
+        "L'agenzia immobiliare ha pubblicato un nuovo annuncio.",
+        "Lo studio notarile resterà chiuso nel pomeriggio.",
+        "Il condominio necessita di un intervento sulla facciata.",
+        "Il gruppo immobiliare valuterà nuove procedure interne.",
+        "L'ordine del giorno sarà approvato domani.",
+        "L'università resterà chiusa durante la festività.",
+    )
+    for text in organization_negatives:
+        assert not _values(businesses, text, "ORGANIZATION")
+
+    street_negatives = (
+        "Per arrivare al cantiere seguire la strada provinciale per sette chilometri.",
+        "La salita è ripida dopo il ponte.",
+        "Il borgo storico sarà riqualificato.",
+        "La SS sarà chiusa al traffico per manutenzione.",
+        "Il campo indirizzo può rimanere vuoto durante questa prova.",
+    )
+    for text in street_negatives:
+        assert not _values(addresses, text, "STREET_ADDRESS")
