@@ -9,6 +9,7 @@ from ai_pm_lab_privacy_gate.infrastructure.pii.recognizers.real_estate import (
 
 
 _SEP = r"[ \t]*(?::|=|#|[-–—])?[ \t]*(?:\r?\n[ \t]*)?"
+_DOB_SEP = r"[ \t]*(?:(?::|=|#|[-–—])|is\b)?[ \t]*(?:\r?\n[ \t]*)?"
 _DATE_VALUE = (
     r"(?:\d{1,2}[/-]\d{1,2}[/-]\d{2,4}|"
     r"\d{4}-\d{1,2}-\d{1,2}|"
@@ -32,7 +33,7 @@ CONTEXT_RULES = (
     ),
     ContextRule(
         "DATE_OF_BIRTH",
-        rf"(?:dob|date[ \t]+of[ \t]+birth|birth[ \t]+date)\b{_SEP}(?P<value>{_DATE_VALUE})\b",
+        rf"(?:dob|date[ \t]+of[ \t]+birth|birth[ \t]+date)\b{_DOB_SEP}(?P<value>{_DATE_VALUE})\b",
         score=0.999,
     ),
     ContextRule(
