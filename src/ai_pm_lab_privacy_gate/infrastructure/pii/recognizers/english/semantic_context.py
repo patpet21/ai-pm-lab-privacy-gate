@@ -33,7 +33,7 @@ CONTEXT_RULES = (
     ContextRule(
         "ORGANIZATION",
         rf"(?:employer|service\s+provider|organization)\b{_SEP}(?P<value>{_ORG_NAME})(?=$|[.;]|\r?$)",
-        score=0.997,
+        score=1.0,
     ),
     ContextRule(
         "LOCATION",
@@ -56,7 +56,7 @@ PATTERN_RECOGNIZERS = (
             Pattern(
                 "legal_suffix_organization",
                 r"(?<!\w)(?-i:[A-Z][A-Za-z0-9'’.-]*)(?:\s+(?:(?-i:[A-Z][A-Za-z0-9'’.-]*)|&)){0,6}\s*,?\s+(?:LLC|Inc\.?|Corp\.?|Corporation|Ltd\.?|Company|Co\.?)(?=$|[\s,;])",
-                0.996,
+                1.0,
             )
         ],
     ),
