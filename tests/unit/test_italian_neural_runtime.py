@@ -109,3 +109,62 @@ def test_neural_score_band_preserves_existing_overlap_priority() -> None:
         deterministic
     ]
     assert PresidioPrivacyEngine._without_overlaps([generic, neural]) == [neural]
+
+
+def test_italian_neural_subset_cannot_shrink_broader_standard_semantic_span() -> None:
+    standard_camera = SimpleNamespace(
+        entity_type="ORGANIZATION",
+        start=25,
+        end=54,
+        score=0.85,
+        recognition_metadata={"recognizer_name": "SpacyRecognizer"},
+    )
+    neural_bologna = SimpleNamespace(
+        entity_type="LOCATION",
+        start=47,
+        end=54,
+        score=0.931,
+        recognition_metadata={"recognizer_name": "ItalianNeuralPIIRecognizer"},
+    )
+    standard_institute = SimpleNamespace(
+        entity_type="ORGANIZATION",
+        start=28,
+        end=60,
+        score=0.85,
+        recognition_metadata={"recognizer_name": "SpacyRecognizer"},
+    )
+    neural_partial_institute = SimpleNamespace(
+        entity_type="ORGANIZATION",
+        start=37,
+        end=60,
+        score=0.907,
+        recognition_metadata={"recognizer_name": "ItalianNeuralPIIRecognizer"},
+    )
+
+    assert PresidioPrivacyEngine._without_overlaps(
+        [standard_camera, neural_bologna]
+    ) == [standard_camera]
+    assert PresidioPrivacyEngine._without_overlaps(
+        [standard_institute, neural_partial_institute]
+    ) == [standard_institute]
+
+
+def test_italian_neural_can_still_add_or_expand_when_standard_does_not_contain_it() -> None:
+    standard_partial = SimpleNamespace(
+        entity_type="ORGANIZATION",
+        start=10,
+        end=20,
+        score=0.85,
+        recognition_metadata={"recognizer_name": "SpacyRecognizer"},
+    )
+    neural_broader = SimpleNamespace(
+        entity_type="ORGANIZATION",
+        start=8,
+        end=24,
+        score=0.93,
+        recognition_metadata={"recognizer_name": "ItalianNeuralPIIRecognizer"},
+    )
+
+    assert PresidioPrivacyEngine._without_overlaps(
+        [standard_partial, neural_broader]
+    ) == [neural_broader]
