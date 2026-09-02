@@ -10,6 +10,7 @@ from ai_pm_lab_privacy_gate.infrastructure.pii.recognizers.real_estate import (
 
 _SEP = r"\s*(?::|#|=|[-–—])?\s*"
 _REQ_SEP = r"\s*(?::|#|=|[-–—])\s*"
+_LABEL_END = r"(?=\s|:|#|=|[-–—]|$)"
 _ID = r"(?=[A-Z0-9./-]*\d)[A-Z0-9][A-Z0-9./-]{2,39}"
 _AMOUNT = r"(?:USD\s*|[$€£]\s*)?\d[\d,]*(?:\.\d{1,2})?"
 _PERCENT_OR_AMOUNT = rf"(?:\d{{1,3}}(?:\.\d+)?\s*%|{_AMOUNT})"
@@ -26,12 +27,12 @@ CONTEXT_RULES = (
     ),
     ContextRule(
         "US_SSN",
-        rf"(?:ssn|social\s+security(?:\s+(?:number|no\.?))?)\b{_SEP}(?P<value>\d{{3}}-\d{{2}}-\d{{4}})\b",
+        rf"(?:ssn|social\s+security(?:\s+(?:number|no\.?))?){_LABEL_END}{_SEP}(?P<value>\d{{3}}-\d{{2}}-\d{{4}})\b",
         score=0.998,
     ),
     ContextRule(
         "US_ROUTING_NUMBER",
-        rf"(?:aba(?:\s+routing)?|bank\s+routing(?:\s+(?:number|no\.?))?|routing(?:\s+(?:number|no\.?))?)\b{_SEP}(?P<value>\d{{9}})\b",
+        rf"(?:aba(?:\s+routing)?|bank\s+routing(?:\s+(?:number|no\.?))?|routing(?:\s+(?:number|no\.?))?){_LABEL_END}{_SEP}(?P<value>\d{{9}})\b",
         score=0.998,
     ),
     ContextRule(
@@ -51,7 +52,7 @@ CONTEXT_RULES = (
     ),
     ContextRule(
         "BUSINESS_REGISTRATION_NUMBER",
-        rf"(?:business|company|registration)\s+(?:id|identifier|number|no\.?)\b{_SEP}(?P<value>{_ID})\b",
+        rf"(?:business|company|registration)\s+(?:id|identifier|number|no\.?){_LABEL_END}{_SEP}(?P<value>{_ID})\b",
         score=0.997,
     ),
     ContextRule(
@@ -71,32 +72,32 @@ CONTEXT_RULES = (
     ),
     ContextRule(
         "CUSTOMER_ID",
-        rf"(?:customer|client)\s+(?:number|no\.?|id|identifier)\b{_SEP}(?P<value>{_ID})\b",
+        rf"(?:customer|client)\s+(?:number|no\.?|id|identifier){_LABEL_END}{_SEP}(?P<value>{_ID})\b",
         score=0.997,
     ),
     ContextRule(
         "EMPLOYEE_ID",
-        rf"employee\s+(?:number|no\.?|id|identifier)\b{_SEP}(?P<value>{_ID})\b",
+        rf"employee\s+(?:number|no\.?|id|identifier){_LABEL_END}{_SEP}(?P<value>{_ID})\b",
         score=0.997,
     ),
     ContextRule(
         "CASE_REFERENCE",
-        rf"case\s+(?:number|no\.?|id|reference)\b{_SEP}(?P<value>{_ID})\b",
+        rf"case\s+(?:number|no\.?|id|reference){_LABEL_END}{_SEP}(?P<value>{_ID})\b",
         score=0.997,
     ),
     ContextRule(
         "HOUSING_LEGAL_CASE_ID",
-        rf"(?:legal\s+matter|housing\s+court\s+index|docket|eviction\s+case)(?:\s+(?:id|number|no\.?|reference))?\b{_SEP}(?P<value>{_ID})\b",
+        rf"(?:legal\s+matter|housing\s+court\s+index|docket|eviction\s+case)(?:\s+(?:id|number|no\.?|reference))?{_LABEL_END}{_SEP}(?P<value>{_ID})\b",
         score=0.997,
     ),
     ContextRule(
         "TENANT_ID",
-        rf"(?:tenant\s+(?:id|identifier)|resident\s+(?:account|id)|occupancy\s+id|tenant\s+ref\.?)\b{_SEP}(?P<value>{_ID})\b",
+        rf"(?:tenant\s+(?:id|identifier)|resident\s+(?:account|id)|occupancy\s+id|tenant\s+ref\.?){_LABEL_END}{_SEP}(?P<value>{_ID})\b",
         score=0.997,
     ),
     ContextRule(
         "LEASE_ID",
-        rf"lease\s+(?:id|identifier|number|no\.?)\b{_SEP}(?P<value>{_ID})\b",
+        rf"lease\s+(?:id|identifier|number|no\.?){_LABEL_END}{_SEP}(?P<value>{_ID})\b",
         score=0.997,
     ),
     ContextRule(
@@ -156,12 +157,12 @@ CONTEXT_RULES = (
     ),
     ContextRule(
         "CONTRACTOR_LICENSE",
-        rf"contractor(?:'s)?\s+licen[cs]e(?:\s+(?:id|number|no\.?))?\b{_SEP}(?P<value>{_ID})\b",
+        rf"contractor(?:'s)?\s+licen[cs]e(?:\s+(?:id|number|no\.?))?{_LABEL_END}{_SEP}(?P<value>{_ID})\b",
         score=0.998,
     ),
     ContextRule(
         "LIEN_WAIVER_ID",
-        rf"lien\s+waiver(?:\s+(?:id|number|no\.?|reference))?\b{_SEP}(?P<value>{_ID})\b",
+        rf"lien\s+waiver(?:\s+(?:id|number|no\.?|reference))?{_LABEL_END}{_SEP}(?P<value>{_ID})\b",
         score=0.998,
     ),
     ContextRule(
