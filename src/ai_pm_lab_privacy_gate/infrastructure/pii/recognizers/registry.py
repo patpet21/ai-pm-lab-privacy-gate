@@ -10,6 +10,9 @@ from ai_pm_lab_privacy_gate.infrastructure.pii.recognizers.english.address_v2 im
 from ai_pm_lab_privacy_gate.infrastructure.pii.recognizers.english.safe_recall import (
     install_english_safe_recall_recognizers,
 )
+from ai_pm_lab_privacy_gate.infrastructure.pii.recognizers.english.semantic_context import (
+    install_english_semantic_context_recognizers,
+)
 from ai_pm_lab_privacy_gate.infrastructure.pii.recognizers.italian import (
     install_italian_recognizers,
 )
@@ -29,6 +32,7 @@ _ENGLISH_INSTALLERS: list[RecognizerInstaller] = [
     install_universal_sensitive_recognizers,
     install_english_address_v2_recognizers,
     install_english_safe_recall_recognizers,
+    install_english_semantic_context_recognizers,
     install_real_estate_recognizers,
     install_real_estate_sensitive_pack_recognizers,
 ]
