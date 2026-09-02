@@ -28,6 +28,7 @@ _STREET_SUFFIX_RE = re.compile(
     r"Drive|Dr\.?|Court|Ct\.?|Parkway|Pkwy\.?|Highway|Hwy|Place|Pl\.?|Terrace|Ter\.?|Way)\b",
     re.IGNORECASE,
 )
+_ITALIAN_SEMANTIC_ENTITIES = {"PERSON", "ORGANIZATION", "LOCATION", "STREET_ADDRESS"}
 
 
 class PresidioPrivacyEngine:
@@ -237,11 +238,56 @@ class PresidioPrivacyEngine:
         ]
 
     @staticmethod
-    def _without_overlaps(results: list[Any]) -> list[Any]:
-        """Prefer high-confidence contextual IDs over generic numeric guesses."""
+    def _is_italian_neural_result(result: Any) -> bool:
+        """Identify only PrivacyGate's optional Italian neural semantic layer."""
+        metadata = getattr(result, "recognition_metadata", None) or {}
+        recognizer_name = str(
+            metadata.get("recognizer_name")
+            or metadata.get("recognizer_identifier")
+            or ""
+        )
+        return "italianneuralpiirecognizer" in recognizer_name.casefold()
+
+    @classmethod
+    def _prefer_standard_over_contained_italian_neural(cls, results: list[Any]) -> list[Any]:
+        """Prevent Advanced Italian from shrinking a valid Standard semantic span.
+
+        The optional neural model is a recall layer. If it predicts only a strict
+        substring of an already-recognized Standard PERSON/ORG/LOCATION/STREET span,
+        keep the broader Standard value even when the neural confidence is higher.
+        This is source-specific, so English and unrelated recognizers are unchanged.
+        """
+        items = list(results)
+        standard_semantic = [
+            item
+            for item in items
+            if not cls._is_italian_neural_result(item)
+            and str(getattr(item, "entity_type", "")) in _ITALIAN_SEMANTIC_ENTITIES
+        ]
+        filtered: list[Any] = []
+        for candidate in items:
+            if (
+                cls._is_italian_neural_result(candidate)
+                and str(getattr(candidate, "entity_type", "")) in _ITALIAN_SEMANTIC_ENTITIES
+                and any(
+                    int(container.start) <= int(candidate.start)
+                    and int(container.end) >= int(candidate.end)
+                    and (int(container.start), int(container.end))
+                    != (int(candidate.start), int(candidate.end))
+                    for container in standard_semantic
+                )
+            ):
+                continue
+            filtered.append(candidate)
+        return filtered
+
+    @classmethod
+    def _without_overlaps(cls, results: list[Any]) -> list[Any]:
+        """Prefer high-confidence results after source-aware Italian arbitration."""
+        candidates = cls._prefer_standard_over_contained_italian_neural(list(results))
         accepted: list[Any] = []
         for candidate in sorted(
-            results,
+            candidates,
             key=lambda item: (-item.score, -(item.end - item.start), item.start),
         ):
             if any(candidate.start < current.end and current.start < candidate.end for current in accepted):
