@@ -49,7 +49,7 @@ def test_semantic_organization_context_and_legal_suffix_forms() -> None:
     assert _pattern_values(
         "ORGANIZATION",
         "Invoice issued by Cedar & Stone Design, Inc.",
-    ) == {"Cedar & Stone Design, Inc"}
+    ) == {"Cedar & Stone Design, Inc."}
     assert _context_values(
         "ORGANIZATION",
         "Employer\nBrightline Analytics Group",
@@ -57,7 +57,7 @@ def test_semantic_organization_context_and_legal_suffix_forms() -> None:
     assert _context_values(
         "ORGANIZATION",
         "Service provider — East River Mechanical Corp.",
-    ) == {"East River Mechanical Corp"}
+    ) == {"East River Mechanical Corp."}
 
 
 def test_semantic_location_context_recovers_named_places() -> None:
@@ -114,8 +114,8 @@ Meeting location = White Plains
         ("PERSON", "Darnell Washington, Jr."),
         ("PERSON", "Amina El-Sayed"),
         ("ORGANIZATION", "North Harbor Facilities LLC"),
-        ("ORGANIZATION", "Cedar & Stone Design, Inc"),
-        ("ORGANIZATION", "East River Mechanical Corp"),
+        ("ORGANIZATION", "Cedar & Stone Design, Inc."),
+        ("ORGANIZATION", "East River Mechanical Corp."),
         ("ORGANIZATION", "Brightline Analytics Group"),
         ("LOCATION", "Santa Fe"),
         ("LOCATION", "District of Columbia"),
