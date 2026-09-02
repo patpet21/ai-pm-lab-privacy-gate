@@ -7,6 +7,9 @@ from presidio_analyzer import RecognizerRegistry
 from ai_pm_lab_privacy_gate.infrastructure.pii.recognizers.english.address_v2 import (
     install_english_address_v2_recognizers,
 )
+from ai_pm_lab_privacy_gate.infrastructure.pii.recognizers.english.residual_cleanup import (
+    install_english_residual_cleanup_recognizers,
+)
 from ai_pm_lab_privacy_gate.infrastructure.pii.recognizers.english.safe_recall import (
     install_english_safe_recall_recognizers,
 )
@@ -33,6 +36,7 @@ _ENGLISH_INSTALLERS: list[RecognizerInstaller] = [
     install_english_address_v2_recognizers,
     install_english_safe_recall_recognizers,
     install_english_semantic_context_recognizers,
+    install_english_residual_cleanup_recognizers,
     install_real_estate_recognizers,
     install_real_estate_sensitive_pack_recognizers,
 ]
