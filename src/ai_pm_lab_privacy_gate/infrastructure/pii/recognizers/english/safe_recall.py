@@ -9,6 +9,7 @@ from ai_pm_lab_privacy_gate.infrastructure.pii.recognizers.real_estate import (
 
 
 _SEP = r"\s*(?::|#|=|[-–—])?\s*"
+_REQ_SEP = r"\s*(?::|#|=|[-–—])\s*"
 _ID = r"(?=[A-Z0-9./-]*\d)[A-Z0-9][A-Z0-9./-]{2,39}"
 _AMOUNT = r"(?:USD\s*|[$€£]\s*)?\d[\d,]*(?:\.\d{1,2})?"
 _PERCENT_OR_AMOUNT = rf"(?:\d{{1,3}}(?:\.\d+)?\s*%|{_AMOUNT})"
@@ -165,7 +166,7 @@ CONTEXT_RULES = (
     ),
     ContextRule(
         "WIFI_CREDENTIAL",
-        rf"(?:building\s+)?wi[- ]?fi\s+(?:password|passphrase|pwd)\b{_SEP}(?P<value>{_SECRET})",
+        rf"(?:building\s+)?wi[- ]?fi\s+(?:password|passphrase|pwd)\b{_REQ_SEP}(?P<value>{_SECRET})",
         score=0.998,
     ),
 )
