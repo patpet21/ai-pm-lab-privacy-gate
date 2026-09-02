@@ -24,6 +24,8 @@ FINANCIAL_SENSITIVE_ENTITIES = (
     "US_BANK_NUMBER",
     "US_ROUTING_NUMBER",
     "SWIFT_BIC",
+    "IBAN_CODE",
+    "CRYPTO",
     "CARD_LAST_FOUR",
     "CARD_TRANSACTION_ID",
     "TRANSFER_TRANSACTION_ID",
@@ -46,6 +48,18 @@ BUSINESS_CONFIDENTIAL_ENTITIES = (
     "CUSTOMER_ID",
     "EMPLOYEE_ID",
     "CASE_REFERENCE",
+)
+
+TECHNICAL_SECRET_ENTITIES = (
+    "API_KEY",
+    "ACCESS_TOKEN",
+    "JWT_TOKEN",
+    "OAUTH_SECRET",
+    "CLOUD_CREDENTIAL",
+    "DATABASE_CREDENTIAL",
+    "WEBHOOK_SECRET",
+    "PRIVATE_KEY",
+    "MAC_ADDRESS",
 )
 
 OPERATIONAL_IDENTIFIER_ENTITIES = (
@@ -167,12 +181,13 @@ def _merge_entities(*groups: tuple[str, ...]) -> tuple[str, ...]:
 
 # Universal core used by the default profile and inherited by vertical profiles.
 # Keep vertical-only identifiers (tenant/lease/BBL/unit/etc.) out of this base.
-# US_EIN is intentionally universal: it is a general business/tax identifier,
-# not a real-estate-only concept.
+# Technical secrets live in the core so Maximum/Custom can expose them, while
+# Essential/Financial/Business remain filtered by their explicit scope allowlists.
 GENERAL_CORE_ENTITIES = _merge_entities(
     COMMON_US_ENTITIES,
     FINANCIAL_SENSITIVE_ENTITIES,
     BUSINESS_CONFIDENTIAL_ENTITIES,
+    TECHNICAL_SECRET_ENTITIES,
     ("US_EIN", "DATE_TIME"),
 )
 
