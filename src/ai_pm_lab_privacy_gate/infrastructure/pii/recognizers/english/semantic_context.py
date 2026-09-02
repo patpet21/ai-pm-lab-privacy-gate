@@ -55,7 +55,7 @@ PATTERN_RECOGNIZERS = (
         patterns=[
             Pattern(
                 "legal_suffix_organization",
-                r"(?<!\w)(?:[A-Z][A-Za-z0-9'’.-]*|&)(?:\s+(?:[A-Z][A-Za-z0-9'’.-]*|&)){1,7}\s*,?\s+(?:LLC|Inc\.?|Corp\.?|Corporation|Ltd\.?|Company|Co\.?)\b",
+                r"(?<!\w)(?-i:[A-Z][A-Za-z0-9'’.-]*)(?:\s+(?:(?-i:[A-Z][A-Za-z0-9'’.-]*)|&)){0,6}\s*,?\s+(?:LLC|Inc\.?|Corp\.?|Corporation|Ltd\.?|Company|Co\.?)\b",
                 0.996,
             )
         ],
