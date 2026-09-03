@@ -89,6 +89,7 @@ _EN_CONTEXT_VALUE_FALSE_VALUES = {
     "INSURANCE_POLICY_ID": {"follows", "next"},
     "INVOICE_NUMBER": {"issued", "processing", "total"},
     "MAINTENANCE_TICKET_ID": {"management"},
+    "PASSWORD_CREDENTIAL": {"requirement", "requirements"},
     "VEHICLE_LICENSE_PLATE": {"is ready for"},
 }
 _EN_GENERIC_LOSES_TO = {
