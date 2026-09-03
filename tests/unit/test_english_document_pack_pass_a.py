@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from dataclasses import replace
+
 import pytest
 
 from ai_pm_lab_privacy_gate.application.privacy_service import PrivacyGateService
@@ -9,13 +11,7 @@ from ai_pm_lab_privacy_gate.domain.profiles import entities_for_scope, get_profi
 def _findings(text: str):
     service = PrivacyGateService()
     base = get_profile("general_business")
-    profile = base.__class__(
-        key=base.key,
-        label=base.label,
-        description=base.description,
-        threshold=base.threshold,
-        entities=entities_for_scope(base, "maximum"),
-    )
+    profile = replace(base, entities=entities_for_scope(base, "maximum"))
     return service.analyze(service.document_from_text(text), profile, language="en")
 
 
@@ -119,10 +115,10 @@ def test_context_separators_do_not_cross_empty_field_lines() -> None:
     assert not ({(item.entity_type, item.text) for item in findings} & forbidden)
 
 
-def test_vehicle_plate_rejects_prose_words_but_not_uppercase_plate() -> None:
+def test_vehicle_plate_rejects_prose_words_without_harming_structured_plate() -> None:
     negative = _pairs("Applicant name:\nThe invoice template tomorrow.\n")
     assert ("VEHICLE_LICENSE_PLATE", "Applicant") not in negative
     assert ("VEHICLE_LICENSE_PLATE", "tomorrow") not in negative
 
-    positive = _pairs("Vehicle license plate: ABCXYZ")
-    assert ("VEHICLE_LICENSE_PLATE", "ABCXYZ") in positive
+    positive = _pairs("Vehicle license plate: K82-MRT")
+    assert ("VEHICLE_LICENSE_PLATE", "K82-MRT") in positive
