@@ -8,8 +8,8 @@ from ai_pm_lab_privacy_gate.infrastructure.pii.recognizers.real_estate import (
 )
 
 
-_SEP = r"\s*(?::|#|=|[-–—])?\s*"
-_REQ_SEP = r"\s*(?::|#|=|[-–—])\s*"
+_SEP = r"[ \t]*(?::|#|=|[-–—])?[ \t]*(?:\r?\n[ \t]*)?"
+_REQ_SEP = r"[ \t]*(?::|#|=|[-–—])[ \t]*(?:\r?\n[ \t]*)?"
 _LABEL_END = r"(?=\s|:|#|=|[-–—]|$)"
 _ID = r"(?=[A-Z0-9./-]*\d)[A-Z0-9][A-Z0-9./-]{2,39}"
 _AMOUNT = r"(?:USD\s*|[$€£]\s*)?\d[\d,]*(?:\.\d{1,2})?"
@@ -62,7 +62,7 @@ CONTEXT_RULES = (
     ),
     ContextRule(
         "PURCHASE_ORDER_ID",
-        rf"(?:purchase\s+order|p\.?\s*o\.?)\s*(?:number|no\.?|id)?{_SEP}(?P<value>{_ID})\b",
+        rf"(?:purchase[ \t]+order|p\.?[ \t]*o\.?){_LABEL_END}[ \t]*(?:number|no\.?|id)?{_SEP}(?P<value>{_ID})\b",
         score=0.997,
     ),
     ContextRule(

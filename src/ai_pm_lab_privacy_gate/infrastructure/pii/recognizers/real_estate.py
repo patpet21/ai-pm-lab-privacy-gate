@@ -50,14 +50,14 @@ class ContextValueRecognizer(EntityRecognizer):
         return results
 
 
-_LABEL_SEPARATOR = r"\s*(?::|=|#|number\b|no\.?\b)?\s*"
+_LABEL_SEPARATOR = r"[ \t]*(?::|=|#|number\b|no\.?\b)?[ \t]*"
 
 
 # Privacy Gate Real Estate expansion helpers.
 # Keep these patterns contextual: the goal is higher recall without turning
 # ordinary numbers, words or public real-estate facts into sensitive findings.
 _PERSON_TOKEN = r"(?!(?:LLC|L\.L\.C\.?|Inc\.?|Corp\.?|Corporation|Company|Co\.?|Holdings|Management|Solutions|Services|Group|Bank|Realty|Properties)\b)[A-Z][A-Za-z'’.-]{1,30}"
-_PERSON_NAME = rf"(?-i:{_PERSON_TOKEN}(?:\s+(?:{_PERSON_TOKEN}|[A-Z]\.)){{1,3}})"
+_PERSON_NAME = rf"(?-i:{_PERSON_TOKEN}(?:[ \t]+(?:{_PERSON_TOKEN}|[A-Z]\.)){{1,3}})"
 _ACCOUNT_VALUE = r"\d(?:[\s-]?\d){5,16}"
 _CODE_VALUE = r"(?=[A-Z0-9#*.-]*\d)[A-Z0-9#*.-]{3,24}"
 _CODE_END = r"(?=$|[\s,;.)\]\}])"
@@ -76,6 +76,10 @@ CONTEXT_RULES = (
     ContextRule(
         "US_PASSPORT",
         rf"passport(?:\s+(?:number|no\.?))?(?=\s|:|#){_LABEL_SEPARATOR}(?P<value>[A-Z0-9]{{6,12}})\b",
+    ),
+    ContextRule(
+        "US_PASSPORT",
+        r"passport(?:[ \t]+(?:number|no\.?))?[ \t]*(?::|#)?[ \t]*\r?\n[ \t]*(?P<value>(?=[A-Z0-9]{0,11}\d)[A-Z0-9]{6,12})\b",
     ),
     ContextRule(
         "US_ROUTING_NUMBER",
@@ -140,6 +144,11 @@ CONTEXT_RULES = (
     ContextRule(
         "UNIT_NUMBER",
         rf"(?:apartment|apt\.?|unit)\b{_LABEL_SEPARATOR}(?P<value>[A-Z0-9][A-Z0-9-]{{0,9}})\b",
+        score=0.91,
+    ),
+    ContextRule(
+        "UNIT_NUMBER",
+        r"(?:apartment|apt\.?|unit)(?:[ \t]+number)?[ \t]*(?::|#|=)?[ \t]*\r?\n[ \t]*(?P<value>(?=[A-Z0-9-]*\d)[A-Z0-9][A-Z0-9-]{0,9})\b",
         score=0.91,
     ),
     ContextRule(
@@ -219,7 +228,7 @@ CONTEXT_RULES = (
     # Real-estate role labels: deliberately limited to person-oriented labels.
     ContextRule(
         "PERSON",
-        rf"(?:tenant|resident|applicant|borrower|buyer|seller|managing\s+member|emergency\s+contact|broker\s+contact|contact\s+person|requested\s+by|approved\s+by|assigned\s+to|submitted\s+by|prepared\s+by)\b\s*[:#-]?\s*(?P<value>{_PERSON_NAME})(?=\s*(?:[,;|/]|\r?$|\b(?:email|phone|tenant\s+id|resident\s+id|dob)\b))",
+        rf"(?:resident\s+contact|tenant|resident|applicant|borrower|buyer|seller|guarantor|insured|technician|project\s+manager|authorized\s+signer|administrator|superintendent|managing\s+member|emergency\s+contact|broker\s+contact|contact\s+person|requested\s+by|approved\s+by|assigned\s+to|submitted\s+by|prepared\s+by)\b[ \t]*[:#-]?[ \t]*(?P<value>{_PERSON_NAME})(?=[ \t]*(?:[,;|/]|\r?$|\b(?:email|phone|tenant\s+id|resident\s+id|dob)\b))",
         score=0.96,
     ),
     # Rent-roll rows: Unit + Person + structured tenant/resident ID.

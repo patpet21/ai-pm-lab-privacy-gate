@@ -219,6 +219,48 @@ _CONTEXT_FALSE_VALUES = {
     "TENANT_ID": {"field", "fields", "mapping"},
     "WIFI_CREDENTIAL": {"requirement", "requirements"},
 }
+_DOCUMENT_HEADING_TERMS = {
+    "application",
+    "controls",
+    "coordination",
+    "follow-up",
+    "form",
+    "glossary",
+    "handout",
+    "instructions",
+    "intake",
+    "memo",
+    "note",
+    "reconciliation",
+    "record",
+    "report",
+    "routing",
+    "schedule",
+    "sheet",
+    "snapshot",
+    "summary",
+    "template",
+    "worksheet",
+}
+_FIELD_LABEL_MARKERS = {
+    "access",
+    "account",
+    "address",
+    "amount",
+    "code",
+    "contact",
+    "email",
+    "id",
+    "number",
+    "phone",
+    "proceeds",
+}
+_MULTILINE_NER_NEXT_FIELD_RE = re.compile(
+    r"^(?:applicant|tenant|resident|contact|design|insurance|project|phone|email|vendor|"
+    r"contractor|employee|customer|broker|property|lease|invoice|policy|claim|mobile|"
+    r"mailing|forwarding|service|site|administrator|work|unit|safe|lockbox)\b",
+    re.IGNORECASE,
+)
 _PROCEDURE_LINE_RE = re.compile(
     r"\b(?:open|select|upload|run|review|verify|save|download|inspect)\b",
     re.IGNORECASE,
@@ -307,6 +349,26 @@ def _is_document_structure_noise(
     left, right = _line_bounds(text, start, end)
     line = text[left:right]
     normalized_line = _normalize(line)
+
+    letters_only = re.sub(r"[^A-Za-z]+", "", raw)
+    if (
+        letters_only
+        and letters_only.isupper()
+        and any(term in clean for term in _DOCUMENT_HEADING_TERMS)
+        and not _LEGAL_SUFFIX_RE.search(value)
+    ):
+        return True
+
+    colon = line.find(":")
+    if colon >= 0 and end <= left + colon:
+        raw_label = line[:colon]
+        label = _normalize(raw_label)
+        if (
+            len(raw_label) <= 64
+            and not re.search(r"[.;!?]", raw_label)
+            and any(re.search(rf"\b{re.escape(marker)}\b", label) for marker in _FIELD_LABEL_MARKERS)
+        ):
+            return True
 
     if _SCHEMA_LABEL_RE.fullmatch(raw):
         return True
@@ -438,6 +500,11 @@ def filter_english_ner_results(
     for result in results:
         value = text[result.start : result.end]
         entity_type = str(result.entity_type)
+
+        if _is_statistical_ner_result(result) and "\n" in value:
+            trailing = value.split("\n", 1)[1].strip()
+            if _MULTILINE_NER_NEXT_FIELD_RE.match(trailing):
+                continue
 
         if _is_source_independent_false_positive(
             text,

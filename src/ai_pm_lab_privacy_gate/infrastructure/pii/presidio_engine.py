@@ -101,16 +101,29 @@ _EN_CONTEXT_VALUE_FALSE_VALUES = {
     "VEHICLE_LICENSE_PLATE": {"is ready for"},
 }
 _EN_SCHEMA_FALSE_VALUES = {
+    "amount",
+    "applicant",
+    "can",
     "column",
     "columns",
     "field",
     "fields",
     "format",
     "formatting",
+    "guidance",
+    "intake",
+    "language",
+    "lease",
     "mapping",
+    "monthly",
+    "reference",
     "requirement",
     "requirements",
     "review",
+    "summary",
+    "template",
+    "vendor",
+    "work",
     "workflow",
 }
 _EN_SCHEMA_VALUE_ENTITIES = {
@@ -384,10 +397,17 @@ class PresidioPrivacyEngine:
             if (
                 normalized in _EN_SCHEMA_FALSE_VALUES
                 and (
-                    entity_type.endswith(("_ID", "_REFERENCE"))
+                    entity_type.endswith(("_ID", "_REFERENCE", "_NUMBER"))
                     or entity_type in _EN_SCHEMA_VALUE_ENTITIES
                 )
                 and not re.search(r"\d", value)
+            ):
+                continue
+
+            if (
+                entity_type == "VEHICLE_LICENSE_PLATE"
+                and not re.search(r"\d", value)
+                and value != value.upper()
             ):
                 continue
 

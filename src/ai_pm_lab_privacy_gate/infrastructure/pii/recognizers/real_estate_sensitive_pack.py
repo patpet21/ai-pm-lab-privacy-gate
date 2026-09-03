@@ -8,9 +8,9 @@ from ai_pm_lab_privacy_gate.infrastructure.pii.recognizers.real_estate import (
 )
 
 
-_SEP = r"\s*(?::|=|#|number\b|no\.?\b|ref\.?\b)?\s*"
-_ID = r"[A-Z0-9][A-Z0-9./-]{2,39}"
-_AMOUNT = r"(?:[-+]?\s*(?:USD[ \t]*|[$€£][ \t]*)?\d[\d,]*(?:\.\d{1,2})?(?:[ \t]*(?:[KMB]|USD|EUR|GBP))?|\([ \t]*[$€£]?[ \t]*\d[\d,]*(?:\.\d{1,2})?[ \t]*\))"
+_SEP = r"[ \t]*(?::|=|#|number\b|no\.?\b|ref\.?\b)?[ \t]*"
+_ID = r"(?=[A-Z0-9./-]*\d)[A-Z0-9][A-Z0-9./-]{2,39}"
+_AMOUNT = r"(?:[-+]?[ \t]*(?:USD[ \t]*|[$€£][ \t]*)?\d[\d,]*(?:\.\d{1,2})?(?:[ \t]*(?:[KMB]|USD|EUR|GBP))?|\([ \t]*[$€£]?[ \t]*\d[\d,]*(?:\.\d{1,2})?[ \t]*\))"
 _DATE = r"(?:\d{1,2}[/-]\d{1,2}[/-]\d{2,4}|\d{4}-\d{2}-\d{2}|[A-Z][a-z]{2,8}\s+\d{1,2}(?:,?\s+\d{4})?(?:\s*-\s*\d{1,2})?)"
 _RATE_OR_AMOUNT = rf"(?:\d{{1,3}}(?:\.\d+)?\s*%|\d{{1,3}}\s*/\s*\d{{1,3}}\s+split|one\s+month(?:'s)?\s+rent|{_AMOUNT})"
 
@@ -132,6 +132,7 @@ CONTEXT_RULES = (
     ContextRule("PERMIT_ID", rf"(?:(?:building|construction|electrical|plumbing|mechanical|work)\s+)?permit(?:\s+(?:id|number|no\.?|#|reference|ref\.?))?{_SEP}(?P<value>(?=[A-Z0-9./-]*\d){_ID})\b", score=0.96),
     ContextRule("LIEN_WAIVER_ID", rf"(?:lien\s+waiver|lien\s+release|conditional\s+waiver|unconditional\s+waiver)(?:\s+(?:id|reference|ref\.?|number|no\.?))?{_SEP}(?P<value>(?=[A-Z0-9./-]*\d){_ID})\b", score=0.965),
     ContextRule("COI_REFERENCE", rf"(?:certificate\s+of\s+insurance|coi)(?:\s+(?:id|reference|ref\.?|number|no\.?))?{_SEP}(?P<value>(?=[A-Z0-9./-]*\d){_ID})\b", score=0.965),
+    ContextRule("COI_REFERENCE", rf"(?:certificate[ \t]+of[ \t]+insurance|coi)(?:[ \t]+(?:id|reference|ref\.?|number|no\.?))?[ \t]*(?::|#|=)?[ \t]*\r?\n[ \t]*(?P<value>(?=[A-Z0-9./-]*\d){_ID})\b", score=0.965),
     ContextRule("INSURANCE_CLAIM_AMOUNT", rf"(?:insurance\s+)?claim(?:\s+(?:amount|reserve|paid|settlement))\b{_SEP}(?P<value>{_AMOUNT})", score=0.98),
     ContextRule("INSURANCE_DEDUCTIBLE_AMOUNT", rf"(?:insurance\s+|policy\s+)?deductible(?:\s+(?:amount))?\b{_SEP}(?P<value>{_AMOUNT})", score=0.975),
 
