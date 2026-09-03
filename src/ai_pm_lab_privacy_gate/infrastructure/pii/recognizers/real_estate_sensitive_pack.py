@@ -8,9 +8,9 @@ from ai_pm_lab_privacy_gate.infrastructure.pii.recognizers.real_estate import (
 )
 
 
-_SEP = r"\s*(?::|#|number\b|no\.?\b|ref\.?\b)?\s*"
+_SEP = r"\s*(?::|=|#|number\b|no\.?\b|ref\.?\b)?\s*"
 _ID = r"[A-Z0-9][A-Z0-9./-]{2,39}"
-_AMOUNT = r"(?:[-+]?\s*(?:USD\s*|[$€£]\s*)?\d[\d,]*(?:\.\d{1,2})?\s*(?:[KMB]|USD|EUR|GBP)?|\(\s*[$€£]?\s*\d[\d,]*(?:\.\d{1,2})?\s*\))"
+_AMOUNT = r"(?:[-+]?\s*(?:USD[ \t]*|[$€£][ \t]*)?\d[\d,]*(?:\.\d{1,2})?(?:[ \t]*(?:[KMB]|USD|EUR|GBP))?|\([ \t]*[$€£]?[ \t]*\d[\d,]*(?:\.\d{1,2})?[ \t]*\))"
 _DATE = r"(?:\d{1,2}[/-]\d{1,2}[/-]\d{2,4}|\d{4}-\d{2}-\d{2}|[A-Z][a-z]{2,8}\s+\d{1,2}(?:,?\s+\d{4})?(?:\s*-\s*\d{1,2})?)"
 _RATE_OR_AMOUNT = rf"(?:\d{{1,3}}(?:\.\d+)?\s*%|\d{{1,3}}\s*/\s*\d{{1,3}}\s+split|one\s+month(?:'s)?\s+rent|{_AMOUNT})"
 

@@ -50,7 +50,7 @@ class ContextValueRecognizer(EntityRecognizer):
         return results
 
 
-_LABEL_SEPARATOR = r"\s*(?::|#|number\b|no\.?\b)?\s*"
+_LABEL_SEPARATOR = r"\s*(?::|=|#|number\b|no\.?\b)?\s*"
 
 
 # Privacy Gate Real Estate expansion helpers.

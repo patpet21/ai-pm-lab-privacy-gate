@@ -126,6 +126,11 @@ CONTEXT_RULES = (
         score=0.998,
     ),
     ContextRule(
+        "PROJECT_BUDGET_AMOUNT",
+        rf"(?:project|renovation|capital[ \t]+project)[ \t]+budget(?:[ \t]+amount)?\b{_SEP}(?P<value>{_AMOUNT})",
+        score=0.998,
+    ),
+    ContextRule(
         "RENT_AMOUNT",
         rf"(?:monthly|legal|preferential|contract|asking)?\s*rent(?:\s+amount)?\b{_SEP}(?P<value>{_AMOUNT})",
         score=0.998,

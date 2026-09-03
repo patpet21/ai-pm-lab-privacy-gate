@@ -54,6 +54,47 @@ CONTEXT_RULES = (
         rf"webhook(?:[ \t]+signing)?[ \t]+secret{_SEP}(?P<value>whsec_[A-Za-z0-9_-]{{16,}})\b",
         score=1.0,
     ),
+    # Blind-v2 Pass A: realistic aliases with strong labels and structured values.
+    ContextRule(
+        "API_KEY",
+        rf"openai[ \t]+key{_SEP}(?P<value>sk-(?:proj-)?[A-Za-z0-9_-]{{20,}})\b",
+        score=1.0,
+    ),
+    ContextRule(
+        "API_KEY",
+        rf"service[ \t]+api[ \t]+key{_SEP}(?P<value>api_[A-Za-z0-9_-]{{16,}})\b",
+        score=1.0,
+    ),
+    ContextRule(
+        "ACCESS_TOKEN",
+        rf"access[ \t]+token{_SEP}(?P<value>pat_(?:live|test)_[A-Za-z0-9_-]{{16,}})\b",
+        score=1.0,
+    ),
+    ContextRule(
+        "JWT_TOKEN",
+        rf"(?:bearer[ \t]+token|jwt){_SEP}(?P<value>[A-Za-z0-9_-]{{8,}}\.[A-Za-z0-9_-]{{8,}}\.[A-Za-z0-9_-]{{8,}})\b",
+        score=1.0,
+    ),
+    ContextRule(
+        "OAUTH_SECRET",
+        rf"client[ \t]+secret{_SEP}(?P<value>clientSecret_[A-Za-z0-9_-]{{12,}})\b",
+        score=1.0,
+    ),
+    ContextRule(
+        "CLOUD_CREDENTIAL",
+        rf"cloud[ \t]+access[ \t]+key{_SEP}(?P<value>(?:AKIA|ASIA)[A-Z0-9]{{15,16}})\b",
+        score=1.0,
+    ),
+    ContextRule(
+        "DATABASE_CREDENTIAL",
+        rf"mongo[ \t]+connection{_SEP}(?P<value>mongodb(?:\+srv)?:\/\/[^\s:@/]+:[^\s@/]+@[^\s]+)",
+        score=1.0,
+    ),
+    ContextRule(
+        "WEBHOOK_SECRET",
+        rf"(?:webhook[ \t]+secret|signing[ \t]+secret){_SEP}(?P<value>whsec_[A-Za-z0-9_-]{{12,}})\b",
+        score=1.0,
+    ),
     ContextRule(
         "MAC_ADDRESS",
         rf"(?:device[ \t]+)?mac(?:[ \t]+address)?{_SEP}(?P<value>(?:[0-9A-F]{{2}}:){{5}}[0-9A-F]{{2}})\b",

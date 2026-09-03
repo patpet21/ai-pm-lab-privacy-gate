@@ -42,6 +42,14 @@ _EN_NER_FIELD_NOISE = {
     "driver",
     "email",
     "hpd complaint",
+    "beneficiary bic",
+    "eur",
+    "gbp",
+    "itin",
+    "jwt",
+    "nyc bbl",
+    "password",
+    "usd",
     "housing court",
     "iban",
     "invoice id",
@@ -92,6 +100,25 @@ _EN_CONTEXT_VALUE_FALSE_VALUES = {
     "PASSWORD_CREDENTIAL": {"requirement", "requirements"},
     "VEHICLE_LICENSE_PLATE": {"is ready for"},
 }
+_EN_SCHEMA_FALSE_VALUES = {
+    "column",
+    "columns",
+    "field",
+    "fields",
+    "format",
+    "formatting",
+    "mapping",
+    "requirement",
+    "requirements",
+    "review",
+    "workflow",
+}
+_EN_SCHEMA_VALUE_ENTITIES = {
+    "CONTRACTOR_LICENSE",
+    "INSURANCE_POLICY_ID",
+    "MAINTENANCE_TICKET_ID",
+    "PROPERTY_IDENTIFIER",
+}
 _EN_GENERIC_LOSES_TO = {
     "DATE_TIME": {
         "DATE_OF_BIRTH",
@@ -117,6 +144,7 @@ _EN_GENERIC_LOSES_TO = {
         "TENANT_ID",
         "US_EIN",
     },
+    "URL": {"DATABASE_CREDENTIAL", "JWT_TOKEN"},
     "PHONE_NUMBER": {"US_SSN"},
     "US_DRIVER_LICENSE": {"CONTRACTOR_LICENSE", "US_EIN"},
     "US_BANK_NUMBER": {"US_ROUTING_NUMBER"},
@@ -344,6 +372,23 @@ class PresidioPrivacyEngine:
 
             invalid_values = _EN_CONTEXT_VALUE_FALSE_VALUES.get(entity_type)
             if invalid_values and normalized in invalid_values:
+                continue
+
+            if entity_type == "PASSWORD_CREDENTIAL" and re.fullmatch(
+                r"(?:<|\[)\s*(?:redacted|placeholder|password|secret|token)\s*(?:>|\])",
+                value,
+                re.IGNORECASE,
+            ):
+                continue
+
+            if (
+                normalized in _EN_SCHEMA_FALSE_VALUES
+                and (
+                    entity_type.endswith(("_ID", "_REFERENCE"))
+                    or entity_type in _EN_SCHEMA_VALUE_ENTITIES
+                )
+                and not re.search(r"\d", value)
+            ):
                 continue
 
             if entity_type == "UNIT_NUMBER":
