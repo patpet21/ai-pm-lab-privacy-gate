@@ -20,6 +20,7 @@ from ai_pm_lab_privacy_gate.infrastructure.storage.ai_library_repository import 
 )
 
 from .browser_ai_persistence import install_browser_ai_persistence
+from .browser_document_idempotency import install_browser_document_idempotency
 from .browser_docx import install_browser_docx_support
 from .browser_origin_compat import install_browser_origin_compat
 from .browser_pairing import (
@@ -29,6 +30,7 @@ from .browser_pairing import (
 )
 from .browser_pdf import install_browser_pdf_support
 from .browser_pdf_review import install_browser_pdf_review
+from .browser_restore_auto import install_browser_restore_auto
 from .browser_revoke import install_browser_revoke_support
 from .server import create_local_api_server
 
@@ -121,6 +123,10 @@ class LocalApiManager:
             # Disconnecting one extension now revokes that exact scoped browser
             # credential on the desktop without affecting other paired browsers.
             install_browser_revoke_support(server)
+            # Recovery/guardrail layers are installed last so they wrap the final
+            # PDF/DOCX request handler without changing the proven text transport.
+            install_browser_document_idempotency(server)
+            install_browser_restore_auto(server)
         except Exception as error:
             with self._lock:
                 self._status = LocalApiStatus(
