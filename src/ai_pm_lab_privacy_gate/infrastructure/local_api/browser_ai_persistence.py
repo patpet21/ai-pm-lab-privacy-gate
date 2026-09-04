@@ -3,6 +3,7 @@ from __future__ import annotations
 import re
 from typing import Any
 
+from ai_pm_lab_privacy_gate.infrastructure.local_api.browser_provider import browser_provider
 from ai_pm_lab_privacy_gate.infrastructure.local_api.server import (
     LocalApiHttpServer,
     LocalApiRequestHandler,
@@ -80,7 +81,7 @@ class PersistentBrowserAiRequestHandler(LocalApiRequestHandler):
         turn, mappings = self.server.session_store.snapshot(session_id)
         repository.save_session(
             session_id=session_id,
-            provider="chatgpt",
+            provider=browser_provider(payload),
             turn=turn,
             mappings=mappings,
             user_protected_text=str(response.get("protected_text") or ""),
@@ -89,9 +90,9 @@ class PersistentBrowserAiRequestHandler(LocalApiRequestHandler):
 
     def _restore(self, payload: dict[str, Any]) -> dict[str, object]:
         # Rehydration is enough for restore persistence. The protected assistant
-        # message remains in ChatGPT and is restored locally again on page load;
-        # we intentionally do not duplicate assistant text until a stable message
-        # identity is supplied by the extension in a later isolated step.
+        # message remains in the AI website and is restored locally again on page
+        # load; we intentionally do not duplicate assistant text until a stable
+        # message identity is supplied by the extension in a later isolated step.
         self._rehydrate_browser_session(payload)
         return super()._restore(payload)
 
