@@ -10,12 +10,16 @@ from docx import Document
 
 from ai_pm_lab_privacy_gate.application.privacy_service import PrivacyGateService
 from ai_pm_lab_privacy_gate.domain.models import Finding, PageContent
+from ai_pm_lab_privacy_gate.infrastructure.local_api.browser_ai_persistence import (
+    install_browser_ai_persistence,
+)
 from ai_pm_lab_privacy_gate.infrastructure.local_api.browser_docx import (
     install_browser_docx_support,
 )
 from ai_pm_lab_privacy_gate.infrastructure.local_api.browser_pairing import BrowserPairingRegistry
 from ai_pm_lab_privacy_gate.infrastructure.local_api.server import create_local_api_server
 from ai_pm_lab_privacy_gate.infrastructure.security.secret_store import MemorySecretStore
+from ai_pm_lab_privacy_gate.infrastructure.storage.ai_library_repository import AiLibraryRepository
 
 
 EMAIL = "jane.smith@example.com"
@@ -97,6 +101,8 @@ def test_docx_browser_round_trip_preserves_format_and_removes_original(tmp_path:
         auth_token=AUTH_TOKEN,
         browser_pairing=pairing,
     )
+    repository = AiLibraryRepository(tmp_path / "library")
+    assert install_browser_ai_persistence(server, repository)
     assert install_browser_docx_support(server)
     thread = threading.Thread(target=server.serve_forever, kwargs={"poll_interval": 0.01}, daemon=True)
     thread.start()
@@ -130,12 +136,17 @@ def test_docx_browser_round_trip_preserves_format_and_removes_original(tmp_path:
             {
                 "analysis_id": analyzed["analysis_id"],
                 "finding_ids": [finding["finding_id"]],
+                "provider": "chatgpt",
             },
             token=token,
         )
         assert status == 200
         assert protected["protected_filename"].endswith("_PrivacyGate.docx")
         assert protected["session_id"]
+
+        snapshot = repository.load_session(protected["session_id"])
+        assert snapshot is not None
+        assert snapshot.provider == "chatgpt"
 
         output = tmp_path / "protected.docx"
         output.write_bytes(base64.b64decode(protected["protected_file_base64"]))
