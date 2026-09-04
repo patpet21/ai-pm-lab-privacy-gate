@@ -21,6 +21,10 @@
       .replace(PLACEHOLDER_RE, token => token.replace(/\\_/g, "_"));
   }
 
+  function comparable(text) {
+    return canonical(text).replace(/\s+/g, " ").trim();
+  }
+
   function hasPlaceholder(text) {
     PLACEHOLDER_RE.lastIndex = 0;
     return PLACEHOLDER_RE.test(canonical(text));
@@ -33,10 +37,33 @@
     return document.querySelector('rich-textarea [contenteditable="true"], .ql-editor[contenteditable="true"], textarea[aria-label*="prompt" i], textarea');
   }
 
+  function providerUserContainer(element) {
+    if (!(element instanceof Element)) return null;
+    if (host === "claude.ai") {
+      return element.closest?.(
+        '[data-testid*="user" i], [data-testid*="human" i], [data-is-user-message="true"], ' +
+        '[class*="user-message" i], [class*="human-message" i]'
+      );
+    }
+    return element.closest?.(
+      'user-query, [data-test-id*="user" i], [data-testid*="user" i], ' +
+      '[class*="user-query" i], [class*="user-message" i]'
+    );
+  }
+
+  function knownOutgoing(text) {
+    try {
+      return Boolean(globalThis.PrivacyGateMultiAiOutgoing?.isOutgoing?.(text));
+    } catch (_error) {
+      return false;
+    }
+  }
+
   function excluded(element) {
     if (!(element instanceof Element)) return true;
     const box = composer();
     if (box && (element === box || element.contains(box) || box.contains(element))) return true;
+    if (providerUserContainer(element)) return true;
     return Boolean(element.closest?.(
       '#privacygate-freev1-bar, #privacygate-multi-ai-stable-bar, #privacygate-freev1-review, ' +
       '#privacygate-freev1-checking, #privacygate-freev1-notice, #privacygate-document-review, ' +
@@ -84,12 +111,17 @@
     for (const node of seedNodes()) {
       const root = smallestPlaceholderRoot(node);
       if (!root || seen.has(root) || excluded(root)) continue;
+      const text = textOf(root);
+      if (knownOutgoing(text)) continue;
       seen.add(root);
       roots.push(root);
     }
 
     // Remove broad ancestors when a smaller matching descendant is available.
-    return roots.filter(root => !roots.some(other => other !== root && root.contains(other) && hasPlaceholder(textOf(other))));
+    return roots.filter(root =>
+      !knownOutgoing(textOf(root)) &&
+      !roots.some(other => other !== root && root.contains(other) && hasPlaceholder(textOf(other)))
+    );
   }
 
   function anchorFor(root) {
@@ -150,13 +182,25 @@
 
   function cleanup() {
     for (const [root, state] of Array.from(views.entries())) {
-      if (!enabled || !root.isConnected || !state.frame?.isConnected) removeView(root);
+      if (
+        !enabled ||
+        !root.isConnected ||
+        !state.frame?.isConnected ||
+        excluded(root) ||
+        knownOutgoing(textOf(root))
+      ) {
+        removeView(root);
+      }
     }
   }
 
   function restoreRoot(root) {
     if (!enabled || !root?.isConnected || excluded(root)) return;
     const protectedText = canonical(textOf(root));
+    if (knownOutgoing(protectedText)) {
+      removeView(root);
+      return;
+    }
     if (!hasPlaceholder(protectedText)) {
       removeView(root);
       return;
@@ -176,6 +220,10 @@
       const restoredText = response.data?.restored_text;
       if (typeof restoredText !== "string" || !restoredText || restoredText === protectedText) {
         retryAfter.set(root, Date.now() + 3000);
+        return;
+      }
+      if (knownOutgoing(protectedText) || excluded(root)) {
+        removeView(root);
         return;
       }
       if (canonical(textOf(root)) !== protectedText) {
@@ -212,6 +260,9 @@
     const height = Math.max(72, Math.min(Number(data.height || 0), 2400));
     if (Number.isFinite(height) && height > 0) state.frame.style.height = `${Math.ceil(height)}px`;
   });
+
+  // Remove stale frames left in the provider DOM by an older extension build.
+  document.querySelectorAll?.(`.${FRAME_CLASS}`).forEach(frame => frame.remove());
 
   const observer = new MutationObserver(mutations => {
     const meaningful = mutations.some(mutation => {
