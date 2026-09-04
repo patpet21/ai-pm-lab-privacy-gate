@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "PrivacyGate FreeV1 POC",
-  "version": "0.0.36",
-  "description": "PrivacyGate local browser protection proof of concept.",
+  "name": "PrivacyGate Browser Protection",
+  "version": "0.0.37",
+  "description": "Local-first protection for sensitive prompts, PDFs, and Word documents on supported AI websites.",
   "permissions": [
     "storage"
   ],
@@ -10,7 +10,7 @@
     "http://127.0.0.1/*"
   ],
   "background": {
-    "service_worker": "background.js"
+    "service_worker": "browser_background.js"
   },
   "icons": {
     "16": "privacygate-16.png",
@@ -33,16 +33,21 @@
         "restore_overlay.js"
       ],
       "matches": [
-        "https://chatgpt.com/*"
+        "https://chatgpt.com/*",
+        "https://claude.ai/*",
+        "https://gemini.google.com/*"
       ]
     }
   ],
   "content_scripts": [
     {
       "matches": [
-        "https://chatgpt.com/*"
+        "https://chatgpt.com/*",
+        "https://claude.ai/*",
+        "https://gemini.google.com/*"
       ],
       "js": [
+        "multi_ai_fail_closed.js",
         "network_gate_main.js"
       ],
       "run_at": "document_start",
@@ -57,11 +62,26 @@
         "network_gate_bridge.js",
         "legacy_restore_blocker.js",
         "pdf_drag_guard.js",
-        "pdf_upload_guard.js",
-        "pdf_post_attach_hint.js",
+        "document_upload_guard.js",
         "content.js",
         "protection_state_sync.js",
         "assistant_restore_guard.js",
+        "notice_center_guard.js"
+      ],
+      "run_at": "document_start"
+    },
+    {
+      "matches": [
+        "https://claude.ai/*",
+        "https://gemini.google.com/*"
+      ],
+      "js": [
+        "network_gate_bridge.js",
+        "pdf_drag_guard.js",
+        "document_upload_guard.js",
+        "content.js",
+        "protection_state_sync.js",
+        "multi_ai_restore_guard.js",
         "notice_center_guard.js"
       ],
       "run_at": "document_start"
