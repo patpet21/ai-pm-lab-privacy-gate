@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "PrivacyGate Browser Protection",
-  "version": "0.0.38",
+  "version": "0.0.39",
   "description": "Local-first protection for sensitive prompts, PDFs, and Word documents on supported AI websites.",
   "permissions": [
     "storage"
@@ -64,6 +64,18 @@
         "protection_state_sync.js",
         "assistant_restore_guard.js",
         "notice_center_guard.js"
+      ],
+      "run_at": "document_start"
+    },
+    {
+      "matches": [
+        "https://claude.ai/*",
+        "https://gemini.google.com/*"
+      ],
+      "js": [
+        "multi_ai_adapter.js",
+        "document_upload_guard.js",
+        "multi_ai_restore_guard.js"
       ],
       "run_at": "document_start"
     }
