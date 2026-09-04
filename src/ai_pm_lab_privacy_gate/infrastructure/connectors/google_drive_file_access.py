@@ -27,6 +27,7 @@ _ACCOUNT_SUFFIXES = (
     "display_name",
     "permission_id",
 )
+_LEGACY_SUFFIXES = ("token", "refresh_token", "expires_at", "file_ids")
 
 
 @dataclass(frozen=True)
@@ -45,6 +46,17 @@ def _delete(service: ConnectedAppsService, key: str) -> None:
 
 def _account_key(account_id: str, suffix: str) -> str:
     return f"{_ACCOUNT_PREFIX}.{account_id}.{suffix}"
+
+
+def _legacy_account_id(legacy_id: str) -> str:
+    digest = hashlib.sha256(f"legacy:{legacy_id}".encode("utf-8")).hexdigest()[:12]
+    return f"legacy-{digest}"
+
+
+def _delete_legacy_record(service: ConnectedAppsService, legacy_id: str) -> None:
+    old_prefix = f"connected.google_drive.drive_file.{legacy_id}"
+    for suffix in _LEGACY_SUFFIXES:
+        _delete(service, f"{old_prefix}.{suffix}")
 
 
 def _load_account_ids(service: ConnectedAppsService) -> list[str]:
@@ -107,18 +119,26 @@ def _legacy_candidates(service: ConnectedAppsService) -> list[tuple[str, str]]:
 
 
 def _migrate_legacy(service: ConnectedAppsService) -> None:
-    """Move the original POC keys away from the Full Drive account namespace.
+    """Move the original POC keys into the independent selected-file registry.
 
-    The 8d451c POC stored drive.file state under the currently active
-    drive.readonly account id (or ``standalone``). Keep those grants usable, but
-    copy them into an independent selected-file registry so future Picker
-    authorizations never depend on the Full Drive account selection.
+    The 8d451c POC stored drive.file state under the active drive.readonly account
+    id (or ``standalone``). The new registry keeps that grant usable without
+    coupling it to Full Drive. Once the new record exists, the old local POC keys
+    are removed so a later disconnect cannot recreate the migrated account.
     """
 
-    if _load_account_ids(service):
+    candidates = _legacy_candidates(service)
+    existing_ids = _load_account_ids(service)
+    if existing_ids:
+        # A user may already have run the first migration build. In that case the
+        # new copy is authoritative; clean only the matching stale POC record.
+        for legacy_id, _label in candidates:
+            if _legacy_account_id(legacy_id) in existing_ids:
+                _delete_legacy_record(service, legacy_id)
         return
 
     migrated: list[str] = []
+    migrated_legacy_ids: list[str] = []
     preferred = ""
     active_full = ""
     if hasattr(service, "active_account_id"):
@@ -127,27 +147,31 @@ def _migrate_legacy(service: ConnectedAppsService) -> None:
         except Exception:
             active_full = ""
 
-    for legacy_id, label in _legacy_candidates(service):
+    for legacy_id, label in candidates:
         old_prefix = f"connected.google_drive.drive_file.{legacy_id}"
         token = str(service.secret_store.get(f"{old_prefix}.token") or "").strip()
         file_ids = str(service.secret_store.get(f"{old_prefix}.file_ids") or "").strip()
         if not token and not file_ids:
             continue
 
-        digest = hashlib.sha256(f"legacy:{legacy_id}".encode("utf-8")).hexdigest()[:12]
-        account_id = f"legacy-{digest}"
-        for suffix in ("token", "refresh_token", "expires_at", "file_ids"):
+        account_id = _legacy_account_id(legacy_id)
+        for suffix in _LEGACY_SUFFIXES:
             value = service.secret_store.get(f"{old_prefix}.{suffix}")
             if value not in (None, ""):
                 service.secret_store.set(_account_key(account_id, suffix), str(value))
         service.secret_store.set(_account_key(account_id, "label"), label)
         migrated.append(account_id)
+        migrated_legacy_ids.append(legacy_id)
         if legacy_id == active_full:
             preferred = account_id
 
     if migrated:
+        # Persist the new registry first. Only after it exists do we delete the
+        # obsolete local POC keys; Google Drive files themselves are untouched.
         _save_account_ids(service, migrated)
         service.secret_store.set(_ACTIVE_KEY, preferred or migrated[0])
+        for legacy_id in migrated_legacy_ids:
+            _delete_legacy_record(service, legacy_id)
 
 
 def _active_account_id(service: ConnectedAppsService) -> str:
