@@ -1,13 +1,13 @@
 {
   "manifest_version": 3,
   "name": "PrivacyGate FreeV1 POC",
-  "version": "0.0.34",
+  "version": "0.0.35",
   "description": "PrivacyGate local browser protection proof of concept.",
   "permissions": [
     "storage"
   ],
   "host_permissions": [
-    "http://127.0.0.1:8765/*"
+    "http://127.0.0.1/*"
   ],
   "background": {
     "service_worker": "background.js"
