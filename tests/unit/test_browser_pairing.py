@@ -50,6 +50,25 @@ def test_multiple_clients_can_pair_with_same_extension_origin() -> None:
     assert registry.status().origins == (ORIGIN,)
 
 
+def test_repairing_same_browser_instance_replaces_stale_credential() -> None:
+    secrets = MemorySecretStore()
+    registry = BrowserPairingRegistry(secrets)
+    client_name = "PrivacyGate Chromium · 11111111-2222-3333-4444-555555555555"
+
+    first = registry.create_challenge(now=100.0)
+    first_token = registry.pair(ORIGIN, first.code, client_name=client_name, now=101.0)
+    assert registry.status().paired_count == 1
+    assert registry.validate(ORIGIN, first_token) is True
+
+    second = registry.create_challenge(now=200.0)
+    second_token = registry.pair(ORIGIN, second.code, client_name=client_name, now=201.0)
+
+    assert first_token != second_token
+    assert registry.status().paired_count == 1
+    assert registry.validate(ORIGIN, first_token) is False
+    assert registry.validate(ORIGIN, second_token) is True
+
+
 def test_revoke_token_disconnects_only_the_requesting_browser() -> None:
     secrets = MemorySecretStore()
     registry = BrowserPairingRegistry(secrets)
