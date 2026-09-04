@@ -86,6 +86,10 @@ function normalizeProfileKey(value) {
   return PROFILE_KEYS.has(key) ? key : DEFAULT_PROFILE_KEY;
 }
 
+function providerForSender(sender) {
+  return SessionRegistry?.senderContext?.(sender)?.provider || "chatgpt";
+}
+
 async function getExtensionSettings() {
   const values = await chrome.storage.local.get({
     [BRIDGE_PORT_KEY]: DEFAULT_BRIDGE_PORT,
@@ -265,6 +269,7 @@ async function bridgeStatus() {
 async function protectForConversation(message, sender) {
   const language = detectPromptLanguage(message.text);
   const { profileKey } = await getExtensionSettings();
+  const provider = providerForSender(sender);
   let sessionId = await SessionRegistry.getSessionForSender(sender);
 
   const request = id => bridgeJson("/v1/browser/protect", {
@@ -273,7 +278,8 @@ async function protectForConversation(message, sender) {
     language,
     finding_ids: Array.isArray(message.findingIds) ? message.findingIds : [],
     replacement_mode: "reversible",
-    session_id: id || null
+    session_id: id || null,
+    provider
   });
 
   let response = await request(sessionId);
@@ -293,7 +299,7 @@ async function protectForConversation(message, sender) {
     await SessionRegistry.setSessionForSender(sender, response.data.session_id);
   }
 
-  return { ...response, detectedLanguage: language, profileKey };
+  return { ...response, detectedLanguage: language, profileKey, provider };
 }
 
 async function restoreForConversation(message, sender) {
@@ -484,12 +490,14 @@ async function analyzePdfForBrowser(message) {
 }
 
 async function protectPdfForConversation(message, sender) {
+  const provider = providerForSender(sender);
   let sessionId = await SessionRegistry.getSessionForSender(sender);
 
   const request = id => bridgeJson("/v1/browser/pdf/protect", {
     analysis_id: message.analysisId,
     finding_ids: Array.isArray(message.findingIds) ? message.findingIds : [],
-    session_id: id || null
+    session_id: id || null,
+    provider
   });
 
   let response = await request(sessionId);
