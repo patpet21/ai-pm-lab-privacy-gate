@@ -109,16 +109,16 @@ def _format_chip(label: str, accent: str, background: str) -> QFrame:
         "border-radius:9px;}"
     )
     row = QHBoxLayout(chip)
-    row.setContentsMargins(8, 6, 8, 6)
-    row.setSpacing(5)
+    row.setContentsMargins(3, 4, 3, 4)
+    row.setSpacing(2)
 
     mark = QLabel()
-    mark.setFixedSize(18, 18)
-    mark.setPixmap(icon("document", color=accent, size=16).pixmap(16, 16))
+    mark.setFixedSize(12, 12)
+    mark.setPixmap(icon("document", color=accent, size=11).pixmap(11, 11))
     mark.setAlignment(Qt.AlignmentFlag.AlignCenter)
     text = QLabel(label)
     text.setStyleSheet(
-        f"color:{accent};font-size:7.5px;font-weight:900;background:transparent;border:none;"
+        f"color:{accent};font-size:6px;font-weight:900;background:transparent;border:none;"
     )
     row.addWidget(mark)
     row.addWidget(text)
@@ -249,6 +249,7 @@ def _build_empty_state(page) -> _ProtectSourceDropZone:
 
     privacy = QLabel("Files stay on this device until PrivacyGate creates the protected copy.")
     privacy.setAlignment(Qt.AlignmentFlag.AlignCenter)
+    privacy.setWordWrap(True)
     privacy.setStyleSheet(
         f"color:{MUTED};font-size:7.5px;font-weight:600;background:transparent;border:none;"
     )

@@ -2,7 +2,8 @@ from __future__ import annotations
 
 """One ordered activation point for the post-mockup Protect refinements."""
 
-from PySide6.QtCore import QTimer, Qt
+from PySide6.QtCore import QSize, QTimer, Qt
+from PySide6.QtGui import QColor, QIcon, QPainter, QPixmap
 from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
@@ -52,6 +53,24 @@ from .mockup_protect_entry_surface_2026 import (
 
 BLUE = "#2563EB"
 TEAL = "#0B858A"
+
+
+def _language_flag(code: str) -> QIcon:
+    """Draw crisp local flag icons without adding image assets."""
+    pixmap = QPixmap(24, 16)
+    pixmap.fill(Qt.GlobalColor.transparent)
+    painter = QPainter(pixmap)
+    if code == "it":
+        painter.fillRect(1, 1, 7, 14, QColor("#169B62"))
+        painter.fillRect(8, 1, 8, 14, QColor("#FFFFFF"))
+        painter.fillRect(16, 1, 7, 14, QColor("#CE2B37"))
+    else:
+        painter.fillRect(1, 1, 22, 14, QColor("#FFFFFF"))
+        for y in range(1, 15, 4):
+            painter.fillRect(1, y, 22, 2, QColor("#B22234"))
+        painter.fillRect(1, 1, 10, 8, QColor("#3C3B6E"))
+    painter.end()
+    return QIcon(pixmap)
 
 
 def _find_layout(layout: QLayout | None, widget) -> QLayout | None:
@@ -122,7 +141,7 @@ def _move_scan_settings(page, row: QHBoxLayout, context_bar) -> None:
     )
     toggle.setStyleSheet(
         "QToolButton{background:#FFFFFF;color:#17384E;border:1px solid #D0D5DD;"
-        "border-radius:10px;padding:6px 8px;font-size:8.2px;font-weight:900;text-align:left;}"
+        "border-radius:10px;padding:6px 4px;font-size:7.3px;font-weight:900;text-align:left;}"
         "QToolButton:hover{background:#F8FAFC;border-color:#9DB7F8;color:#1D4ED8;}"
         "QToolButton:checked{background:#EFF6FF;border-color:#9DB7F8;color:#1D4ED8;}"
     )
@@ -164,11 +183,7 @@ def _move_scan_settings(page, row: QHBoxLayout, context_bar) -> None:
     def sync_scan_settings(opened: bool) -> None:
         advanced_panel.setVisible(opened)
         settings_strip.setVisible(opened)
-        toggle.setText(
-            "Scan settings\nHide options"
-            if opened
-            else "Scan settings\nProfiles, mode…"
-        )
+        toggle.setText("Hide settings" if opened else "Scan settings")
 
     toggle.toggled.connect(sync_scan_settings)
     toggle.setChecked(False)
@@ -249,8 +264,8 @@ def _style_figure_two_mode_row(page) -> None:
         "QFrame#ProtectModeBar{background:#FFFFFF;border:1px solid #D7E2EA;"
         "border-radius:11px;}"
     )
-    mode_row.setContentsMargins(10, 6, 10, 6)
-    mode_row.setSpacing(7)
+    mode_row.setContentsMargins(6, 6, 6, 6)
+    mode_row.setSpacing(4)
 
     for label in mode_bar.findChildren(QLabel):
         if label.text().strip().upper() in {"SOURCE", "VIEW"}:
@@ -272,12 +287,12 @@ def _style_figure_two_mode_row(page) -> None:
             continue
         button.setMinimumHeight(40)
         button.setMaximumHeight(42)
-        button.setMinimumWidth(130)
-        button.setMaximumWidth(155)
+        button.setMinimumWidth(102)
+        button.setMaximumWidth(110)
         button.setStyleSheet(
             "QPushButton{background:#FFFFFF;color:#475467;border:none;"
-            "border-bottom:2px solid transparent;padding:8px 12px;"
-            "font-size:9px;font-weight:850;text-align:left;}"
+            "border-bottom:2px solid transparent;padding:8px 7px;"
+            "font-size:7.6px;font-weight:850;text-align:left;}"
             "QPushButton:hover{background:#F8FCFC;color:#0B7180;}"
             "QPushButton:checked{background:#F8FCFC;color:#0B858A;"
             "border-bottom:2px solid #0B858A;}"
@@ -287,14 +302,14 @@ def _style_figure_two_mode_row(page) -> None:
     if connected is not None:
         _remove_from_layout_tree(page.preview_card.layout(), connected)
         connected.setParent(mode_bar)
-        connected.setText("Import from source")
+        connected.setText("Import source")
         connected.setMinimumHeight(38)
         connected.setMaximumHeight(40)
-        connected.setMinimumWidth(125)
-        connected.setMaximumWidth(145)
+        connected.setMinimumWidth(116)
+        connected.setMaximumWidth(124)
         connected.setStyleSheet(
             "QPushButton{background:#FFFFFF;color:#1D4ED8;border:1px solid #BFD1FE;"
-            "border-radius:8px;padding:6px 8px;font-size:7.5px;font-weight:900;}"
+            "border-radius:8px;padding:6px 5px;font-size:7.2px;font-weight:900;}"
             "QPushButton:hover{background:#EFF6FF;border-color:#9DB7F8;}"
         )
         paste_index = mode_row.indexOf(paste) if paste is not None else -1
@@ -312,12 +327,12 @@ def _style_figure_two_mode_row(page) -> None:
 
     if len(view_buttons) == 2 and getattr(page, "_protect_2026_view_menu", None) is None:
         view_menu = QToolButton(mode_bar)
-        view_menu.setText("View: Compare")
+        view_menu.setText("View")
         view_menu.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
         view_menu.setMinimumHeight(38)
         view_menu.setMaximumHeight(40)
-        view_menu.setMinimumWidth(145)
-        view_menu.setMaximumWidth(175)
+        view_menu.setMinimumWidth(72)
+        view_menu.setMaximumWidth(80)
         view_menu.setStyleSheet(
             "QToolButton{background:#FFFFFF;color:#344054;border:1px solid #D0D5DD;"
             "border-radius:8px;padding:6px 10px;font-size:8px;font-weight:850;}"
@@ -341,13 +356,49 @@ def _style_figure_two_mode_row(page) -> None:
         mode_row.insertWidget(insert_after + 1 if insert_after >= 0 else 0, view_menu)
 
         def sync_view_menu(index: int) -> None:
-            view_menu.setText(
-                "View: Protected text" if index == 0 else "View: Compare"
+            view_menu.setText("View")
+            view_menu.setToolTip(
+                "Current view: Protected text"
+                if index == 0
+                else "Current view: Original + Protected"
             )
 
         page.preview_tabs.currentChanged.connect(sync_view_menu)
         sync_view_menu(page.preview_tabs.currentIndex())
         page._protect_2026_view_menu = view_menu
+
+    language_panel = getattr(page, "_protect_document_language_panel", None)
+    language = getattr(page, "document_language_combo", None)
+    settings = getattr(page, "_protect_2026_scan_settings_toggle", None)
+    clear = getattr(page, "clear_button", None)
+    scan = getattr(page, "_protect_source_scan", None)
+
+    if language_panel is not None and language is not None:
+        _remove_from_layout_tree(page.preview_card.layout(), language_panel)
+        language_panel.setParent(mode_bar)
+        language_panel.setMinimumWidth(112)
+        language_panel.setMaximumWidth(120)
+        language.setMinimumWidth(112)
+        language.setMaximumWidth(120)
+        language.setMinimumHeight(34)
+        language.setIconSize(QSize(20, 14))
+        mode_row.addWidget(language_panel)
+
+    for widget, minimum, maximum in (
+        (settings, 128, 138),
+        (clear, 62, 70),
+        (scan, 128, 140),
+    ):
+        if widget is None:
+            continue
+        _remove_from_layout_tree(page.preview_card.layout(), widget)
+        widget.setParent(mode_bar)
+        widget.setMinimumHeight(40)
+        widget.setMaximumHeight(44)
+        widget.setMinimumWidth(minimum)
+        widget.setMaximumWidth(maximum)
+        mode_row.addWidget(widget)
+        widget.show()
 
     comparison_note = getattr(page, "comparison_note", None)
     if comparison_note is not None:
@@ -382,9 +433,12 @@ def _style_figure_two_mode_row(page) -> None:
         safe_badge.setParent(mode_bar)
         safe_badge.setMinimumHeight(36)
         safe_badge.setMaximumHeight(38)
+        safe_badge.setText("Safe preview")
+        safe_badge.setMinimumWidth(118)
+        safe_badge.setMaximumWidth(130)
         safe_badge.setStyleSheet(
             "QLabel{background:#FFFFFF;color:#2563EB;border:1px solid #BFD1FE;"
-            "border-radius:8px;padding:6px 11px;font-size:8.5px;font-weight:850;}"
+            "border-radius:8px;padding:6px 8px;font-size:7.3px;font-weight:850;}"
         )
         mode_row.addWidget(safe_badge)
 
@@ -424,10 +478,10 @@ def _finalize_command_and_view_rows(main_window) -> None:
         source.view().setMinimumWidth(235)
         source.setStyleSheet(
             "QComboBox{background:#FFFFFF;color:#344054;border:1px solid #D0D5DD;"
-            "border-radius:9px;padding:7px 9px;font-size:9px;font-weight:750;}"
+            "border-radius:9px;padding:7px 5px;font-size:7.5px;font-weight:750;}"
             "QComboBox:hover{border-color:#AFC7FA;background:#FCFDFF;}"
             f"QComboBox:focus{{border:1px solid {BLUE};}}"
-            "QComboBox::drop-down{border:none;width:25px;}"
+            "QComboBox::drop-down{border:none;width:20px;}"
             "QComboBox QAbstractItemView{background:#FFFFFF;color:#344054;"
             "border:1px solid #D0D5DD;selection-background-color:#EEF4FF;"
             "selection-color:#101828;padding:4px;}"
@@ -466,9 +520,11 @@ def _finalize_command_and_view_rows(main_window) -> None:
         for index in range(language.count()):
             code = str(language.itemData(index) or "")
             if code == "en":
-                language.setItemText(index, "🇺🇸  English")
+                language.setItemText(index, "English")
+                language.setItemIcon(index, _language_flag("en"))
             elif code == "it":
-                language.setItemText(index, "🇮🇹  Italiano")
+                language.setItemText(index, "Italiano")
+                language.setItemIcon(index, _language_flag("it"))
         language.setMinimumWidth(105)
         language.setMaximumWidth(125)
     if language_panel is not None:
@@ -495,7 +551,7 @@ def _finalize_command_and_view_rows(main_window) -> None:
         scan.setMaximumWidth(165)
         scan.setStyleSheet(
             "QPushButton{background:#2563EB;color:#FFFFFF;border:1px solid #2563EB;"
-            "border-radius:10px;padding:9px 8px;font-size:8.2px;font-weight:900;}"
+            "border-radius:10px;padding:9px 5px;font-size:7.4px;font-weight:900;}"
             "QPushButton:hover{background:#1D4ED8;border-color:#1D4ED8;}"
             "QPushButton:disabled{background:#D0D5DD;color:#FFFFFF;border-color:#D0D5DD;}"
         )
@@ -527,6 +583,13 @@ def _finalize_command_and_view_rows(main_window) -> None:
         bottom_bar.setMaximumHeight(0)
 
     _style_figure_two_mode_row(page)
+
+    # Workspace, provider and account selection now live in the connected-source
+    # picker. Their original widgets remain alive there, while this redundant row
+    # is removed from the Protect surface.
+    row_frame.hide()
+    row_frame.setMinimumHeight(0)
+    row_frame.setMaximumHeight(0)
 
     splitter = getattr(page, "document_preview_splitter", None)
     if splitter is not None:

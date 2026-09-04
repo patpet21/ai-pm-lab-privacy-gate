@@ -415,7 +415,7 @@ def apply_protect_source_picker(main_window) -> None:
                     connected_count += int(service.is_connected(provider))
                 except Exception:
                     pass
-        sources.setText("Import from source")
+        sources.setText("Import source")
         sources.setToolTip(
             f"Open {connected_count} connected source(s)."
             if connected_count

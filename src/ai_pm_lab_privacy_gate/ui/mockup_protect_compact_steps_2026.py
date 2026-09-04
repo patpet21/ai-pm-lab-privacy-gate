@@ -111,10 +111,11 @@ def _compact_flow(page) -> None:
             row.addWidget(arrow)
 
     info = getattr(page, "_protect_info_document_workspace", None)
+    if info is not None:
+        info.hide()
+        info.setMaximumWidth(0)
     title_index = header_layout.indexOf(title)
     insert_index = title_index + 1
-    if info is not None and header_layout.indexOf(info) >= 0:
-        insert_index = header_layout.indexOf(info) + 1
     header_layout.insertWidget(insert_index, steps, 0, Qt.AlignmentFlag.AlignVCenter)
 
     how = getattr(page, "_protect_2026_how_it_works", None)

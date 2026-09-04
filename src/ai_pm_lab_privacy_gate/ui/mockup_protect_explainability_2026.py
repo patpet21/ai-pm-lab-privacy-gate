@@ -139,6 +139,7 @@ def _enhance_flow(page) -> None:
             "Four local-first steps from source to safe copy.",
             "1 · Add source — Upload a local document, browse an approved connected account, or paste text.",
             "2 · Scan locally — PrivacyGate detects sensitive information on this device and does not upload the original document for detection.",
+            "Language — English and Italiano use separate local detection parameters. Select the document language before Scan + Protect.",
             "3 · Review — Checked items are protected; unchecked items intentionally remain visible. You can also add a missed sensitive value manually.",
             "4 · Use safe copy — Save locally, download the protected file, or run Privacy Preflight before an approved AI handoff.",
         )
