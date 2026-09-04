@@ -190,6 +190,44 @@ class BrowserPairingRegistry:
                 paired_count += len(clients)
         return BrowserPairingStatus(paired_count=paired_count, origins=origins)
 
+    def revoke_token(self, origin: str, token: str | None) -> bool:
+        """Revoke exactly one browser credential without disconnecting peer browsers."""
+        if not token:
+            return False
+        normalized_origin = origin.rstrip("/")
+        if not normalized_origin.startswith("chrome-extension://"):
+            return False
+        token_hash = self._token_hash(token)
+        with self._lock:
+            records = self._load()
+            record = records.get(normalized_origin)
+            if not record:
+                return False
+            clients = record.get("clients")
+            if not isinstance(clients, list):
+                return False
+
+            retained: list[dict[str, object]] = []
+            removed = False
+            for client in clients:
+                if not isinstance(client, dict):
+                    continue
+                expected = client.get("token_hash")
+                if isinstance(expected, str) and hmac.compare_digest(token_hash, expected):
+                    removed = True
+                    continue
+                retained.append(client)
+
+            if not removed:
+                return False
+            if retained:
+                record["clients"] = retained
+                records[normalized_origin] = record
+            else:
+                records.pop(normalized_origin, None)
+            self._save(records)
+            return True
+
     def revoke(self, origin: str | None = None) -> None:
         with self._lock:
             if origin is None:
