@@ -27,6 +27,7 @@ from .browser_pairing import (
 )
 from .browser_pdf import install_browser_pdf_support
 from .browser_pdf_review import install_browser_pdf_review
+from .browser_revoke import install_browser_revoke_support
 from .server import create_local_api_server
 
 
@@ -114,6 +115,9 @@ class LocalApiManager:
             install_browser_ai_persistence(server, self.ai_library)
             install_browser_pdf_support(server)
             install_browser_pdf_review(server)
+            # Disconnecting one extension now revokes that exact scoped browser
+            # credential on the desktop without affecting other paired browsers.
+            install_browser_revoke_support(server)
         except Exception as error:
             with self._lock:
                 self._status = LocalApiStatus(
