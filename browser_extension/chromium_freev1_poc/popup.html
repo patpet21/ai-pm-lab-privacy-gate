@@ -27,6 +27,7 @@
     .connected p, .settings p, .coverage p { margin: 8px 0 0; font-size: 10px; line-height: 1.45; color: #61798a; }
     .coverage-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 9px; }
     .chip { padding: 5px 7px; border-radius: 999px; background: #eef6f7; color: #17636b; font-size: 9px; font-weight: 850; }
+    .chip.pending { background: #fff6e8; color: #9a651b; }
     .protection-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 12px; padding-top: 11px; border-top: 1px solid #edf1f4; }
     .protection-copy { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
     .protection-copy strong { font-size: 11px; font-weight: 800; color: #17384e; }
@@ -88,10 +89,12 @@
     <section class="coverage">
       <div class="coverage-title">FreeV1 coverage</div>
       <div class="coverage-chips">
-        <span class="chip">ChatGPT</span><span class="chip">Claude</span><span class="chip">Gemini</span>
+        <span class="chip">ChatGPT</span>
+        <span class="chip pending">Claude · validating</span>
+        <span class="chip pending">Gemini · validating</span>
         <span class="chip">Text</span><span class="chip">PDF</span><span class="chip">Word .docx</span>
       </div>
-      <p>Protection and restore mappings stay on this device through PrivacyGate Desktop.</p>
+      <p>Claude and Gemini adapters are being validated before protection is enabled on those pages.</p>
     </section>
 
     <section class="settings" id="settingsSection">
