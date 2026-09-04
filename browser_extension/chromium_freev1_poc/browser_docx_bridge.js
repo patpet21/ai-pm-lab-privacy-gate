@@ -24,6 +24,10 @@
       : DEFAULT_BRIDGE_PORT;
   }
 
+  function providerForSender(sender) {
+    return SessionRegistry?.senderContext?.(sender)?.provider || null;
+  }
+
   async function settings() {
     const values = await chrome.storage.local.get({
       [BRIDGE_PORT_KEY]: DEFAULT_BRIDGE_PORT,
@@ -85,6 +89,15 @@
   }
 
   async function protectDocx(message, sender) {
+    const provider = providerForSender(sender);
+    if (!provider) {
+      return {
+        ok: false,
+        status: 400,
+        data: { error: "unsupported_ai_provider" }
+      };
+    }
+
     let sessionId = SessionRegistry
       ? await SessionRegistry.getSessionForSender(sender)
       : null;
@@ -92,7 +105,8 @@
     const request = id => bridgeJson("/v1/browser/docx/protect", {
       analysis_id: message.analysisId,
       finding_ids: Array.isArray(message.findingIds) ? message.findingIds : [],
-      session_id: id || null
+      session_id: id || null,
+      provider
     });
 
     let response = await request(sessionId);
