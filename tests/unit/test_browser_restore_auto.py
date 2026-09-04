@@ -34,13 +34,13 @@ class FakePrivacyService:
 
 
 def test_extracts_session_prefix_from_namespaced_token() -> None:
-    text = "Hello [[PG_B4A91A3A_T0001_PERSON_001]]"
-    assert token_session_prefixes(text) == ("4a91a3a",)
+    text = "Hello [[PG_B4A91A3A3_T0001_PERSON_001]]"
+    assert token_session_prefixes(text) == ("4a91a3a3",)
 
 
 def test_restores_token_from_prior_local_library_session() -> None:
-    session_id = "4a91a3a01234567890abcdef12345678"
-    token = "[[PG_B4A91A3A_T0001_PERSON_001]]"
+    session_id = "4a91a3a31234567890abcdef12345678"
+    token = "[[PG_B4A91A3A3_T0001_PERSON_001]]"
     repository = FakeRepository(
         {
             session_id: (
@@ -64,7 +64,7 @@ def test_restores_token_from_prior_local_library_session() -> None:
 
 
 def test_ambiguous_session_prefix_fails_closed() -> None:
-    token = "[[PG_B4A91A3A_T0001_PERSON_001]]"
+    token = "[[PG_B4A91A3A3_T0001_PERSON_001]]"
     mapping = ReplacementMapping(
         token=token,
         entity_type="PERSON",
@@ -72,8 +72,8 @@ def test_ambiguous_session_prefix_fails_closed() -> None:
     )
     repository = FakeRepository(
         {
-            "4a91a3a01234567890abcdef12345678": (mapping,),
-            "4a91a3a0ffffffffffffffffffffffff": (mapping,),
+            "4a91a3a31234567890abcdef12345678": (mapping,),
+            "4a91a3a3ffffffffffffffffffffffff": (mapping,),
         }
     )
 
