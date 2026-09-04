@@ -20,6 +20,7 @@ from ai_pm_lab_privacy_gate.infrastructure.storage.ai_library_repository import 
 )
 
 from .browser_ai_persistence import install_browser_ai_persistence
+from .browser_docx import install_browser_docx_support
 from .browser_origin_compat import install_browser_origin_compat
 from .browser_pairing import (
     BrowserPairingChallenge,
@@ -109,14 +110,14 @@ class LocalApiManager:
                 allowed_origins=self.allowed_origins,
                 browser_pairing=self.browser_pairing,
             )
-            # Keep production on the already validated browser stack:
-            # durable AI session persistence + browser PDF support. The review
-            # layer only exposes exact detected values back to the authenticated
-            # local extension; it does not change detection or PDF generation.
+            # Keep production on the already validated browser stack. File support
+            # is layered onto the same authenticated localhost transport so PDF and
+            # Word never need their own cloud service or browser credential.
             install_browser_origin_compat(server)
             install_browser_ai_persistence(server, self.ai_library)
             install_browser_pdf_support(server)
             install_browser_pdf_review(server)
+            install_browser_docx_support(server)
             # Disconnecting one extension now revokes that exact scoped browser
             # credential on the desktop without affecting other paired browsers.
             install_browser_revoke_support(server)
