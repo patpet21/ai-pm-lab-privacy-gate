@@ -76,6 +76,7 @@
         "https://gemini.google.com/*"
       ],
       "js": [
+        "multi_ai_composer_alias.js",
         "network_gate_bridge.js",
         "pdf_drag_guard.js",
         "document_upload_guard.js",
