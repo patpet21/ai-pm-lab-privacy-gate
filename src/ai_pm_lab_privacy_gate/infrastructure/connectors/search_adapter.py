@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import httpx
 
+from .google_tls import google_ssl_context
 from .service import ConnectedAppsService, RemoteItem
 
 
@@ -53,6 +54,7 @@ def _list_drive_folder(
             "fields": "files(id,name,mimeType,modifiedTime,webViewLink,parents)",
         },
         timeout=self.timeout,
+        verify=google_ssl_context(),
     )
     response.raise_for_status()
     return _drive_rows(response.json())
@@ -79,6 +81,7 @@ def _search_drive_folder(
             "fields": "files(id,name,mimeType,modifiedTime,webViewLink,parents)",
         },
         timeout=self.timeout,
+        verify=google_ssl_context(),
     )
     response.raise_for_status()
     return _drive_rows(response.json())
@@ -108,6 +111,7 @@ def _search_items(
                 "fields": "files(id,name,mimeType,modifiedTime,webViewLink)",
             },
             timeout=self.timeout,
+            verify=google_ssl_context(),
         )
         response.raise_for_status()
         return _drive_rows(response.json())

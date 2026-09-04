@@ -7,6 +7,8 @@ from urllib.parse import urlencode
 
 import httpx
 
+from .google_tls import google_ssl_context
+
 from ai_pm_lab_privacy_gate.infrastructure.security.secret_store import (
     SecretStore,
     platform_secret_store,
@@ -90,6 +92,7 @@ class ConnectedAppsService:
                     headers={"Authorization": f"Bearer {token}"},
                     params={"fields": "user(displayName,emailAddress)"},
                     timeout=self.timeout,
+                    verify=google_ssl_context(),
                 )
                 response.raise_for_status()
                 user = response.json().get("user", {})
@@ -151,6 +154,7 @@ class ConnectedAppsService:
                     "fields": "files(id,name,mimeType,modifiedTime,webViewLink)",
                 },
                 timeout=self.timeout,
+                verify=google_ssl_context(),
             )
             response.raise_for_status()
             return tuple(

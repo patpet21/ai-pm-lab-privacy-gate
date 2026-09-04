@@ -6,6 +6,7 @@ from pathlib import Path
 import httpx
 
 from ai_pm_lab_privacy_gate.infrastructure.connectors.service import ConnectedAppsService, RemoteItem
+from ai_pm_lab_privacy_gate.infrastructure.connectors.google_tls import google_ssl_context
 from ai_pm_lab_privacy_gate.infrastructure.security.temporary_workspace import new_working_path
 
 
@@ -65,6 +66,7 @@ def materialize_google_drive_item(
             headers=headers,
             params={"mimeType": export_mime},
             timeout=30.0,
+            verify=google_ssl_context(),
         )
     else:
         title_suffix = Path(item.title).suffix.lower()
@@ -88,6 +90,7 @@ def materialize_google_drive_item(
             headers=headers,
             params={"alt": "media"},
             timeout=30.0,
+            verify=google_ssl_context(),
         )
 
     response.raise_for_status()

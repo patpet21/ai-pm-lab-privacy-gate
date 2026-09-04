@@ -8,6 +8,8 @@ from typing import Any, Callable
 
 import httpx
 
+from .google_tls import google_ssl_context
+
 from .service import ConnectedAppsService
 
 
@@ -414,6 +416,7 @@ def _resolve_current_identity(self: ConnectedAppsService, provider: str) -> tupl
                 headers={"Authorization": f"Bearer {token}"},
                 params={"fields": "user(displayName,emailAddress,permissionId)"},
                 timeout=self.timeout,
+                verify=google_ssl_context(),
             )
             response.raise_for_status()
             user = response.json().get("user") or {}

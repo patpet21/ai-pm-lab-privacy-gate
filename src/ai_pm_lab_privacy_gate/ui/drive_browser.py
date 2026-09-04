@@ -4,6 +4,7 @@ from pathlib import Path
 
 from PySide6.QtCore import QSize, Qt
 from PySide6.QtWidgets import (
+    QAbstractItemView,
     QDialog,
     QFrame,
     QHBoxLayout,
@@ -122,17 +123,6 @@ def _unsupported_message(remote) -> str:
 def open_drive_browser(main_window) -> None:
     cloud_page = getattr(main_window, "cloud_automation_page", None)
     service = getattr(cloud_page, "_connected_apps_service", None) if cloud_page else None
-    from ai_pm_lab_privacy_gate.infrastructure.connectors.google_drive_picker_access import (
-        embedded_picker_enabled,
-    )
-
-    if service is not None and embedded_picker_enabled():
-        from ai_pm_lab_privacy_gate.ui.google_drive_embedded_picker import (
-            open_embedded_drive_picker,
-        )
-
-        open_embedded_drive_picker(main_window, service)
-        return
     if service is None or not hasattr(service, "list_drive_folder"):
         QMessageBox.warning(main_window, "Google Drive", "Google Drive folder navigation is unavailable in this build.")
         return
@@ -155,7 +145,7 @@ def open_drive_browser(main_window) -> None:
     titles = QVBoxLayout()
     title = QLabel("Google Drive")
     title.setStyleSheet(f"color:{NAVY};font-size:23px;font-weight:800;")
-    subtitle = QLabel("Open folders just like a file picker, then choose one supported file to bring into PrivacyGate locally.")
+    subtitle = QLabel("Browse folders and choose files without leaving PrivacyGate. Selected files become local working copies.")
     subtitle.setStyleSheet(f"color:{MUTED};font-size:10px;")
     subtitle.setWordWrap(True)
     titles.addWidget(title)
@@ -216,7 +206,7 @@ def open_drive_browser(main_window) -> None:
     table.setHeaderLabels(["Name", "Type", "Modified"])
     table.setRootIsDecorated(False)
     table.setAlternatingRowColors(False)
-    table.setSelectionMode(QTreeWidget.SelectionMode.SingleSelection)
+    table.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
     table.setStyleSheet(
         "QTreeWidget{background:#FFFFFF;color:#202124;border:1px solid #DADCE0;border-radius:11px;outline:0;padding:5px;}"
         "QTreeWidget::item{height:42px;border-bottom:1px solid #F1F3F4;padding:2px 5px;}"
@@ -232,7 +222,7 @@ def open_drive_browser(main_window) -> None:
     footer = QHBoxLayout()
     count = QLabel("0 items")
     count.setStyleSheet(f"color:{MUTED};font-size:10px;")
-    hint = QLabel("Select a file")
+    hint = QLabel("Open a folder or select files · Ctrl/Shift for multiple")
     hint.setStyleSheet(f"color:{MUTED};font-size:10px;")
     hint.setWordWrap(True)
     close = QPushButton("Close")
@@ -292,7 +282,7 @@ def open_drive_browser(main_window) -> None:
         count.setText(f"{len(state['lookup'])} item(s)")
         action.setEnabled(False)
         action.setText("Use in Protect")
-        hint.setText("Open a folder or select a supported file.")
+        hint.setText("Open a folder or select supported files · Ctrl/Shift for multiple.")
 
     def load() -> None:
         query = search.text().strip()
@@ -332,47 +322,73 @@ def open_drive_browser(main_window) -> None:
         state["trail"].pop()
         load()
 
-    def selected_remote():
-        current = table.currentItem()
-        if current is None:
-            return None
-        return state["lookup"].get(current.data(0, Qt.ItemDataRole.UserRole))
+    def selected_remotes() -> tuple:
+        selected = []
+        for item in table.selectedItems():
+            remote = state["lookup"].get(item.data(0, Qt.ItemDataRole.UserRole))
+            if remote is not None:
+                selected.append(remote)
+        return tuple(selected)
 
     def selection_changed() -> None:
-        remote = selected_remote()
-        if remote is None:
+        selected = selected_remotes()
+        if not selected:
             action.setEnabled(False)
-            hint.setText("Open a folder or select a supported file.")
+            action.setText("Use in Protect")
+            hint.setText("Open a folder or select supported files · Ctrl/Shift for multiple.")
             return
-        if remote.kind == FOLDER_MIME:
+        if len(selected) == 1 and selected[0].kind == FOLDER_MIME:
+            remote = selected[0]
             action.setText("Open folder")
             action.setEnabled(True)
             hint.setText(f"Open {remote.title}")
             return
-        action.setText("Use in Protect")
-        if _supported(remote):
+        folders = tuple(remote for remote in selected if remote.kind == FOLDER_MIME)
+        unsupported = tuple(remote for remote in selected if remote.kind != FOLDER_MIME and not _supported(remote))
+        if folders:
+            action.setText("Use in Protect")
+            action.setEnabled(False)
+            hint.setText("Open folders separately; select files together for multi-import.")
+            return
+        action.setText("Use in Protect" if len(selected) == 1 else f"Use {len(selected)} in Protect")
+        if not unsupported:
             action.setEnabled(True)
-            hint.setText(f"Ready to import {_kind_label(remote)} locally into Protect.")
+            if len(selected) == 1:
+                hint.setText(f"Ready to import {_kind_label(selected[0])} locally into Protect.")
+            else:
+                hint.setText(f"{len(selected)} files selected · local working copies will be prepared.")
         else:
             action.setEnabled(False)
-            hint.setText(
-                "Image OCR is not available yet." if _is_image(remote) else "This file type is not supported by Protect yet."
-            )
+            hint.setText(f"{len(unsupported)} selected file(s) are not supported by Protect yet.")
 
-    def import_remote(remote) -> None:
+    def import_remotes(remotes) -> None:
+        remotes = tuple(remotes)
+        if not remotes:
+            return
         try:
-            local_path = _run_busy(
+            imported = _run_busy(
                 dialog,
                 "Importing from Google Drive",
-                "Preparing a local working copy for PrivacyGate…",
-                lambda: _drive_call_with_refresh(
-                    service, lambda: materialize_google_drive_item(service, remote)
+                (
+                    "Preparing a local working copy for PrivacyGate…"
+                    if len(remotes) == 1
+                    else f"Preparing {len(remotes)} local working copies for PrivacyGate…"
+                ),
+                lambda: tuple(
+                    (
+                        remote,
+                        _drive_call_with_refresh(
+                            service, lambda item=remote: materialize_google_drive_item(service, item)
+                        ),
+                    )
+                    for remote in remotes
                 ),
             )
         except Exception as exc:
             QMessageBox.warning(dialog, "Unable to import from Google Drive", _friendly_connection_error("Google Drive", exc))
             return
 
+        remote, local_path = imported[0]
         protect = main_window.protection_page
         document_button = getattr(protect, "_redesign_document_mode", None)
         if document_button is not None and not document_button.isChecked():
@@ -395,27 +411,37 @@ def open_drive_browser(main_window) -> None:
             "item_title": str(remote.title or ""),
             "item_kind": str(remote.kind or ""),
             "folder_path": "/".join(label for _folder_id, label in state["trail"]),
+            "selected_ids": [str(item.item_id or "") for item, _path in imported],
+            "local_paths": [str(path) for _item, path in imported],
         }
+        protect._google_drive_import_queue = imported[1:]
         main_window._show_page(0)
         dialog.accept()
+        suffix = "" if len(imported) == 1 else f" · {len(imported)} files imported; first file ready"
         main_window.statusBar().showMessage(
-            f"Imported from Google Drive: {remote.title} — ready for local scan", 9000
+            f"Imported from Google Drive: {remote.title}{suffix} — ready for local scan", 9000
         )
 
-    def activate_selected() -> None:
-        remote = selected_remote()
-        if remote is None:
-            return
-        if remote.kind == FOLDER_MIME:
-            open_folder(remote)
-            return
-        if not _supported(remote):
-            QMessageBox.information(dialog, "This file needs another protection engine", _unsupported_message(remote))
-            return
-        import_remote(remote)
+    def import_remote(remote) -> None:
+        import_remotes((remote,))
 
-    def double_clicked(_item, _column) -> None:
-        remote = selected_remote()
+    def activate_selected() -> None:
+        selected = selected_remotes()
+        if not selected:
+            return
+        if len(selected) == 1 and selected[0].kind == FOLDER_MIME:
+            open_folder(selected[0])
+            return
+        if any(remote.kind == FOLDER_MIME for remote in selected):
+            return
+        unsupported = tuple(remote for remote in selected if not _supported(remote))
+        if unsupported:
+            QMessageBox.information(dialog, "This file needs another protection engine", _unsupported_message(unsupported[0]))
+            return
+        import_remotes(selected)
+
+    def double_clicked(item, _column) -> None:
+        remote = state["lookup"].get(item.data(0, Qt.ItemDataRole.UserRole))
         if remote is None:
             return
         if remote.kind == FOLDER_MIME:
@@ -425,7 +451,7 @@ def open_drive_browser(main_window) -> None:
         else:
             QMessageBox.information(dialog, "This file needs another protection engine", _unsupported_message(remote))
 
-    table.currentItemChanged.connect(lambda _current, _previous: selection_changed())
+    table.itemSelectionChanged.connect(selection_changed)
     table.itemDoubleClicked.connect(double_clicked)
     action.clicked.connect(activate_selected)
     back.clicked.connect(go_back)

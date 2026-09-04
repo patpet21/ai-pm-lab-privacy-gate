@@ -13,6 +13,8 @@ from urllib.parse import parse_qs, urlencode, urlparse
 
 import httpx
 
+from .google_tls import google_ssl_context
+
 
 AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
 TOKEN_URL = "https://oauth2.googleapis.com/token"
@@ -173,7 +175,12 @@ def authorize_desktop(
     secret = _resolved_secret(client_secret)
     if secret:
         token_data["client_secret"] = secret
-    response = httpx.post(TOKEN_URL, data=token_data, timeout=20.0)
+    response = httpx.post(
+        TOKEN_URL,
+        data=token_data,
+        timeout=20.0,
+        verify=google_ssl_context(),
+    )
     if response.status_code >= 400:
         raise _oauth_error(response, "Google token exchange failed")
     payload = response.json()
@@ -194,7 +201,12 @@ def refresh_access_token(
     secret = _resolved_secret(client_secret)
     if secret:
         token_data["client_secret"] = secret
-    response = httpx.post(TOKEN_URL, data=token_data, timeout=20.0)
+    response = httpx.post(
+        TOKEN_URL,
+        data=token_data,
+        timeout=20.0,
+        verify=google_ssl_context(),
+    )
     if response.status_code >= 400:
         raise _oauth_error(response, "Google connection refresh failed")
     payload = response.json()
