@@ -5,6 +5,7 @@ const BRIDGE_PORT_KEY = "privacygateBridgePort";
 const PROFILE_KEY = "privacygateProtectionProfile";
 const DEFAULT_PROFILE_KEY = "property_management";
 const BROWSER_TOKEN_KEY = "privacygateBrowserCredentialV1";
+const BROWSER_CLIENT_ID_KEY = "privacygateBrowserClientIdV1";
 const SessionRegistry = globalThis.PrivacyGateSessionRegistry;
 const PROFILE_KEYS = new Set([
   "general_business",
@@ -123,6 +124,18 @@ async function setBrowserToken(token) {
   } else {
     await chrome.storage.local.remove(BROWSER_TOKEN_KEY);
   }
+}
+
+async function getBrowserClientId() {
+  const values = await chrome.storage.local.get(BROWSER_CLIENT_ID_KEY);
+  const current = values?.[BROWSER_CLIENT_ID_KEY];
+  if (typeof current === "string" && /^[a-f0-9-]{20,64}$/i.test(current)) {
+    return current;
+  }
+
+  const generated = crypto.randomUUID();
+  await chrome.storage.local.set({ [BROWSER_CLIENT_ID_KEY]: generated });
+  return generated;
 }
 
 async function responseJson(response) {
@@ -381,24 +394,25 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
   if (message?.type === "PG_PAIR") {
     const code = String(message.code || "").trim();
-    bridgeJson(
-      "/v1/browser/pair",
-      {
-        code,
-        client_name: `Chromium extension ${chrome.runtime.getManifest().version}`
-      },
-      { authenticated: false }
-    )
-      .then(async response => {
-        const token = response.data?.browser_token;
-        if (response.ok && typeof token === "string") {
-          await setBrowserToken(token);
-          await SessionRegistry.clearAll();
-          sendResponse({ ok: true, paired: true });
-          return;
-        }
-        sendResponse({ ...response, paired: false });
-      })
+    (async () => {
+      const clientId = await getBrowserClientId();
+      const response = await bridgeJson(
+        "/v1/browser/pair",
+        {
+          code,
+          client_name: `PrivacyGate Chromium · ${clientId}`
+        },
+        { authenticated: false }
+      );
+      const token = response.data?.browser_token;
+      if (response.ok && typeof token === "string") {
+        await setBrowserToken(token);
+        await SessionRegistry.clearAll();
+        return { ok: true, paired: true };
+      }
+      return { ...response, paired: false };
+    })()
+      .then(sendResponse)
       .catch(error => sendResponse({ ok: false, paired: false, error: String(error) }));
     return true;
   }
