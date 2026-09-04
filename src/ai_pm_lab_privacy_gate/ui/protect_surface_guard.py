@@ -38,6 +38,62 @@ def _collect_layout_widgets(layout, output: set[QWidget]) -> None:
             _collect_layout_widgets(child_layout, output)
 
 
+def _stabilize_empty_entry_state(page) -> None:
+    """Show only the approved empty source card when Protect has no input."""
+    empty_state = getattr(page, "_protect_source_empty_state", None)
+    if not isinstance(empty_state, QWidget):
+        return
+
+    has_file = bool(str(getattr(page, "pdf_path", None).text() or "").strip()) if getattr(page, "pdf_path", None) is not None else False
+    has_text = bool(str(getattr(page, "text_input", None).toPlainText() or "").strip()) if getattr(page, "text_input", None) is not None else False
+    force_empty = bool(getattr(page, "_protect_entry_force_empty", False))
+
+    # A real loaded source must own the presentation. The empty-state guard only
+    # wins when there is no file/text, or when Clear explicitly forced EMPTY.
+    has_runtime_source = bool(
+        getattr(page, "current_document", None) is not None
+        or dict(getattr(page, "_protect_session_sources", {}) or {})
+        or tuple(getattr(page, "_gmail_component_manifest", ()) or ())
+        or dict(getattr(page, "_external_source_metadata", {}) or {})
+    )
+    if has_file or has_text or (has_runtime_source and not force_empty):
+        return
+
+    page._protect_entry_force_empty = True
+
+    preview_card = getattr(page, "preview_card", None)
+    splitter = getattr(page, "document_preview_splitter", None)
+    original_panel = getattr(page, "original_document_panel", None)
+    protected_panel = getattr(page, "protected_document_panel", None)
+    original_stack = getattr(page, "original_view_stack", None)
+    protected_stack = getattr(page, "protected_view_stack", None)
+    text_input = getattr(page, "text_input", None)
+    paste_hint = getattr(page, "_polish_protect_paste_hint", None)
+
+    for widget in (preview_card, splitter, original_panel, protected_panel, protected_stack):
+        if isinstance(widget, QWidget):
+            widget.show()
+
+    empty_state.setMinimumHeight(420)
+    empty_state.show()
+
+    # The gray block seen under the empty-state card is the dormant original
+    # document viewport. It must never paint until a real document is loaded.
+    if isinstance(original_stack, QWidget):
+        original_stack.hide()
+    if isinstance(text_input, QWidget):
+        text_input.hide()
+    if isinstance(paste_hint, QWidget):
+        paste_hint.hide()
+
+    document_mode = getattr(page, "_redesign_document_mode", None)
+    paste_mode = getattr(page, "_redesign_paste_mode", None)
+    if document_mode is not None:
+        document_mode.setChecked(True)
+    if paste_mode is not None:
+        paste_mode.setChecked(False)
+
+
 class _ProtectSurfaceGuard(QObject):
     """Keep detached legacy Protect widgets from painting over the final UI.
 
@@ -103,6 +159,8 @@ class _ProtectSurfaceGuard(QObject):
             # redesign as well as any later detached compatibility surface.
             child.hide()
 
+        _stabilize_empty_entry_state(page)
+
 
 def apply_protect_surface_guard(main_window) -> None:
     page = getattr(main_window, "protection_page", None)
@@ -116,7 +174,7 @@ def apply_protect_surface_guard(main_window) -> None:
         guard.schedule()
 
     # Source switches, scans and preview changes are the operations that used to
-    # expose clipped labels/icons on Windows.  Re-check only around those events.
+    # expose clipped labels/icons on Windows. Re-check around those events.
     for signal_owner, signal_name in (
         (getattr(page, "text_input", None), "textChanged"),
         (getattr(page, "pdf_path", None), "textChanged"),
@@ -132,4 +190,8 @@ def apply_protect_surface_guard(main_window) -> None:
     if protect_button is not None:
         protect_button.clicked.connect(schedule)
 
+    # First paint plus one short delayed pass: some Qt compatibility layers finish
+    # their initial show/layout work after the page is constructed.
     guard.stabilize()
+    QTimer.singleShot(0, guard.stabilize)
+    QTimer.singleShot(250, guard.stabilize)
