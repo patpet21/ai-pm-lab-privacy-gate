@@ -20,6 +20,7 @@ from ai_pm_lab_privacy_gate.infrastructure.storage.ai_library_repository import 
 )
 
 from .browser_ai_persistence import install_browser_ai_persistence
+from .browser_origin_compat import install_browser_origin_compat
 from .browser_pairing import (
     BrowserPairingChallenge,
     BrowserPairingRegistry,
@@ -112,6 +113,7 @@ class LocalApiManager:
             # durable AI session persistence + browser PDF support. The review
             # layer only exposes exact detected values back to the authenticated
             # local extension; it does not change detection or PDF generation.
+            install_browser_origin_compat(server)
             install_browser_ai_persistence(server, self.ai_library)
             install_browser_pdf_support(server)
             install_browser_pdf_review(server)
