@@ -8,7 +8,7 @@ import tempfile
 import uuid
 from pathlib import Path
 
-from PySide6.QtCore import QTimer, Qt
+from PySide6.QtCore import QCoreApplication, QEvent, QTimer, Qt
 from PySide6.QtGui import QColor, QIcon, QPainter, QPixmap
 from PySide6.QtNetwork import QLocalServer, QLocalSocket
 from PySide6.QtWidgets import QApplication, QLabel, QProgressBar, QSplashScreen, QVBoxLayout
@@ -61,24 +61,30 @@ def _packaged_smoke_test() -> int:
 
 
 def _startup_splash(logo_path: Path, app_icon: QIcon) -> QSplashScreen:
-    """Create the startup surface used by the independent splash worker."""
-    logo = QPixmap(str(logo_path)) if logo_path.exists() else QPixmap(560, 260)
-    if logo.isNull():
-        logo = QPixmap(560, 260)
-        logo.fill(QColor("#ffffff"))
-    else:
-        logo = logo.scaled(
-            520,
-            280,
-            Qt.AspectRatioMode.KeepAspectRatio,
-            Qt.TransformationMode.SmoothTransformation,
-        )
+    """Create a branded startup surface with no blank white first frame."""
 
-    width = max(560, logo.width() + 40)
-    canvas = QPixmap(width, logo.height() + 190)
-    canvas.fill(QColor("#ffffff"))
+    width, height = 560, 360
+    canvas = QPixmap(width, height)
+    canvas.fill(QColor("#061F33"))
+
+    # Prefer the compact application mark so the splash never inherits a white
+    # background from a full-width logo asset. Fall back to the supplied logo only
+    # when no application icon is available.
+    mark = app_icon.pixmap(92, 92) if not app_icon.isNull() else QPixmap()
+    if mark.isNull() and logo_path.exists():
+        mark = QPixmap(str(logo_path))
+        if not mark.isNull():
+            mark = mark.scaled(
+                92,
+                92,
+                Qt.AspectRatioMode.KeepAspectRatio,
+                Qt.TransformationMode.SmoothTransformation,
+            )
+
     painter = QPainter(canvas)
-    painter.drawPixmap((width - logo.width()) // 2, 8, logo)
+    if not mark.isNull():
+        painter.drawPixmap((width - mark.width()) // 2, 38, mark)
+    painter.fillRect(0, height - 5, width, 5, QColor("#0B858A"))
     painter.end()
 
     splash = QSplashScreen(canvas)
@@ -86,44 +92,46 @@ def _startup_splash(logo_path: Path, app_icon: QIcon) -> QSplashScreen:
         splash.setWindowIcon(app_icon)
 
     layout = QVBoxLayout(splash)
-    layout.setContentsMargins(46, 18, 46, 24)
-    layout.setSpacing(7)
-    layout.addStretch(1)
+    layout.setContentsMargins(46, 146, 46, 28)
+    layout.setSpacing(9)
 
     brand = QLabel("PRIVACY GATE", splash)
     brand.setAlignment(Qt.AlignmentFlag.AlignCenter)
     brand.setStyleSheet(
-        "QLabel{background:transparent;color:#06243C;font-size:21px;font-weight:950;letter-spacing:2px;}"
+        "QLabel{background:transparent;color:#FFFFFF;font-size:23px;font-weight:950;letter-spacing:2px;}"
     )
     layout.addWidget(brand)
 
-    status = QLabel("Starting local privacy protection…", splash)
+    status = QLabel("Preparing your local privacy workspace…", splash)
     status.setAlignment(Qt.AlignmentFlag.AlignCenter)
     status.setStyleSheet(
-        "QLabel{background:transparent;color:#17384E;font-size:13px;font-weight:750;}"
+        "QLabel{background:transparent;color:#D9E8EE;font-size:13px;font-weight:750;}"
     )
     layout.addWidget(status)
 
     progress = QProgressBar(splash)
+    # Indeterminate means exactly what startup knows: work is still running. No
+    # invented percentage is shown and the splash lifetime is tied to readiness.
     progress.setRange(0, 0)
     progress.setTextVisible(False)
     progress.setFixedHeight(8)
     progress.setStyleSheet(
-        "QProgressBar{background:#E5EDF1;border:0;border-radius:4px;}"
-        "QProgressBar::chunk{background:#0B7F89;border-radius:4px;}"
+        "QProgressBar{background:#17384E;border:0;border-radius:4px;}"
+        "QProgressBar::chunk{background:#19A7A7;border-radius:4px;}"
     )
     layout.addWidget(progress)
 
     hint = QLabel(
-        "PrivacyGate is starting. The app will open shortly.\n"
-        "You do not need to click the icon again.",
+        "Everything is being prepared locally.\n"
+        "This screen closes automatically when PrivacyGate is ready.",
         splash,
     )
     hint.setAlignment(Qt.AlignmentFlag.AlignCenter)
     hint.setStyleSheet(
-        "QLabel{background:transparent;color:#61798A;font-size:10px;font-weight:600;}"
+        "QLabel{background:transparent;color:#8EABB8;font-size:10px;font-weight:600;}"
     )
     layout.addWidget(hint)
+    layout.addStretch(1)
     return splash
 
 
@@ -291,8 +299,16 @@ def main() -> int:
     from ai_pm_lab_privacy_gate.ui.settings_services_cleanup_2026 import (
         apply_settings_services_cleanup_2026,
     )
+    from ai_pm_lab_privacy_gate.ui.startup_stability_2026 import (
+        install_startup_stability_2026,
+    )
+
+    # This must be installed after the UI package has assembled its runtime layers
+    # but before the first MainWindow instance executes those layers.
+    install_startup_stability_2026()
 
     window = MainWindow()
+    window._privacygate_startup_ready = bool(background_start)
     local_api = LocalApiManager(
         window.service,
         window.library.data_dir,
@@ -329,17 +345,73 @@ def main() -> int:
         instance_server.newConnection.connect(show_existing_window)
 
     if not background_start:
-        window.showMaximized()
-        window.raise_()
-        window.activateWindow()
-        app.processEvents()
-        _signal_startup_complete(startup_sentinel)
+        # MainWindow construction intentionally stays hidden behind the independent
+        # splash. The old code showed the window and only then processed events,
+        # exposing deferred-delete rows and intermediate layout generations.
+        window.setUpdatesEnabled(False)
+        controller = getattr(window, "_unified_loading", None)
 
-        if startup_sentinel is not None:
-            def cleanup_startup_sentinel() -> None:
-                startup_sentinel.unlink(missing_ok=True)
+        def startup_operation_active() -> bool:
+            try:
+                return bool(controller is not None and controller.active())
+            except RuntimeError:
+                return False
 
-            QTimer.singleShot(1500, cleanup_startup_sentinel)
+        def keep_startup_dialog_hidden() -> None:
+            if controller is None:
+                return
+            try:
+                controller.dialog.dismiss()
+            except RuntimeError:
+                pass
+
+        def signal_ready_after_first_paint() -> None:
+            # A worker may have entered a real busy state between showMaximized()
+            # and the first paint. Keep the startup splash until that work ends.
+            if startup_operation_active():
+                keep_startup_dialog_hidden()
+                QTimer.singleShot(40, signal_ready_after_first_paint)
+                return
+
+            window._privacygate_startup_ready = True
+            if controller is not None:
+                controller._render()
+            _signal_startup_complete(startup_sentinel)
+
+            if startup_sentinel is not None:
+                def cleanup_startup_sentinel() -> None:
+                    startup_sentinel.unlink(missing_ok=True)
+
+                QTimer.singleShot(1500, cleanup_startup_sentinel)
+
+        def show_when_startup_is_quiet() -> None:
+            if startup_operation_active():
+                keep_startup_dialog_hidden()
+                QTimer.singleShot(40, show_when_startup_is_quiet)
+                return
+
+            # Flush every widget scheduled by earlier presentation-layer refreshes
+            # while the real window is still invisible. This prevents the transient
+            # duplicate/overlapping labels visible in the startup screenshot.
+            QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+            try:
+                window.ensurePolished()
+                central = window.centralWidget()
+                if central is not None and central.layout() is not None:
+                    central.layout().activate()
+            except RuntimeError:
+                pass
+
+            window.setUpdatesEnabled(True)
+            window.showMaximized()
+            window.raise_()
+            window.activateWindow()
+
+            # Do not close the splash merely because showMaximized() returned.
+            # Waiting one event-loop turn gives Qt a real first paint/layout pass.
+            QTimer.singleShot(0, signal_ready_after_first_paint)
+
+        QTimer.singleShot(0, show_when_startup_is_quiet)
 
     window._startup_splash_process = startup_process
     return app.exec()
