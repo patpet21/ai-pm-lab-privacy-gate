@@ -7,7 +7,6 @@ from ai_pm_lab_privacy_gate.infrastructure.connectors.google_drive_file_access i
 )
 from ai_pm_lab_privacy_gate.ui import connected_apps_browse_polish, protect_source_picker
 from ai_pm_lab_privacy_gate.ui.apps_hub import AppsHubPage, _primary_style
-from ai_pm_lab_privacy_gate.ui.drive_browser import open_drive_browser
 from ai_pm_lab_privacy_gate.ui.gmail_inbox import open_gmail_inbox
 from ai_pm_lab_privacy_gate.ui.google_drive_access_center import (
     open_google_drive_access_center,
@@ -15,6 +14,14 @@ from ai_pm_lab_privacy_gate.ui.google_drive_access_center import (
 
 
 _INSTALLED = False
+
+
+def _open_drive_access_center_from_main_window(main_window) -> None:
+    """Open the one Drive entry point from Protect or other main-window callers."""
+    apps_page = getattr(main_window, "apps_hub_page", None)
+    if apps_page is None:
+        return
+    open_google_drive_access_center(apps_page)
 
 
 def install_google_provider_routes() -> None:
@@ -31,11 +38,17 @@ def install_google_provider_routes() -> None:
             open_gmail_inbox(main_window)
             return
         if provider == "google_drive":
-            open_drive_browser(main_window)
+            # Protect must use the same Google Drive product entry point as Apps:
+            # Selected files only is recommended, Full Drive remains optional.
+            _open_drive_access_center_from_main_window(main_window)
             return
         original_open(main_window, provider, title)
 
     connected_apps_browse_polish._open_source_browser = routed_open
+    # Some managed Protect routing intentionally asks for the preserved/raw source
+    # opener after workspace-policy approval.  Keep that alias pointed at the same
+    # Google router so it cannot fall back to the legacy Full Drive-only browser.
+    connected_apps_browse_polish._privacygate_raw_open_source_browser = routed_open
     # protect_source_picker imported the function directly, so update its alias too.
     protect_source_picker._open_source_browser = routed_open
 
@@ -52,9 +65,7 @@ def install_google_provider_routes() -> None:
                 open_gmail_inbox(self.main_window)
                 return
             if provider == "google_drive":
-                # The Apps card no longer exposes this directly, but keep the
-                # internal Full Drive route for Protect/source-picker callers.
-                open_drive_browser(self.main_window)
+                open_google_drive_access_center(self)
                 return
         original_browse(self, provider, title, supported)
 
