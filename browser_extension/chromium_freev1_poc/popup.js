@@ -7,6 +7,9 @@ const forgetButton = document.getElementById("forgetButton");
 const message = document.getElementById("message");
 const protectionState = document.getElementById("protectionState");
 const protectionToggle = document.getElementById("protectionToggle");
+const profileSelect = document.getElementById("profileSelect");
+const bridgePort = document.getElementById("bridgePort");
+const saveSettingsButton = document.getElementById("saveSettingsButton");
 
 const PROTECTION_STORAGE_KEY = "privacygateProtectionEnabled";
 let protectionEnabled = true;
@@ -49,11 +52,21 @@ function renderStatus(response) {
   pairSection.hidden = true;
   forgetButton.hidden = true;
 
+  if (response?.pairingError) {
+    setState("offline", "APP ERROR");
+    forgetButton.hidden = false;
+    setMessage(
+      "PrivacyGate responded, but the browser pairing could not be verified. Do not reconnect yet; check the desktop app and try again.",
+      true
+    );
+    return;
+  }
+
   if (!bridgeReady) {
     setState("offline", "APP OFFLINE");
     pairSection.hidden = false;
     pairButton.disabled = true;
-    setMessage("Open PrivacyGate desktop and make sure Local Privacy Bridge is running.");
+    setMessage("Open PrivacyGate desktop and make sure the Local Privacy Bridge is running on the port shown below.");
     return;
   }
 
@@ -82,8 +95,23 @@ function refreshStatus() {
   });
 }
 
+function loadExtensionSettings() {
+  chrome.runtime.sendMessage({ type: "PG_GET_EXTENSION_SETTINGS" }, response => {
+    if (chrome.runtime.lastError || !response?.ok) {
+      setMessage("Could not load extension settings.", true);
+      return;
+    }
+    bridgePort.value = String(response.bridgePort || 8765);
+    profileSelect.value = response.profileKey || "property_management";
+  });
+}
+
 codeInput.addEventListener("input", () => {
   codeInput.value = codeInput.value.replace(/\D/g, "").slice(0, 8);
+});
+
+bridgePort.addEventListener("input", () => {
+  bridgePort.value = bridgePort.value.replace(/\D/g, "").slice(0, 5);
 });
 
 pairButton.addEventListener("click", () => {
@@ -98,7 +126,7 @@ pairButton.addEventListener("click", () => {
   chrome.runtime.sendMessage({ type: "PG_PAIR", code }, response => {
     pairButton.disabled = false;
     if (chrome.runtime.lastError || !response?.ok) {
-      const detail = response?.data?.message || response?.data?.error || "Connection failed.";
+      const detail = response?.data?.message || response?.data?.error || response?.error || "Connection failed.";
       setMessage(detail, true);
       return;
     }
@@ -115,9 +143,48 @@ protectionToggle.addEventListener("click", () => {
   });
 });
 
+saveSettingsButton.addEventListener("click", () => {
+  const port = Number.parseInt(bridgePort.value.trim(), 10);
+  if (!Number.isInteger(port) || port < 1024 || port > 65535) {
+    setMessage("Enter a desktop bridge port between 1024 and 65535.", true);
+    return;
+  }
+
+  saveSettingsButton.disabled = true;
+  setMessage("Saving local extension settings…");
+  chrome.runtime.sendMessage(
+    {
+      type: "PG_SET_EXTENSION_SETTINGS",
+      bridgePort: port,
+      profileKey: profileSelect.value
+    },
+    response => {
+      saveSettingsButton.disabled = false;
+      if (chrome.runtime.lastError || !response?.ok) {
+        setMessage(response?.error || "Could not save extension settings.", true);
+        return;
+      }
+      bridgePort.value = String(response.bridgePort);
+      profileSelect.value = response.profileKey;
+      setMessage("Settings saved. Checking PrivacyGate Desktop…");
+      setTimeout(refreshStatus, 100);
+    }
+  );
+});
+
 forgetButton.addEventListener("click", () => {
-  chrome.runtime.sendMessage({ type: "PG_FORGET_PAIRING" }, () => {
-    setMessage("This browser has been disconnected from PrivacyGate.");
+  forgetButton.disabled = true;
+  setMessage("Revoking this browser credential locally…");
+  chrome.runtime.sendMessage({ type: "PG_FORGET_PAIRING" }, response => {
+    forgetButton.disabled = false;
+    if (chrome.runtime.lastError || !response?.ok) {
+      setMessage(
+        response?.error || "Could not disconnect this browser. Keep PrivacyGate Desktop open and try again.",
+        true
+      );
+      return;
+    }
+    setMessage("This browser has been disconnected and its desktop credential was revoked.");
     setTimeout(refreshStatus, 100);
   });
 });
@@ -128,4 +195,5 @@ chrome.storage.onChanged.addListener((changes, areaName) => {
 });
 
 refreshProtectionState();
+loadExtensionSettings();
 refreshStatus();
