@@ -18,6 +18,7 @@ from PySide6.QtWidgets import (
 from ai_pm_lab_privacy_gate.ui.connected_apps_browse_polish import _open_source_browser
 from ai_pm_lab_privacy_gate.ui.iconography import icon
 from ai_pm_lab_privacy_gate.ui.provider_logos import ProviderLogoLoader
+from ai_pm_lab_privacy_gate.ui.google_drive_file_browser import open_drive_file_browser
 
 
 NAVY = "#062B4F"
@@ -268,6 +269,14 @@ class AppsHubPage(QWidget):
         browse.setStyleSheet(_secondary_style())
         browse.setMinimumHeight(34)
         actions.addWidget(browse)
+        if key == "google_drive":
+            selected_files = QPushButton("Selected files")
+            selected_files.setObjectName("AppDriveFile")
+            selected_files.setStyleSheet(_secondary_style())
+            selected_files.setMinimumHeight(34)
+            selected_files.setToolTip("Test the separate drive.file access model")
+            selected_files.clicked.connect(lambda _checked=False: open_drive_file_browser(self.main_window))
+            actions.addWidget(selected_files)
         actions.addStretch(1)
         layout.addLayout(actions)
 

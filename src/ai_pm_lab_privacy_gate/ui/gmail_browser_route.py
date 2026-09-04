@@ -52,7 +52,12 @@ def install_gmail_browser_route() -> None:
     def apps_refresh(self: AppsHubPage) -> None:
         original_refresh(self)
         for button in self.findChildren(QPushButton, "AppBrowse"):
-            button.setText("Import")
-            button.setToolTip("Choose content from this connected app and bring it locally into Protect.")
+            provider = str(button.property("provider") or "")
+            if provider == "google_drive":
+                button.setText("Full Drive")
+                button.setToolTip("Existing drive.readonly browser — full folder navigation")
+            else:
+                button.setText("Import")
+                button.setToolTip("Choose content from this connected app and bring it locally into Protect.")
 
     AppsHubPage.refresh = apps_refresh

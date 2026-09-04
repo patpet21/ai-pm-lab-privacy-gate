@@ -81,6 +81,7 @@ def authorize_desktop(
     *,
     include_granted_scopes: bool = True,
     login_hint: str = "",
+    extra_auth_parameters: dict[str, str] | None = None,
 ) -> dict:
     """Run Google's installed-app OAuth flow with PKCE and a loopback callback.
 
@@ -106,6 +107,7 @@ def authorize_desktop(
             result["code"] = query.get("code", [""])[0]
             result["state"] = query.get("state", [""])[0]
             result["error"] = query.get("error", [""])[0]
+            result["picked_file_ids"] = query.get("picked_file_ids", [""])[0]
             success = bool(result.get("code")) and not result.get("error")
             status_title = "Connection received" if success else "Connection not completed"
             status_text = (
@@ -145,6 +147,8 @@ def authorize_desktop(
     }
     if login_hint.strip():
         auth_parameters["login_hint"] = login_hint.strip()
+    if extra_auth_parameters:
+        auth_parameters.update({str(key): str(value) for key, value in extra_auth_parameters.items()})
     auth_query = urlencode(auth_parameters)
     webbrowser.open(f"{AUTH_URL}?{auth_query}")
 
@@ -187,6 +191,7 @@ def authorize_desktop(
     if not payload.get("access_token"):
         raise GoogleOAuthError("Google did not return an access token.")
     payload["obtained_at"] = int(time.time())
+    payload["picked_file_ids"] = result.get("picked_file_ids", "")
     return payload
 
 
