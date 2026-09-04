@@ -40,6 +40,8 @@ from ai_pm_lab_privacy_gate.ui.drive_browser import (
     _supported,
 )
 from ai_pm_lab_privacy_gate.ui.iconography import icon
+from ai_pm_lab_privacy_gate.ui.provider_logos import ProviderLogoLoader
+from ai_pm_lab_privacy_gate.ui.window_focus import bring_window_to_front
 
 
 def open_drive_file_browser(main_window) -> None:
@@ -73,6 +75,19 @@ def open_drive_file_browser(main_window) -> None:
     logo.setStyleSheet(
         "background:#FFFFFF;border:1px solid #E1E5EA;border-radius:10px;"
     )
+    logo_loader = ProviderLogoLoader(service.data_dir, dialog)
+    logo_loader.load(
+        "google_drive",
+        lambda pixmap, target=logo: target.setPixmap(
+            pixmap.scaled(
+                27,
+                27,
+                Qt.AspectRatioMode.KeepAspectRatio,
+                Qt.TransformationMode.SmoothTransformation,
+            )
+        ),
+    )
+    dialog._drive_logo_loader = logo_loader
     header.addWidget(logo)
 
     titles = QVBoxLayout()
@@ -95,8 +110,9 @@ def open_drive_file_browser(main_window) -> None:
     root.addLayout(header)
 
     notice = QFrame()
+    notice.setObjectName("SelectedFileNotice")
     notice.setStyleSheet(
-        "QFrame{background:#E8F0FE;border:1px solid #D2E3FC;border-radius:11px;}"
+        "QFrame#SelectedFileNotice{background:#E8F0FE;border:1px solid #D2E3FC;border-radius:11px;}"
     )
     notice_row = QHBoxLayout(notice)
     notice_row.setContentsMargins(14, 11, 14, 11)
@@ -104,9 +120,8 @@ def open_drive_file_browser(main_window) -> None:
     shield.setStyleSheet("color:#188038;font-size:18px;font-weight:900;")
     notice_row.addWidget(shield)
     notice_text = QLabel(
-        "This access is separate from Full Drive read-only access. "
-        "Google opens its official Picker briefly in your default browser; "
-        "only the files you approve return to PrivacyGate."
+        "Google opens its official Picker briefly in your default browser. "
+        "After you choose files, PrivacyGate returns to the foreground automatically."
     )
     notice_text.setWordWrap(True)
     notice_text.setStyleSheet("color:#174EA6;font-size:10px;font-weight:650;")
@@ -114,8 +129,9 @@ def open_drive_file_browser(main_window) -> None:
     root.addWidget(notice)
 
     account_frame = QFrame()
+    account_frame.setObjectName("SelectedFileAccountFrame")
     account_frame.setStyleSheet(
-        "QFrame{background:#FFFFFF;border:1px solid #E1E5EA;border-radius:10px;}"
+        "QFrame#SelectedFileAccountFrame{background:#FFFFFF;border:1px solid #E1E5EA;border-radius:10px;}"
     )
     account_row = QHBoxLayout(account_frame)
     account_row.setContentsMargins(12, 8, 12, 8)
@@ -281,11 +297,13 @@ def open_drive_file_browser(main_window) -> None:
         try:
             pick_additional_files(service)
         except Exception as exc:
+            bring_window_to_front(dialog)
             message = str(exc)
             if "without any selected" in message:
                 return
             QMessageBox.warning(dialog, "Google Picker did not complete", message)
             return
+        bring_window_to_front(dialog)
         sync_accounts()
         load()
 
