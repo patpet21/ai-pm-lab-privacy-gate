@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "PrivacyGate Browser Protection",
-  "version": "0.0.45",
+  "version": "0.0.46",
   "description": "Local-first protection for sensitive prompts, PDFs, and Word documents on supported AI websites.",
   "permissions": [
     "storage"
@@ -30,7 +30,9 @@
     {
       "resources": [
         "restore_overlay.html",
-        "restore_overlay.js"
+        "restore_overlay.js",
+        "multi_ai_restore_overlay.html",
+        "multi_ai_restore_overlay.js"
       ],
       "matches": [
         "https://chatgpt.com/*",
@@ -78,6 +80,7 @@
         "multi_ai_outgoing_registry.js",
         "multi_ai_bar_stable.js",
         "multi_ai_document_guard.js",
+        "multi_ai_restore_frame_router.js",
         "multi_ai_restore_universal.js"
       ],
       "run_at": "document_start"
