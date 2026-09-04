@@ -374,6 +374,10 @@ def _install_protected_empty_state(page) -> None:
         ready = has_protected_result()
         empty.setVisible(not ready)
         stack.setVisible(ready)
+        if not ready:
+            protected_text = getattr(page, "_privacygate_text_compare_protected", None)
+            if protected_text is not None:
+                protected_text.hide()
 
     def schedule(*_args) -> None:
         for delay in (0, 150, 450, 900, 1600):

@@ -8,6 +8,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QLayout,
+    QMenu,
     QPushButton,
     QSizePolicy,
     QToolButton,
@@ -282,36 +283,83 @@ def _style_figure_two_mode_row(page) -> None:
             "border-bottom:2px solid #0B858A;}"
         )
 
+    connected = getattr(page, "_protect_source_connected", None)
+    if connected is not None:
+        _remove_from_layout_tree(page.preview_card.layout(), connected)
+        connected.setParent(mode_bar)
+        connected.setText("Import from source")
+        connected.setMinimumHeight(38)
+        connected.setMaximumHeight(40)
+        connected.setMinimumWidth(125)
+        connected.setMaximumWidth(145)
+        connected.setStyleSheet(
+            "QPushButton{background:#FFFFFF;color:#1D4ED8;border:1px solid #BFD1FE;"
+            "border-radius:8px;padding:6px 8px;font-size:7.5px;font-weight:900;}"
+            "QPushButton:hover{background:#EFF6FF;border-color:#9DB7F8;}"
+        )
+        paste_index = mode_row.indexOf(paste) if paste is not None else -1
+        mode_row.insertWidget(paste_index + 1 if paste_index >= 0 else 0, connected)
+        connected.show()
+
+    view_buttons = {}
     for button in mode_bar.findChildren(QPushButton):
         text = " ".join(button.text().split())
         if text not in {"Protected text", "Original + Protected"}:
             continue
-        # The approved surface exposes these views through the header actions.
-        # Keep the real controls/callbacks alive, but remove the duplicate pair
-        # from the mode bar so it matches the reference and can shrink cleanly.
+        view_buttons[text] = button
         button.hide()
         button.setMaximumWidth(0)
 
+    if len(view_buttons) == 2 and getattr(page, "_protect_2026_view_menu", None) is None:
+        view_menu = QToolButton(mode_bar)
+        view_menu.setText("View: Compare")
+        view_menu.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
+        view_menu.setMinimumHeight(38)
+        view_menu.setMaximumHeight(40)
+        view_menu.setMinimumWidth(145)
+        view_menu.setMaximumWidth(175)
+        view_menu.setStyleSheet(
+            "QToolButton{background:#FFFFFF;color:#344054;border:1px solid #D0D5DD;"
+            "border-radius:8px;padding:6px 10px;font-size:8px;font-weight:850;}"
+            "QToolButton:hover{background:#F8FAFC;border-color:#9DB7F8;color:#1D4ED8;}"
+            "QToolButton::menu-indicator{width:10px;}"
+        )
+        menu = QMenu(view_menu)
+        protected_action = menu.addAction("Protected text")
+        compare_action = menu.addAction("Original + Protected")
+        protected_action.triggered.connect(
+            lambda _checked=False: view_buttons["Protected text"].click()
+        )
+        compare_action.triggered.connect(
+            lambda _checked=False: view_buttons["Original + Protected"].click()
+        )
+        view_menu.setMenu(menu)
+
+        connected_index = mode_row.indexOf(connected) if connected is not None else -1
+        paste_index = mode_row.indexOf(paste) if paste is not None else -1
+        insert_after = connected_index if connected_index >= 0 else paste_index
+        mode_row.insertWidget(insert_after + 1 if insert_after >= 0 else 0, view_menu)
+
+        def sync_view_menu(index: int) -> None:
+            view_menu.setText(
+                "View: Protected text" if index == 0 else "View: Compare"
+            )
+
+        page.preview_tabs.currentChanged.connect(sync_view_menu)
+        sync_view_menu(page.preview_tabs.currentIndex())
+        page._protect_2026_view_menu = view_menu
+
     comparison_note = getattr(page, "comparison_note", None)
     if comparison_note is not None:
-        # Its status is represented by the compact fidelity control below.
+        # The approved mode row keeps only actionable controls.
         comparison_note.hide()
         comparison_note.setMaximumHeight(0)
 
     fidelity = getattr(page, "_protect_fidelity_status", None)
     if isinstance(fidelity, QLabel):
         _remove_from_layout_tree(page.preview_card.layout(), fidelity)
-        fidelity.setParent(mode_bar)
-        fidelity.setWordWrap(False)
-        fidelity.setMinimumHeight(36)
-        fidelity.setMaximumHeight(38)
-        fidelity.setMinimumWidth(195)
-        fidelity.setMaximumWidth(245)
-        fidelity.setStyleSheet(
-            "QLabel{background:#FFFFFF;color:#344054;border:1px solid #D0D5DD;"
-            "border-radius:8px;padding:6px 10px;font-size:8px;font-weight:800;}"
-        )
-        mode_row.addWidget(fidelity)
+        fidelity.hide()
+        fidelity.setMaximumHeight(0)
 
     legend = getattr(page, "color_legend", None)
     if isinstance(legend, QLabel):
@@ -360,7 +408,6 @@ def _finalize_command_and_view_rows(main_window) -> None:
         "_protect_2026_workflow_button",
         "_protect_source_upload",
         "_protect_source_paste",
-        "_protect_source_connected",
     ):
         button = getattr(page, name, None)
         if button is None:
