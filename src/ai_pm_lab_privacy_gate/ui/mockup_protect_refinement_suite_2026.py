@@ -3,7 +3,14 @@ from __future__ import annotations
 """One ordered activation point for the post-mockup Protect refinements."""
 
 from PySide6.QtCore import QTimer
-from PySide6.QtWidgets import QFrame, QHBoxLayout, QLayout, QPushButton, QVBoxLayout
+from PySide6.QtWidgets import (
+    QFrame,
+    QHBoxLayout,
+    QLayout,
+    QPushButton,
+    QToolButton,
+    QVBoxLayout,
+)
 
 from .mockup_protect_workspace_refinement_2026 import (
     apply_mockup_protect_workspace_refinement_2026,
@@ -41,12 +48,6 @@ from .mockup_protect_entry_surface_2026 import (
 
 
 BLUE = "#2563EB"
-BLUE_SOFT = "#EFF6FF"
-BORDER = "#D0D5DD"
-MUTED = "#667085"
-TEXT = "#344054"
-TEAL = "#0B858A"
-TEAL_DARK = "#096E75"
 
 
 def _find_layout(layout: QLayout | None, widget) -> QLayout | None:
@@ -71,6 +72,87 @@ def _remove_from_parent_layout(widget) -> None:
         layout.removeWidget(widget)
 
 
+def _move_scan_settings(page, row: QHBoxLayout, context_bar) -> None:
+    """Reuse the existing Advanced panel as the compact Scan settings control."""
+    settings_strip = page.findChild(QFrame, "RedesignSettingsStrip")
+    advanced_panel = page.findChild(QFrame, "RedesignAdvanced")
+    if settings_strip is None or advanced_panel is None:
+        return
+
+    toggles = tuple(settings_strip.findChildren(QToolButton))
+    toggle = next(
+        (
+            item
+            for item in toggles
+            if "advanced protection settings" in " ".join(item.text().split()).lower()
+        ),
+        toggles[0] if toggles else None,
+    )
+    if toggle is None:
+        return
+
+    # Move only the real toggle into the compact command row.  The real settings
+    # panel stays a single instance and is mounted directly below that row.
+    strip_layout = settings_strip.layout()
+    if strip_layout is not None:
+        strip_layout.removeWidget(toggle)
+    toggle.setParent(page.preview_card)
+    toggle.setCheckable(True)
+    toggle.setMinimumHeight(39)
+    toggle.setMinimumWidth(130)
+    toggle.setMaximumWidth(155)
+    toggle.setToolTip("Change scan profile, protection scope, protection mode, or confidence threshold.")
+    toggle.setStyleSheet(
+        "QToolButton{background:#FFFFFF;color:#344054;border:1px solid #D0D5DD;"
+        "border-radius:9px;padding:7px 10px;font-size:9px;font-weight:850;text-align:left;}"
+        "QToolButton:hover{background:#F8FAFC;border-color:#AFC7FA;color:#1D4ED8;}"
+        "QToolButton:checked{background:#EFF6FF;border-color:#AFC7FA;color:#1D4ED8;}"
+    )
+
+    browse = getattr(context_bar, "browse", None) if context_bar is not None else None
+    insert_at = row.indexOf(browse) if browse is not None else -1
+    if insert_at < 0:
+        scan = getattr(page, "_protect_source_scan", None)
+        insert_at = row.indexOf(scan) if scan is not None else row.count()
+    row.insertWidget(max(0, insert_at), toggle)
+
+    # Mount the existing settings strip directly under the command row instead of
+    # leaving an Advanced section detached at the bottom of Protect.
+    old_parent = settings_strip.parentWidget()
+    old_layout = old_parent.layout() if old_parent is not None else None
+    if old_layout is not None:
+        old_layout.removeWidget(settings_strip)
+    settings_strip.setParent(page.preview_card)
+    preview_layout = page.preview_card.layout()
+    command = getattr(page, "_protect_2026_unified_row", None)
+    command_index = preview_layout.indexOf(command) if preview_layout is not None else -1
+    if preview_layout is not None:
+        preview_layout.insertWidget(command_index + 1 if command_index >= 0 else 1, settings_strip)
+
+    settings_strip.setStyleSheet(
+        "QFrame#RedesignSettingsStrip{background:#FFFFFF;border:1px solid #D7E2EA;"
+        "border-radius:11px;}"
+    )
+    if strip_layout is not None:
+        strip_layout.setContentsMargins(10, 8, 10, 9)
+        strip_layout.setSpacing(5)
+
+    try:
+        toggle.toggled.disconnect()
+    except (RuntimeError, TypeError):
+        pass
+
+    def sync_scan_settings(opened: bool) -> None:
+        advanced_panel.setVisible(opened)
+        settings_strip.setVisible(opened)
+        toggle.setText("Hide scan settings" if opened else "Scan settings")
+
+    toggle.toggled.connect(sync_scan_settings)
+    toggle.setChecked(False)
+    sync_scan_settings(False)
+    page._protect_2026_scan_settings_toggle = toggle
+
+
 def _finalize_command_and_view_rows(main_window) -> None:
     """Apply the approved final Protect hierarchy using existing real widgets.
 
@@ -88,6 +170,8 @@ def _finalize_command_and_view_rows(main_window) -> None:
     row_frame = getattr(page, "_protect_2026_unified_row", None)
     row = row_frame.layout() if row_frame is not None else None
     context_bar = getattr(page, "_managed_workspace_context_bar", None)
+    if not isinstance(row, QHBoxLayout):
+        return
 
     # The large Original-document surface already exposes Upload and Paste text,
     # and connected content has its dedicated Source selector + Browse action.
@@ -102,7 +186,7 @@ def _finalize_command_and_view_rows(main_window) -> None:
         button = getattr(page, name, None)
         if button is None:
             continue
-        if isinstance(row, QHBoxLayout) and row.indexOf(button) >= 0:
+        if row.indexOf(button) >= 0:
             row.removeWidget(button)
         button.hide()
         button.setMaximumWidth(0)
@@ -149,6 +233,8 @@ def _finalize_command_and_view_rows(main_window) -> None:
     if language_panel is not None:
         language_panel.setMinimumWidth(125)
         language_panel.setMaximumWidth(145)
+
+    _move_scan_settings(page, row, context_bar)
 
     scan = getattr(page, "_protect_source_scan", None)
     if scan is not None:
@@ -203,85 +289,6 @@ def _finalize_command_and_view_rows(main_window) -> None:
         text_input.setMinimumHeight(420)
 
 
-def _install_back_to_options(page) -> None:
-    """Compatibility helper retained for older surfaces, but not used by v2026 final UI."""
-    if page is None or getattr(page, "_protect_back_to_options_row", None) is not None:
-        return
-
-    panel = getattr(page, "original_document_panel", None)
-    empty_state = getattr(page, "_protect_source_empty_state", None)
-    text_input = getattr(page, "text_input", None)
-    clear_button = getattr(page, "clear_button", None)
-    if panel is None or empty_state is None or text_input is None or clear_button is None:
-        return
-
-    layout = panel.layout()
-    if not isinstance(layout, QVBoxLayout):
-        return
-
-    row_host = QFrame(objectName="ProtectBackToOptionsRow")
-    row_host.setStyleSheet(
-        "QFrame#ProtectBackToOptionsRow{background:transparent;border:none;}"
-    )
-    row = QHBoxLayout(row_host)
-    row.setContentsMargins(0, 0, 0, 2)
-    row.setSpacing(0)
-    row.addStretch(1)
-
-    button = QPushButton("←  Back to options")
-    button.setObjectName("ProtectBackToOptionsButton")
-    button.setMinimumHeight(32)
-    button.setToolTip("Return to Upload, Paste text, and drag & drop options.")
-    button.setStyleSheet(
-        "QPushButton#ProtectBackToOptionsButton{background:#FFFFFF;color:#344054;"
-        "border:1px solid #D0D5DD;border-radius:8px;padding:5px 10px;"
-        "font-size:8px;font-weight:850;}"
-        "QPushButton#ProtectBackToOptionsButton:hover{background:#F8FAFC;"
-        "color:#1D4ED8;border-color:#AFC7FA;}"
-    )
-    row.addWidget(button)
-    layout.insertWidget(1, row_host, 0)
-
-    def refresh() -> None:
-        paste_visible = not text_input.isHidden()
-        empty_visible = not empty_state.isHidden()
-        row_host.setVisible(paste_visible and not empty_visible)
-
-    def schedule(*_args) -> None:
-        QTimer.singleShot(0, refresh)
-
-    def back_to_options() -> None:
-        clear_button.click()
-        QTimer.singleShot(0, refresh)
-        QTimer.singleShot(120, refresh)
-
-    button.clicked.connect(back_to_options)
-    text_input.textChanged.connect(schedule)
-    page.pdf_path.textChanged.connect(schedule)
-    clear_button.clicked.connect(schedule)
-
-    for toggle_name in ("_redesign_paste_mode", "_redesign_document_mode"):
-        toggle = getattr(page, toggle_name, None)
-        if toggle is not None:
-            toggle.toggled.connect(schedule)
-
-    for action_name in (
-        "_protect_source_upload",
-        "_protect_source_paste",
-        "_protect_source_connected",
-        "_protect_empty_upload",
-        "_protect_empty_paste",
-    ):
-        action = getattr(page, action_name, None)
-        if action is not None:
-            action.clicked.connect(schedule)
-
-    row_host.hide()
-    QTimer.singleShot(0, refresh)
-    page._protect_back_to_options_row = row_host
-    page._protect_back_to_options_button = button
-
-
 def apply_mockup_protect_refinement_suite_2026(main_window) -> None:
     """Apply the approved presentation and local-only review behavior in order."""
     apply_mockup_protect_workspace_refinement_2026(main_window)
@@ -305,8 +312,6 @@ def apply_mockup_protect_refinement_suite_2026(main_window) -> None:
     # the empty-state upload/paste/drop surface without replacing any Protect
     # callbacks or engine behavior.
     apply_mockup_protect_entry_surface_2026(main_window)
-    # Final layout reconciliation.  This is deliberately inside the existing
-    # refinement suite rather than another UI patch file: duplicate upper source
-    # actions are hidden, Source remains logo+text, and the real Clear action is
-    # moved beside Document/Paste while all callbacks stay authoritative.
+    # Final layout reconciliation. This stays inside the existing refinement suite
+    # rather than adding another UI patch file.
     _finalize_command_and_view_rows(main_window)
