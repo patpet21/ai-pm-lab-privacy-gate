@@ -23,6 +23,7 @@ from ai_pm_lab_privacy_gate.infrastructure.storage.ai_library_repository import 
 )
 
 from .browser_pdf_review import add_local_review_values
+from .browser_provider import browser_provider
 from .server import LocalApiHttpServer
 from .session_store import LocalSessionNotFound
 
@@ -141,8 +142,6 @@ def _decode_docx(value: object) -> bytes:
         raise ValueError(
             f"DOCX exceeds the {MAX_BROWSER_DOCX_BYTES // (1024 * 1024)} MB browser limit"
         )
-    # DOCX is an OPC/ZIP package. The document pipeline performs the full format
-    # validation when it opens this local temporary copy.
     if not raw.startswith(b"PK"):
         raise ValueError("file is not a valid DOCX package")
     return raw
@@ -356,6 +355,7 @@ def install_browser_docx_support(server: object) -> bool:
             item = self._docx_store.get(_analysis_id(payload))
             requested_ids = _finding_ids(payload)
             session_id = _session_id(payload)
+            provider = browser_provider(payload)
 
             if requested_ids is None:
                 selected = item.findings
@@ -391,7 +391,7 @@ def install_browser_docx_support(server: object) -> bool:
                     turn, mappings = self.server.session_store.snapshot(session_id)
                     repository.save_session(
                         session_id=session_id,
-                        provider="browser",
+                        provider=provider,
                         turn=turn,
                         mappings=mappings,
                     )
@@ -409,9 +409,6 @@ def install_browser_docx_support(server: object) -> bool:
                     source_document,
                 )
 
-                # Deterministic write-back safety check: every extracted protected
-                # Word block must exactly match the protection result before the
-                # file is allowed to leave the localhost bridge.
                 verified = self.server.privacy_service.document_from_file(destination)
                 expected = [page.text for page in result.protected_pages]
                 actual = [page.text for page in verified.pages]
