@@ -50,6 +50,22 @@ def test_multiple_clients_can_pair_with_same_extension_origin() -> None:
     assert registry.status().origins == (ORIGIN,)
 
 
+def test_revoke_token_disconnects_only_the_requesting_browser() -> None:
+    secrets = MemorySecretStore()
+    registry = BrowserPairingRegistry(secrets)
+
+    first = registry.create_challenge(now=100.0)
+    token_edge = registry.pair(ORIGIN, first.code, client_name="Microsoft Edge", now=101.0)
+    second = registry.create_challenge(now=200.0)
+    token_chrome = registry.pair(ORIGIN, second.code, client_name="Google Chrome", now=201.0)
+
+    assert registry.revoke_token(ORIGIN, token_edge) is True
+    assert registry.validate(ORIGIN, token_edge) is False
+    assert registry.validate(ORIGIN, token_chrome) is True
+    assert registry.status().paired_count == 1
+    assert registry.revoke_token(ORIGIN, token_edge) is False
+
+
 def test_legacy_single_token_record_is_preserved_when_new_client_pairs() -> None:
     secrets = MemorySecretStore()
     registry = BrowserPairingRegistry(secrets)
