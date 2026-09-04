@@ -9,6 +9,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QLayout,
     QPushButton,
+    QSizePolicy,
     QToolButton,
     QVBoxLayout,
 )
@@ -112,14 +113,15 @@ def _move_scan_settings(page, row: QHBoxLayout, context_bar) -> None:
     toggle.setCheckable(True)
     toggle.setMinimumHeight(46)
     toggle.setMaximumHeight(50)
-    toggle.setMinimumWidth(175)
-    toggle.setMaximumWidth(205)
+    toggle.setMinimumWidth(138)
+    toggle.setMaximumWidth(170)
+    toggle.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
     toggle.setToolTip(
         "Change scan profile, protection scope, protection mode, or confidence threshold."
     )
     toggle.setStyleSheet(
         "QToolButton{background:#FFFFFF;color:#17384E;border:1px solid #D0D5DD;"
-        "border-radius:10px;padding:6px 11px;font-size:9px;font-weight:900;text-align:left;}"
+        "border-radius:10px;padding:6px 8px;font-size:8.2px;font-weight:900;text-align:left;}"
         "QToolButton:hover{background:#F8FAFC;border-color:#9DB7F8;color:#1D4ED8;}"
         "QToolButton:checked{background:#EFF6FF;border-color:#9DB7F8;color:#1D4ED8;}"
     )
@@ -164,7 +166,7 @@ def _move_scan_settings(page, row: QHBoxLayout, context_bar) -> None:
         toggle.setText(
             "Scan settings\nHide options"
             if opened
-            else "Scan settings\nProfiles, scope, mode…"
+            else "Scan settings\nProfiles, mode…"
         )
 
     toggle.toggled.connect(sync_scan_settings)
@@ -247,7 +249,7 @@ def _style_figure_two_mode_row(page) -> None:
         "border-radius:11px;}"
     )
     mode_row.setContentsMargins(10, 6, 10, 6)
-    mode_row.setSpacing(8)
+    mode_row.setSpacing(7)
 
     for label in mode_bar.findChildren(QLabel):
         if label.text().strip().upper() in {"SOURCE", "VIEW"}:
@@ -284,16 +286,32 @@ def _style_figure_two_mode_row(page) -> None:
         text = " ".join(button.text().split())
         if text not in {"Protected text", "Original + Protected"}:
             continue
-        button.setMinimumHeight(36)
-        button.setMaximumHeight(38)
-        button.setMinimumWidth(125 if text == "Protected text" else 155)
-        button.setMaximumWidth(175)
-        button.setStyleSheet(
-            "QPushButton{background:#FFFFFF;color:#344054;border:1px solid #D0D5DD;"
-            "border-radius:8px;padding:6px 11px;font-size:8.5px;font-weight:800;}"
-            "QPushButton:hover{background:#F2FAFA;border-color:#9CCFD3;color:#096E75;}"
-            "QPushButton:checked{background:#0B858A;color:#FFFFFF;border-color:#0B858A;}"
+        # The approved surface exposes these views through the header actions.
+        # Keep the real controls/callbacks alive, but remove the duplicate pair
+        # from the mode bar so it matches the reference and can shrink cleanly.
+        button.hide()
+        button.setMaximumWidth(0)
+
+    comparison_note = getattr(page, "comparison_note", None)
+    if comparison_note is not None:
+        # Its status is represented by the compact fidelity control below.
+        comparison_note.hide()
+        comparison_note.setMaximumHeight(0)
+
+    fidelity = getattr(page, "_protect_fidelity_status", None)
+    if isinstance(fidelity, QLabel):
+        _remove_from_layout_tree(page.preview_card.layout(), fidelity)
+        fidelity.setParent(mode_bar)
+        fidelity.setWordWrap(False)
+        fidelity.setMinimumHeight(36)
+        fidelity.setMaximumHeight(38)
+        fidelity.setMinimumWidth(195)
+        fidelity.setMaximumWidth(245)
+        fidelity.setStyleSheet(
+            "QLabel{background:#FFFFFF;color:#344054;border:1px solid #D0D5DD;"
+            "border-radius:8px;padding:6px 10px;font-size:8px;font-weight:800;}"
         )
+        mode_row.addWidget(fidelity)
 
     legend = getattr(page, "color_legend", None)
     if isinstance(legend, QLabel):
@@ -302,8 +320,8 @@ def _style_figure_two_mode_row(page) -> None:
         legend.setWordWrap(False)
         legend.setMinimumHeight(36)
         legend.setMaximumHeight(38)
-        legend.setMinimumWidth(190)
-        legend.setMaximumWidth(260)
+        legend.setMinimumWidth(172)
+        legend.setMaximumWidth(225)
         legend.setStyleSheet(
             "QLabel{background:#F8FAFC;color:#475467;border:1px solid #E4E7EC;"
             "border-radius:8px;padding:6px 10px;font-size:8px;font-weight:750;}"
@@ -335,6 +353,9 @@ def _finalize_command_and_view_rows(main_window) -> None:
     if not isinstance(row, QHBoxLayout):
         return
 
+    row.setContentsMargins(8, 7, 8, 7)
+    row.setSpacing(6)
+
     for name in (
         "_protect_2026_workflow_button",
         "_protect_source_upload",
@@ -350,8 +371,9 @@ def _finalize_command_and_view_rows(main_window) -> None:
 
     if context_bar is not None:
         source = context_bar.source_combo
-        source.setMinimumWidth(165)
-        source.setMaximumWidth(205)
+        source.setMinimumWidth(130)
+        source.setMaximumWidth(175)
+        source.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         source.view().setMinimumWidth(235)
         source.setStyleSheet(
             "QComboBox{background:#FFFFFF;color:#344054;border:1px solid #D0D5DD;"
@@ -365,22 +387,31 @@ def _finalize_command_and_view_rows(main_window) -> None:
         )
         source_host = source.parentWidget()
         if source_host is not None:
-            source_host.setMinimumWidth(165)
-            source_host.setMaximumWidth(205)
+            source_host.setMinimumWidth(130)
+            source_host.setMaximumWidth(175)
+            source_host.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
 
-        context_bar.workspace_combo.setMinimumWidth(190)
-        context_bar.workspace_combo.setMaximumWidth(240)
+        context_bar.workspace_combo.setMinimumWidth(145)
+        context_bar.workspace_combo.setMaximumWidth(195)
+        context_bar.workspace_combo.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed
+        )
         workspace_host = context_bar.workspace_combo.parentWidget()
         if workspace_host is not None:
-            workspace_host.setMinimumWidth(190)
-            workspace_host.setMaximumWidth(240)
+            workspace_host.setMinimumWidth(145)
+            workspace_host.setMaximumWidth(195)
+            workspace_host.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
 
-        context_bar.account_combo.setMinimumWidth(220)
-        context_bar.account_combo.setMaximumWidth(290)
+        context_bar.account_combo.setMinimumWidth(170)
+        context_bar.account_combo.setMaximumWidth(230)
+        context_bar.account_combo.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed
+        )
         account_host = context_bar.account_combo.parentWidget()
         if account_host is not None:
-            account_host.setMinimumWidth(220)
-            account_host.setMaximumWidth(290)
+            account_host.setMinimumWidth(170)
+            account_host.setMaximumWidth(230)
+            account_host.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
 
     language = getattr(page, "document_language_combo", None)
     language_panel = getattr(page, "_protect_document_language_panel", None)
@@ -391,11 +422,11 @@ def _finalize_command_and_view_rows(main_window) -> None:
                 language.setItemText(index, "🇺🇸  English")
             elif code == "it":
                 language.setItemText(index, "🇮🇹  Italiano")
-        language.setMinimumWidth(135)
-        language.setMaximumWidth(150)
+        language.setMinimumWidth(105)
+        language.setMaximumWidth(125)
     if language_panel is not None:
-        language_panel.setMinimumWidth(135)
-        language_panel.setMaximumWidth(150)
+        language_panel.setMinimumWidth(105)
+        language_panel.setMaximumWidth(125)
 
     _move_scan_settings(page, row, context_bar)
 
@@ -413,11 +444,11 @@ def _finalize_command_and_view_rows(main_window) -> None:
         scan.setText("Scan + Protect")
         scan.setMinimumHeight(46)
         scan.setMaximumHeight(50)
-        scan.setMinimumWidth(165)
-        scan.setMaximumWidth(190)
+        scan.setMinimumWidth(140)
+        scan.setMaximumWidth(165)
         scan.setStyleSheet(
             "QPushButton{background:#2563EB;color:#FFFFFF;border:1px solid #2563EB;"
-            "border-radius:10px;padding:9px 14px;font-size:9px;font-weight:900;}"
+            "border-radius:10px;padding:9px 8px;font-size:8.2px;font-weight:900;}"
             "QPushButton:hover{background:#1D4ED8;border-color:#1D4ED8;}"
             "QPushButton:disabled{background:#D0D5DD;color:#FFFFFF;border-color:#D0D5DD;}"
         )
@@ -431,12 +462,12 @@ def _finalize_command_and_view_rows(main_window) -> None:
         clear.setText("Clear")
         clear.setMinimumHeight(46)
         clear.setMaximumHeight(50)
-        clear.setMinimumWidth(95)
-        clear.setMaximumWidth(110)
+        clear.setMinimumWidth(76)
+        clear.setMaximumWidth(90)
         clear.setToolTip("Clear this Protect session and return to the empty workspace.")
         clear.setStyleSheet(
             "QPushButton{background:#FFFFFF;color:#344054;border:1px solid #D0D5DD;"
-            "border-radius:10px;padding:8px 12px;font-size:9px;font-weight:850;}"
+            "border-radius:10px;padding:8px 7px;font-size:8.2px;font-weight:850;}"
             "QPushButton:hover{background:#F8FAFC;border-color:#98A2B3;}"
             "QPushButton:pressed{background:#F2F4F7;}"
         )
@@ -452,14 +483,14 @@ def _finalize_command_and_view_rows(main_window) -> None:
 
     splitter = getattr(page, "document_preview_splitter", None)
     if splitter is not None:
-        splitter.setMinimumHeight(520)
+        splitter.setMinimumHeight(430)
         splitter.setSizes([650, 650])
     empty_state = getattr(page, "_protect_source_empty_state", None)
     if empty_state is not None:
-        empty_state.setMinimumHeight(440)
+        empty_state.setMinimumHeight(360)
     text_input = getattr(page, "text_input", None)
     if text_input is not None:
-        text_input.setMinimumHeight(440)
+        text_input.setMinimumHeight(360)
 
     _install_clear_empty_state_guard(page)
 

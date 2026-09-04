@@ -54,7 +54,7 @@ class _ProtectSourceDropZone(QFrame):
         self.setAcceptDrops(True)
         self.setProperty("dragActive", False)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
-        self.setMinimumHeight(440)
+        self.setMinimumHeight(360)
         self.setStyleSheet(
             "QFrame#ProtectSourceEmptyState{background:#FCFEFF;border:1px solid #D8E7EE;"
             "border-radius:14px;}"
@@ -183,7 +183,7 @@ def _build_empty_state(page) -> _ProtectSourceDropZone:
     root.addWidget(subtitle)
 
     actions = QHBoxLayout()
-    actions.setSpacing(10)
+    actions.setSpacing(0)
     actions.addStretch(1)
 
     choose = QPushButton("Choose a file")
@@ -209,7 +209,10 @@ def _build_empty_state(page) -> _ProtectSourceDropZone:
     )
 
     actions.addWidget(choose)
-    actions.addWidget(upload_local)
+    # Preserve the canonical local-upload callback for compatibility, but the
+    # approved empty state has one context-aware "Choose" action only.
+    upload_local.hide()
+    upload_local.setMaximumWidth(0)
     actions.addStretch(1)
     root.addLayout(actions)
 
@@ -218,7 +221,8 @@ def _build_empty_state(page) -> _ProtectSourceDropZone:
     drag_hint.setStyleSheet(
         f"color:{TEAL_DARK};font-size:8.5px;font-weight:800;background:transparent;border:none;"
     )
-    root.addWidget(drag_hint)
+    drag_hint.hide()
+    drag_hint.setMaximumHeight(0)
 
     formats_label = QLabel("Supported local formats")
     formats_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -263,19 +267,17 @@ def _build_empty_state(page) -> _ProtectSourceDropZone:
         if provider == "gmail":
             choose.setText("Choose an email")
             subtitle.setText(
-                "Choose an email from the connected Gmail account, upload a local file, "
-                "or switch to Paste text."
+                "Choose an email from the connected Gmail account or switch to Paste text."
             )
         elif provider == "google_drive":
             choose.setText("Choose a Drive file")
             subtitle.setText(
-                "Choose a file from the connected Google Drive account, upload a local file, "
-                "or switch to Paste text."
+                "Choose a file from the connected Google Drive account or switch to Paste text."
             )
         else:
             choose.setText("Choose a file")
             subtitle.setText(
-                "Choose a local document, drag and drop a file, or switch to Paste text."
+                "Choose a source above or browse to upload your document."
             )
 
     def choose_current_source() -> None:
@@ -304,7 +306,7 @@ def _build_empty_state(page) -> _ProtectSourceDropZone:
 def _build_protected_empty_state() -> QFrame:
     surface = QFrame(objectName="ProtectProtectedEmptyState")
     surface.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
-    surface.setMinimumHeight(440)
+    surface.setMinimumHeight(360)
     surface.setStyleSheet(
         "QFrame#ProtectProtectedEmptyState{"
         "background:qlineargradient(x1:0,y1:0,x2:1,y2:1,stop:0 #FBFFFF,stop:1 #F2FBFA);"
@@ -382,6 +384,16 @@ def _install_protected_empty_state(page) -> None:
     page.pdf_path.textChanged.connect(schedule)
     page.text_input.textChanged.connect(schedule)
     page.preview.textChanged.connect(schedule)
+
+    # A legacy preview synchronizer can re-show the protected viewport after
+    # this presentation layer has installed the empty state. Keep the two real
+    # widgets mutually exclusive so no inactive grey viewport leaks underneath.
+    guard_timer = QTimer(page)
+    guard_timer.setInterval(300)
+    guard_timer.timeout.connect(sync)
+    guard_timer.start()
+    page._protect_protected_empty_state_timer = guard_timer
+
     sync()
     page._protect_protected_empty_state_sync = sync
 
@@ -401,7 +413,7 @@ def _install_empty_state(page) -> None:
     page._protect_source_empty_state = empty_state
     page._protect_entry_force_empty = False
 
-    page.text_input.setMinimumHeight(440)
+    page.text_input.setMinimumHeight(360)
     page.text_input.setMaximumHeight(16777215)
     page.text_input.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
 

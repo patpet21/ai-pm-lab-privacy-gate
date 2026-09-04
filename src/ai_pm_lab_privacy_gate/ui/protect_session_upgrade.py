@@ -408,7 +408,8 @@ def _install_fidelity_status(page) -> None:
     if comparison_page is None or comparison_page.layout() is None:
         return
 
-    status = QLabel("Preview fidelity · waiting for a document")
+    status = QLabel("Waiting for a document")
+    status.setToolTip("Preview fidelity is selected automatically for the loaded document.")
     status.setWordWrap(True)
     status.setStyleSheet(
         "background:#F8FBFC;color:#496A72;border:1px solid #DFE8ED;"
@@ -425,22 +426,27 @@ def _install_fidelity_status(page) -> None:
         note = page.comparison_note.text().casefold()
 
         if not kind:
-            status.setText("Preview fidelity · waiting for a document")
+            status.setText("Waiting for a document")
+            status.setToolTip(
+                "Preview fidelity is selected automatically for the loaded document."
+            )
             return
         if kind == "pdf":
             if "safe reflow" in note:
-                status.setText(
-                    "Preview fidelity · PDF · SAFE REFLOW · every selected value is "
-                    "protected, but the original layout could not be mapped reliably."
+                status.setText("PDF · Safe reflow")
+                status.setToolTip(
+                    "Every selected value is protected; safe reflow is used because "
+                    "the original layout could not be mapped reliably."
                 )
                 status.setStyleSheet(
                     "background:#FFF7E6;color:#8A5A16;border:1px solid #F1D39A;"
                     "border-radius:7px;padding:6px 9px;font-size:9px;font-weight:850;"
                 )
             else:
-                status.setText(
-                    "Preview fidelity · PDF · LAYOUT-PRESERVING when safe · automatic. "
-                    "PrivacyGate falls back to safe reflow rather than risk leaving data visible."
+                status.setText("PDF · Layout-preserving")
+                status.setToolTip(
+                    "Layout is preserved when safe. PrivacyGate falls back to safe "
+                    "reflow rather than risk leaving data visible."
                 )
                 status.setStyleSheet(
                     "background:#F2FAFA;color:#496A72;border:1px solid #D4E9EA;"
@@ -450,18 +456,16 @@ def _install_fidelity_status(page) -> None:
 
         if kind in _OFFICE_KINDS:
             if page._libreoffice_available and page.high_fidelity_button.isChecked():
-                status.setText(
-                    f"Preview fidelity · {_kind_label(kind)} · HIGH FIDELITY · "
-                    "LibreOffice rendering runs locally."
-                )
+                status.setText(f"{_kind_label(kind)} · High fidelity")
+                status.setToolTip("LibreOffice rendering runs locally.")
             elif page._libreoffice_available:
-                status.setText(
-                    f"Preview fidelity · {_kind_label(kind)} · BUILT-IN · "
+                status.setText(f"{_kind_label(kind)} · Built-in")
+                status.setToolTip(
                     "High-fidelity local LibreOffice preview is available."
                 )
             else:
-                status.setText(
-                    f"Preview fidelity · {_kind_label(kind)} · BUILT-IN · "
+                status.setText(f"{_kind_label(kind)} · Built-in")
+                status.setToolTip(
                     "Install LibreOffice to enable optional high-fidelity rendering."
                 )
             status.setStyleSheet(
@@ -470,7 +474,8 @@ def _install_fidelity_status(page) -> None:
             )
             return
 
-        status.setText("Preview fidelity · Text · protected text preview")
+        status.setText("Text · Protected preview")
+        status.setToolTip("Protected text preview is generated locally.")
 
     timer = QTimer(page)
     timer.setInterval(250)

@@ -48,17 +48,17 @@ def _step(number: str, title: str) -> QFrame:
     row.setSpacing(4)
 
     badge = QLabel(number)
-    badge.setFixedSize(20, 20)
+    badge.setFixedSize(16, 16)
     badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
     badge.setStyleSheet(
         f"background:{BLUE_SOFT};color:{BLUE};border:1px solid #C7D7FE;"
-        "border-radius:10px;font-size:7px;font-weight:950;"
+        "border-radius:8px;font-size:6.3px;font-weight:950;"
     )
     row.addWidget(badge)
 
     label = QLabel(title)
     label.setStyleSheet(
-        f"color:{TEXT};font-size:7.8px;font-weight:850;background:transparent;border:none;"
+        f"color:{TEXT};font-size:6.6px;font-weight:850;background:transparent;border:none;"
     )
     row.addWidget(label)
     return host
@@ -89,13 +89,15 @@ def _compact_flow(page) -> None:
 
     steps = QFrame(objectName="Protect2026CompactSteps")
     steps.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Fixed)
+    steps.setMinimumWidth(330)
+    steps.setMaximumWidth(380)
     steps.setStyleSheet(
         f"QFrame#Protect2026CompactSteps{{background:#F8FAFC;border:1px solid {BORDER};"
         "border-radius:9px;}"
     )
     row = QHBoxLayout(steps)
-    row.setContentsMargins(7, 4, 7, 4)
-    row.setSpacing(6)
+    row.setContentsMargins(5, 4, 5, 4)
+    row.setSpacing(3)
 
     for index, (number, name) in enumerate(
         (("1", "Source"), ("2", "Scan"), ("3", "Review"), ("4", "Safe copy"))
@@ -123,9 +125,11 @@ def _compact_flow(page) -> None:
         how.setParent(page.preview_card)
         how.setMinimumHeight(30)
         how.setMaximumHeight(30)
+        how.setMinimumWidth(112)
+        how.setMaximumWidth(132)
         how.setStyleSheet(
             "QPushButton{background:#FFFFFF;color:#344054;border:1px solid #D0D5DD;"
-            "border-radius:8px;padding:5px 8px;font-size:7.5px;font-weight:850;}"
+            "border-radius:8px;padding:5px 6px;font-size:6.7px;font-weight:850;}"
             "QPushButton:hover{background:#F8FAFC;border-color:#98A2B3;}"
         )
         header_layout.insertWidget(insert_index + 1, how, 0, Qt.AlignmentFlag.AlignVCenter)
@@ -136,15 +140,24 @@ def _compact_flow(page) -> None:
     if focus is not None:
         focus.setMinimumHeight(30)
         focus.setMaximumHeight(30)
+        focus.setMinimumWidth(170)
+        focus.setMaximumWidth(195)
+        focus.setStyleSheet(
+            "QPushButton{background:#FFFFFF;color:#17384E;border:1px solid #D0D5DD;"
+            "border-radius:8px;padding:5px 6px;font-size:6.8px;font-weight:850;}"
+            "QPushButton:hover{background:#F8FAFC;border-color:#9DB7F8;color:#1D4ED8;}"
+        )
 
     for label in page.preview_card.findChildren(QLabel):
         text = " ".join(label.text().split())
         if text in {"Protected values are color coded", "Color-coded by protected category"}:
             label.setMinimumHeight(30)
             label.setMaximumHeight(30)
+            label.setMinimumWidth(220)
+            label.setMaximumWidth(255)
             label.setStyleSheet(
                 f"background:{BLUE_SOFT};color:{BLUE};border:1px solid #C7D7FE;"
-                "border-radius:8px;padding:5px 8px;font-size:7px;font-weight:800;"
+                "border-radius:8px;padding:5px 6px;font-size:6.3px;font-weight:800;"
             )
 
     flow.hide()

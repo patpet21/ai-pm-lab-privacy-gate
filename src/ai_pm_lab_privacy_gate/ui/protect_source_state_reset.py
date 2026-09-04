@@ -157,7 +157,7 @@ def _clear_preview_surfaces(page) -> None:
         )
     fidelity = getattr(page, "_protect_fidelity_status", None)
     if fidelity is not None:
-        fidelity.setText("Preview fidelity · waiting for a document")
+        fidelity.setText("Waiting for a document")
 
     preview_path = getattr(page, "_preview_path", None)
     if preview_path is not None:
