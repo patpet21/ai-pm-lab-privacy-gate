@@ -2,10 +2,11 @@ from __future__ import annotations
 
 """One ordered activation point for the post-mockup Protect refinements."""
 
-from PySide6.QtCore import QTimer
+from PySide6.QtCore import QTimer, Qt
 from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
+    QLabel,
     QLayout,
     QPushButton,
     QToolButton,
@@ -48,16 +49,11 @@ from .mockup_protect_entry_surface_2026 import (
 
 
 BLUE = "#2563EB"
+TEAL = "#0B858A"
 
 
 def _find_layout(layout: QLayout | None, widget) -> QLayout | None:
-    """Find the exact nested layout that owns ``widget``.
-
-    Protect still contains a few compatibility frames whose children live inside
-    widget-owned layouts (for example the historical bottom action bar).  Searching
-    only child QLayout items misses those widgets and was the reason Clear remained
-    in the old footer after the first visual pass.
-    """
+    """Find the exact nested layout that owns ``widget``."""
     if layout is None:
         return None
     if layout.indexOf(widget) >= 0:
@@ -82,8 +78,16 @@ def _remove_from_layout_tree(root: QLayout | None, widget) -> None:
         owner.removeWidget(widget)
 
 
+def _find_label(root, text: str) -> QLabel | None:
+    wanted = " ".join(text.split()).lower()
+    for label in root.findChildren(QLabel):
+        if " ".join(label.text().split()).lower() == wanted:
+            return label
+    return None
+
+
 def _move_scan_settings(page, row: QHBoxLayout, context_bar) -> None:
-    """Reuse the existing Advanced panel as the compact Scan settings control."""
+    """Reuse the real Advanced panel as the compact Scan settings control."""
     settings_strip = page.findChild(QFrame, "RedesignSettingsStrip")
     advanced_panel = page.findChild(QFrame, "RedesignAdvanced")
     if settings_strip is None or advanced_panel is None:
@@ -101,24 +105,23 @@ def _move_scan_settings(page, row: QHBoxLayout, context_bar) -> None:
     if toggle is None:
         return
 
-    # Move only the real toggle into the compact command row. The real settings
-    # panel stays a single instance and is mounted directly below that row.
     strip_layout = settings_strip.layout()
     if strip_layout is not None:
         strip_layout.removeWidget(toggle)
     toggle.setParent(page.preview_card)
     toggle.setCheckable(True)
-    toggle.setMinimumHeight(39)
-    toggle.setMinimumWidth(130)
-    toggle.setMaximumWidth(155)
+    toggle.setMinimumHeight(46)
+    toggle.setMaximumHeight(50)
+    toggle.setMinimumWidth(175)
+    toggle.setMaximumWidth(205)
     toggle.setToolTip(
         "Change scan profile, protection scope, protection mode, or confidence threshold."
     )
     toggle.setStyleSheet(
-        "QToolButton{background:#FFFFFF;color:#344054;border:1px solid #D0D5DD;"
-        "border-radius:9px;padding:7px 10px;font-size:9px;font-weight:850;text-align:left;}"
-        "QToolButton:hover{background:#F8FAFC;border-color:#AFC7FA;color:#1D4ED8;}"
-        "QToolButton:checked{background:#EFF6FF;border-color:#AFC7FA;color:#1D4ED8;}"
+        "QToolButton{background:#FFFFFF;color:#17384E;border:1px solid #D0D5DD;"
+        "border-radius:10px;padding:6px 11px;font-size:9px;font-weight:900;text-align:left;}"
+        "QToolButton:hover{background:#F8FAFC;border-color:#9DB7F8;color:#1D4ED8;}"
+        "QToolButton:checked{background:#EFF6FF;border-color:#9DB7F8;color:#1D4ED8;}"
     )
 
     browse = getattr(context_bar, "browse", None) if context_bar is not None else None
@@ -128,8 +131,6 @@ def _move_scan_settings(page, row: QHBoxLayout, context_bar) -> None:
         insert_at = row.indexOf(scan) if scan is not None else row.count()
     row.insertWidget(max(0, insert_at), toggle)
 
-    # Mount the existing settings strip directly under the command row instead of
-    # leaving an Advanced section detached at the bottom of Protect.
     old_parent = settings_strip.parentWidget()
     old_layout = old_parent.layout() if old_parent is not None else None
     if old_layout is not None:
@@ -160,7 +161,11 @@ def _move_scan_settings(page, row: QHBoxLayout, context_bar) -> None:
     def sync_scan_settings(opened: bool) -> None:
         advanced_panel.setVisible(opened)
         settings_strip.setVisible(opened)
-        toggle.setText("Hide scan settings" if opened else "Scan settings")
+        toggle.setText(
+            "Scan settings\nHide options"
+            if opened
+            else "Scan settings\nProfiles, scope, mode…"
+        )
 
     toggle.toggled.connect(sync_scan_settings)
     toggle.setChecked(False)
@@ -169,12 +174,7 @@ def _move_scan_settings(page, row: QHBoxLayout, context_bar) -> None:
 
 
 def _restore_empty_document_surface(page) -> None:
-    """Keep the large two-panel workspace visible after the real Clear action.
-
-    Clear remains authoritative for data/session cleanup. This function only
-    restores the approved EMPTY presentation after all older compatibility slots
-    have finished reacting to the same click.
-    """
+    """Keep the large two-panel workspace visible after the real Clear action."""
     if str(page.pdf_path.text() or "").strip():
         return
     if str(page.text_input.toPlainText() or "").strip():
@@ -188,10 +188,9 @@ def _restore_empty_document_surface(page) -> None:
     protected_panel = getattr(page, "protected_document_panel", None)
     empty_state = getattr(page, "_protect_source_empty_state", None)
     original_stack = getattr(page, "original_view_stack", None)
-    protected_stack = getattr(page, "protected_view_stack", None)
     text_input = getattr(page, "text_input", None)
 
-    for widget in (preview_card, splitter, original_panel, protected_panel, protected_stack):
+    for widget in (preview_card, splitter, original_panel, protected_panel):
         if widget is not None:
             widget.show()
 
@@ -218,6 +217,9 @@ def _restore_empty_document_surface(page) -> None:
     sync_entry = getattr(page, "_protect_source_empty_state_sync", None)
     if callable(sync_entry):
         sync_entry()
+    sync_protected = getattr(page, "_protect_protected_empty_state_sync", None)
+    if callable(sync_protected):
+        sync_protected()
 
 
 def _install_clear_empty_state_guard(page) -> None:
@@ -227,17 +229,102 @@ def _install_clear_empty_state_guard(page) -> None:
     page._protect_2026_clear_guard = True
 
     def schedule(*_args) -> None:
-        # Several legacy compatibility slots also react to Clear. Reassert the
-        # final EMPTY surface after each of their short queued passes has drained.
         for delay in (0, 80, 250, 500):
             QTimer.singleShot(delay, lambda p=page: _restore_empty_document_surface(p))
 
     clear.clicked.connect(schedule)
 
 
-def _finalize_command_and_view_rows(main_window) -> None:
-    """Apply the approved final Protect hierarchy using existing real widgets."""
+def _style_figure_two_mode_row(page) -> None:
+    """Make the real mode bar read like the approved light tab/status row."""
+    mode_bar = getattr(page, "_polish_protect_mode_bar", None)
+    mode_row = mode_bar.layout() if mode_bar is not None else None
+    if not isinstance(mode_row, QHBoxLayout):
+        return
 
+    mode_bar.setStyleSheet(
+        "QFrame#ProtectModeBar{background:#FFFFFF;border:1px solid #D7E2EA;"
+        "border-radius:11px;}"
+    )
+    mode_row.setContentsMargins(10, 6, 10, 6)
+    mode_row.setSpacing(8)
+
+    for label in mode_bar.findChildren(QLabel):
+        if label.text().strip().upper() in {"SOURCE", "VIEW"}:
+            label.hide()
+            label.setMaximumWidth(0)
+
+    for frame in mode_bar.findChildren(
+        QFrame,
+        options=Qt.FindChildOption.FindDirectChildrenOnly,
+    ):
+        if frame.layout() is None:
+            frame.hide()
+            frame.setMaximumWidth(0)
+
+    document = getattr(page, "_redesign_document_mode", None)
+    paste = getattr(page, "_redesign_paste_mode", None)
+    for button in (document, paste):
+        if button is None:
+            continue
+        button.setMinimumHeight(40)
+        button.setMaximumHeight(42)
+        button.setMinimumWidth(130)
+        button.setMaximumWidth(155)
+        button.setStyleSheet(
+            "QPushButton{background:#FFFFFF;color:#475467;border:none;"
+            "border-bottom:2px solid transparent;padding:8px 12px;"
+            "font-size:9px;font-weight:850;text-align:left;}"
+            "QPushButton:hover{background:#F8FCFC;color:#0B7180;}"
+            "QPushButton:checked{background:#F8FCFC;color:#0B858A;"
+            "border-bottom:2px solid #0B858A;}"
+        )
+
+    for button in mode_bar.findChildren(QPushButton):
+        text = " ".join(button.text().split())
+        if text not in {"Protected text", "Original + Protected"}:
+            continue
+        button.setMinimumHeight(36)
+        button.setMaximumHeight(38)
+        button.setMinimumWidth(125 if text == "Protected text" else 155)
+        button.setMaximumWidth(175)
+        button.setStyleSheet(
+            "QPushButton{background:#FFFFFF;color:#344054;border:1px solid #D0D5DD;"
+            "border-radius:8px;padding:6px 11px;font-size:8.5px;font-weight:800;}"
+            "QPushButton:hover{background:#F2FAFA;border-color:#9CCFD3;color:#096E75;}"
+            "QPushButton:checked{background:#0B858A;color:#FFFFFF;border-color:#0B858A;}"
+        )
+
+    legend = getattr(page, "color_legend", None)
+    if isinstance(legend, QLabel):
+        _remove_from_layout_tree(page.preview_card.layout(), legend)
+        legend.setParent(mode_bar)
+        legend.setWordWrap(False)
+        legend.setMinimumHeight(36)
+        legend.setMaximumHeight(38)
+        legend.setMinimumWidth(190)
+        legend.setMaximumWidth(260)
+        legend.setStyleSheet(
+            "QLabel{background:#F8FAFC;color:#475467;border:1px solid #E4E7EC;"
+            "border-radius:8px;padding:6px 10px;font-size:8px;font-weight:750;}"
+        )
+        mode_row.addWidget(legend)
+
+    safe_badge = _find_label(page.protected_document_panel, "Safe copy preview")
+    if safe_badge is not None:
+        _remove_from_layout_tree(page.protected_document_panel.layout(), safe_badge)
+        safe_badge.setParent(mode_bar)
+        safe_badge.setMinimumHeight(36)
+        safe_badge.setMaximumHeight(38)
+        safe_badge.setStyleSheet(
+            "QLabel{background:#FFFFFF;color:#2563EB;border:1px solid #BFD1FE;"
+            "border-radius:8px;padding:6px 11px;font-size:8.5px;font-weight:850;}"
+        )
+        mode_row.addWidget(safe_badge)
+
+
+def _finalize_command_and_view_rows(main_window) -> None:
+    """Apply the approved figure-two hierarchy using existing real widgets."""
     page = getattr(main_window, "protection_page", None)
     if page is None:
         return
@@ -248,9 +335,6 @@ def _finalize_command_and_view_rows(main_window) -> None:
     if not isinstance(row, QHBoxLayout):
         return
 
-    # The large Original-document surface already exposes Upload and Paste text,
-    # while connected content is handled by Source + its browse action. Keep the
-    # canonical compatibility buttons alive but do not paint those duplicates.
     for name in (
         "_protect_2026_workflow_button",
         "_protect_source_upload",
@@ -265,13 +349,10 @@ def _finalize_command_and_view_rows(main_window) -> None:
         button.setMaximumWidth(0)
 
     if context_bar is not None:
-        # Provider identity stays readable while original artwork loads. Resize the
-        # compact field host too; widening only the combo left its parent fixed at
-        # 58px and produced the clipped "Go" seen on Windows.
         source = context_bar.source_combo
-        source.setMinimumWidth(155)
-        source.setMaximumWidth(195)
-        source.view().setMinimumWidth(230)
+        source.setMinimumWidth(165)
+        source.setMaximumWidth(205)
+        source.view().setMinimumWidth(235)
         source.setStyleSheet(
             "QComboBox{background:#FFFFFF;color:#344054;border:1px solid #D0D5DD;"
             "border-radius:9px;padding:7px 9px;font-size:9px;font-weight:750;}"
@@ -284,27 +365,23 @@ def _finalize_command_and_view_rows(main_window) -> None:
         )
         source_host = source.parentWidget()
         if source_host is not None:
-            source_host.setMinimumWidth(155)
-            source_host.setMaximumWidth(195)
+            source_host.setMinimumWidth(165)
+            source_host.setMaximumWidth(205)
 
-        context_bar.workspace_combo.setMinimumWidth(185)
-        context_bar.workspace_combo.setMaximumWidth(235)
+        context_bar.workspace_combo.setMinimumWidth(190)
+        context_bar.workspace_combo.setMaximumWidth(240)
         workspace_host = context_bar.workspace_combo.parentWidget()
         if workspace_host is not None:
-            workspace_host.setMinimumWidth(185)
-            workspace_host.setMaximumWidth(235)
+            workspace_host.setMinimumWidth(190)
+            workspace_host.setMaximumWidth(240)
 
-        context_bar.account_combo.setMinimumWidth(215)
-        context_bar.account_combo.setMaximumWidth(285)
+        context_bar.account_combo.setMinimumWidth(220)
+        context_bar.account_combo.setMaximumWidth(290)
         account_host = context_bar.account_combo.parentWidget()
         if account_host is not None:
-            account_host.setMinimumWidth(215)
-            account_host.setMaximumWidth(285)
+            account_host.setMinimumWidth(220)
+            account_host.setMaximumWidth(290)
 
-        context_bar.browse.setMinimumWidth(170)
-        context_bar.browse.setMaximumWidth(215)
-
-    # Add flags without changing the language codes used by the detector runtime.
     language = getattr(page, "document_language_combo", None)
     language_panel = getattr(page, "_protect_document_language_panel", None)
     if language is not None:
@@ -314,53 +391,56 @@ def _finalize_command_and_view_rows(main_window) -> None:
                 language.setItemText(index, "🇺🇸  English")
             elif code == "it":
                 language.setItemText(index, "🇮🇹  Italiano")
-        language.setMinimumWidth(125)
-        language.setMaximumWidth(145)
+        language.setMinimumWidth(135)
+        language.setMaximumWidth(150)
     if language_panel is not None:
-        language_panel.setMinimumWidth(125)
-        language_panel.setMaximumWidth(145)
+        language_panel.setMinimumWidth(135)
+        language_panel.setMaximumWidth(150)
 
     _move_scan_settings(page, row, context_bar)
+
+    # Figure 2 keeps source selection in the large Original-document card. The
+    # real connected-source action stays alive and is triggered from that card.
+    browse = getattr(context_bar, "browse", None) if context_bar is not None else None
+    if browse is not None:
+        if row.indexOf(browse) >= 0:
+            row.removeWidget(browse)
+        browse.hide()
+        page._protect_2026_connected_browse_action = browse
 
     scan = getattr(page, "_protect_source_scan", None)
     if scan is not None:
         scan.setText("Scan + Protect")
-        scan.setMinimumWidth(155)
-        scan.setMaximumWidth(180)
-
-    # The visible SOURCE / VIEW strip is ProtectModeBar (created by layout_polish),
-    # not the older EmbeddedSourceToolbar. Move the one real Clear button beside
-    # Paste text here and retire the historical bottom action footer entirely.
-    mode_bar = getattr(page, "_polish_protect_mode_bar", None)
-    mode_row = mode_bar.layout() if mode_bar is not None else None
-    document = getattr(page, "_redesign_document_mode", None)
-    paste = getattr(page, "_redesign_paste_mode", None)
-    clear = getattr(page, "clear_button", None)
-    if isinstance(mode_row, QHBoxLayout) and paste is not None and clear is not None:
-        _remove_from_layout_tree(page.preview_card.layout(), clear)
-        clear.setParent(mode_bar)
-        insert_at = mode_row.indexOf(paste) + 1
-        mode_row.insertWidget(max(0, insert_at), clear)
-        clear.setText("Clear")
-        clear.setMinimumHeight(36)
-        clear.setMinimumWidth(74)
-        clear.setMaximumWidth(88)
-        clear.setToolTip(
-            "Clear the current Protect source and return to the empty source choices."
+        scan.setMinimumHeight(46)
+        scan.setMaximumHeight(50)
+        scan.setMinimumWidth(165)
+        scan.setMaximumWidth(190)
+        scan.setStyleSheet(
+            "QPushButton{background:#2563EB;color:#FFFFFF;border:1px solid #2563EB;"
+            "border-radius:10px;padding:9px 14px;font-size:9px;font-weight:900;}"
+            "QPushButton:hover{background:#1D4ED8;border-color:#1D4ED8;}"
+            "QPushButton:disabled{background:#D0D5DD;color:#FFFFFF;border-color:#D0D5DD;}"
         )
+
+    clear = getattr(page, "clear_button", None)
+    if clear is not None:
+        _remove_from_layout_tree(page.preview_card.layout(), clear)
+        clear.setParent(row_frame)
+        scan_index = row.indexOf(scan) if scan is not None else -1
+        row.insertWidget(scan_index if scan_index >= 0 else row.count(), clear)
+        clear.setText("Clear")
+        clear.setMinimumHeight(46)
+        clear.setMaximumHeight(50)
+        clear.setMinimumWidth(95)
+        clear.setMaximumWidth(110)
+        clear.setToolTip("Clear this Protect session and return to the empty workspace.")
         clear.setStyleSheet(
-            "QPushButton{background:#FFFFFF;color:#475467;border:1px solid #D0D5DD;"
-            "border-radius:8px;padding:6px 10px;font-size:9px;font-weight:800;}"
-            "QPushButton:hover{background:#F8FAFC;color:#344054;border-color:#98A2B3;}"
+            "QPushButton{background:#FFFFFF;color:#344054;border:1px solid #D0D5DD;"
+            "border-radius:10px;padding:8px 12px;font-size:9px;font-weight:850;}"
+            "QPushButton:hover{background:#F8FAFC;border-color:#98A2B3;}"
             "QPushButton:pressed{background:#F2F4F7;}"
         )
         clear.show()
-
-        if document is not None:
-            document.setMinimumWidth(122)
-            document.setMaximumWidth(145)
-        paste.setMinimumWidth(122)
-        paste.setMaximumWidth(145)
 
     bottom_bar = getattr(page, "_polish_protect_bottom_bar", None)
     if bottom_bar is not None:
@@ -368,18 +448,18 @@ def _finalize_command_and_view_rows(main_window) -> None:
         bottom_bar.setMinimumHeight(0)
         bottom_bar.setMaximumHeight(0)
 
-    # Keep the two document panels as the visual center and do not let final
-    # compaction shrink the real text/document workspace.
+    _style_figure_two_mode_row(page)
+
     splitter = getattr(page, "document_preview_splitter", None)
     if splitter is not None:
         splitter.setMinimumHeight(520)
         splitter.setSizes([650, 650])
     empty_state = getattr(page, "_protect_source_empty_state", None)
     if empty_state is not None:
-        empty_state.setMinimumHeight(420)
+        empty_state.setMinimumHeight(440)
     text_input = getattr(page, "text_input", None)
     if text_input is not None:
-        text_input.setMinimumHeight(420)
+        text_input.setMinimumHeight(440)
 
     _install_clear_empty_state_guard(page)
 
@@ -392,21 +472,9 @@ def apply_mockup_protect_refinement_suite_2026(main_window) -> None:
     apply_mockup_protect_manual_sensitive_2026(main_window)
     apply_mockup_protect_compact_workflow_2026(main_window)
     apply_mockup_protect_compact_steps_2026(main_window)
-    # Synchronize manual rules with the authoritative ProtectSession before any
-    # higher-level review controls are installed.
     apply_mockup_protect_manual_sensitive_runtime_fix_2026(main_window)
-    # Complete product review experience: local rule management, truthful metrics,
-    # why-detected context and final safe-copy actions.
     apply_mockup_protect_review_experience_2026(main_window)
-    # Guaranteed placement for Edit/Remove when the legacy action row is nested.
     apply_mockup_protect_review_controls_2026(main_window)
-    # Image/OCR support extends the engine only. Never let its compatibility
-    # preview hooks hide the established tags/review/manual-sensitive surface.
     apply_protect_image_review_regression_fix(main_window)
-    # Final source-entry presentation: style the existing source buttons and add
-    # the empty-state upload/paste/drop surface without replacing any Protect
-    # callbacks or engine behavior.
     apply_mockup_protect_entry_surface_2026(main_window)
-    # Final layout reconciliation stays inside the existing refinement suite rather
-    # than adding another patch file.
     _finalize_command_and_view_rows(main_window)
