@@ -25,6 +25,7 @@ from ai_pm_lab_privacy_gate.infrastructure.storage.ai_library_repository import 
 EMAIL = "jane.smith@example.com"
 ORIGIN = "chrome-extension://privacygate-docx-test"
 AUTH_TOKEN = "test-local-docx-auth-token-0123456789"
+HTTP_TEST_TIMEOUT_SECONDS = 15
 
 
 class FakePiiEngine:
@@ -50,7 +51,14 @@ class FakePiiEngine:
 
 
 def _request(server, method: str, path: str, payload=None, *, token=None, origin=ORIGIN):
-    connection = HTTPConnection("127.0.0.1", server.server_port, timeout=3)
+    # A cold Windows CI/local run can spend several seconds importing Office/
+    # detector support before the first DOCX analysis responds. Keep this network
+    # harness strict but avoid treating startup warm-up as a transport deadlock.
+    connection = HTTPConnection(
+        "127.0.0.1",
+        server.server_port,
+        timeout=HTTP_TEST_TIMEOUT_SECONDS,
+    )
     body = None if payload is None else json.dumps(payload)
     headers = {}
     if payload is not None:
