@@ -7,7 +7,7 @@
   <style>
     :root { color-scheme: light; font-family: Inter, Arial, sans-serif; }
     * { box-sizing: border-box; }
-    body { margin: 0; width: 330px; background: #f4f7f9; color: #17384e; }
+    body { margin: 0; width: 340px; background: #f4f7f9; color: #17384e; }
     .hero { padding: 16px 18px 18px; background: linear-gradient(135deg,#062b4f,#0b7f89); color: white; }
     .brand-row { display: flex; align-items: center; gap: 9px; }
     .brand-logo { width: 30px; height: 30px; flex: 0 0 30px; filter: drop-shadow(0 2px 5px rgba(0,0,0,.18)); }
@@ -21,10 +21,10 @@
     .paired { background: #eaf8f1; color: #23824b; }
     .unpaired { background: #fff6e8; color: #a96b18; }
     .offline { background: #fff0f0; color: #b54747; }
-    .connected { margin-top: 12px; padding: 14px; background: white; border: 1px solid #dde7ec; border-radius: 12px; }
-    .connected-title { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 850; color: #17384e; }
+    .connected, .pair, .settings { margin-top: 12px; padding: 13px; background: white; border: 1px solid #dde7ec; border-radius: 12px; }
+    .connected-title, .settings-title { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 850; color: #17384e; }
     .dot { width: 9px; height: 9px; border-radius: 50%; background: #22a06b; box-shadow: 0 0 0 4px #eaf8f1; }
-    .connected p { margin: 8px 0 0; font-size: 10px; line-height: 1.45; color: #61798a; }
+    .connected p, .settings p { margin: 8px 0 0; font-size: 10px; line-height: 1.45; color: #61798a; }
     .protection-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 12px; padding-top: 11px; border-top: 1px solid #edf1f4; }
     .protection-copy { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
     .protection-copy strong { font-size: 11px; font-weight: 800; color: #17384e; }
@@ -34,11 +34,15 @@
     #protectionToggle .toggle-knob { display: block; width: 20px; height: 20px; border-radius: 50%; background: #fff; box-shadow: 0 1px 4px rgba(15,23,42,.28); transform: translateX(19px); transition: transform .16s ease; }
     #protectionToggle[aria-checked="false"] .toggle-knob { transform: translateX(0); }
     #protectionToggle:focus-visible { outline: 2px solid #0b7f89; outline-offset: 2px; }
-    .pair { margin-top: 12px; padding: 13px; background: white; border: 1px solid #dde7ec; border-radius: 12px; }
-    label { display: block; font-size: 10px; font-weight: 800; margin-bottom: 6px; }
-    input { width: 100%; height: 40px; border: 1px solid #c9d7e0; border-radius: 9px; padding: 0 11px; font-size: 16px; font-weight: 800; letter-spacing: .18em; text-align: center; }
+    label { display: block; font-size: 10px; font-weight: 800; margin: 10px 0 6px; }
+    .pair label { margin-top: 0; }
+    #code { width: 100%; height: 40px; border: 1px solid #c9d7e0; border-radius: 9px; padding: 0 11px; font-size: 16px; font-weight: 800; letter-spacing: .18em; text-align: center; }
+    select, #bridgePort { width: 100%; height: 38px; border: 1px solid #c9d7e0; border-radius: 9px; padding: 0 10px; background: #fff; color: #17384e; font-size: 11px; font-weight: 750; }
+    .port-row { display: flex; align-items: center; gap: 8px; }
+    .port-row #bridgePort { width: 110px; flex: 0 0 110px; }
     button { width: 100%; min-height: 38px; margin-top: 9px; border: 0; border-radius: 9px; background: #0b7f89; color: white; font-size: 11px; font-weight: 850; cursor: pointer; }
     button.secondary { background: transparent; color: #61798a; border: 1px solid #dde7ec; font-weight: 750; }
+    .port-row button { width: auto; flex: 1; margin-top: 0; min-height: 38px; }
     button:disabled { opacity: .55; cursor: default; }
     #message { min-height: 16px; margin: 8px 2px 0; font-size: 10px; line-height: 1.35; color: #61798a; }
     .foot { margin-top: 11px; font-size: 9px; line-height: 1.4; color: #82929e; text-align: center; }
@@ -77,9 +81,29 @@
       <label for="code">One-time connection code</label>
       <input id="code" inputmode="numeric" maxlength="8" placeholder="00000000" autocomplete="one-time-code">
       <button id="pairButton">Connect to PrivacyGate</button>
-      <div id="message"></div>
     </section>
 
+    <section class="settings" id="settingsSection">
+      <div class="settings-title">Protection settings</div>
+      <label for="profileSelect">Privacy profile</label>
+      <select id="profileSelect">
+        <option value="general_business">General — Recommended</option>
+        <option value="property_management">Property Management</option>
+        <option value="realtor_brokerage">Realtor / Brokerage</option>
+        <option value="projects_renovations">Projects & Renovations</option>
+        <option value="construction">Construction</option>
+        <option value="legal">Legal</option>
+        <option value="healthcare_general">Healthcare — General Privacy</option>
+      </select>
+      <label for="bridgePort">Desktop bridge port</label>
+      <div class="port-row">
+        <input id="bridgePort" inputmode="numeric" maxlength="5" value="8765">
+        <button id="saveSettingsButton" class="secondary">Save settings</button>
+      </div>
+      <p>The port must match PrivacyGate Desktop → Settings → Services → Local Privacy Bridge. Default: 8765.</p>
+    </section>
+
+    <div id="message"></div>
     <button id="forgetButton" class="secondary" hidden>Disconnect this browser</button>
     <div class="foot">Prompt analysis and restore mappings remain on this device.</div>
   </main>
