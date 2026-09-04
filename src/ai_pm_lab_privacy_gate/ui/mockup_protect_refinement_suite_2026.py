@@ -3,7 +3,7 @@ from __future__ import annotations
 """One ordered activation point for the post-mockup Protect refinements."""
 
 from PySide6.QtCore import QTimer
-from PySide6.QtWidgets import QFrame, QHBoxLayout, QPushButton, QVBoxLayout
+from PySide6.QtWidgets import QFrame, QHBoxLayout, QLayout, QPushButton, QVBoxLayout
 
 from .mockup_protect_workspace_refinement_2026 import (
     apply_mockup_protect_workspace_refinement_2026,
@@ -40,55 +40,171 @@ from .mockup_protect_entry_surface_2026 import (
 )
 
 
-def _keep_source_actions_in_unified_row(main_window) -> None:
-    """Keep the styled source buttons in the visible compact command row.
+BLUE = "#2563EB"
+BLUE_SOFT = "#EFF6FF"
+BORDER = "#D0D5DD"
+MUTED = "#667085"
+TEXT = "#344054"
+TEAL = "#0B858A"
+TEAL_DARK = "#096E75"
 
-    The compact workflow already moved the real Upload/Connected/Paste widgets
-    out of their legacy quick bar.  The final entry-surface styling must not move
-    those same widgets back into that hidden compatibility bar.  Reattach the
-    existing button instances here; their original signals and behavior remain
-    unchanged.
+
+def _find_layout(layout: QLayout | None, widget) -> QLayout | None:
+    if layout is None:
+        return None
+    if layout.indexOf(widget) >= 0:
+        return layout
+    for index in range(layout.count()):
+        child = layout.itemAt(index).layout()
+        found = _find_layout(child, widget)
+        if found is not None:
+            return found
+    return None
+
+
+def _remove_from_parent_layout(widget) -> None:
+    if widget is None:
+        return
+    parent = widget.parentWidget()
+    layout = parent.layout() if parent is not None else None
+    if layout is not None:
+        layout.removeWidget(widget)
+
+
+def _finalize_command_and_view_rows(main_window) -> None:
+    """Apply the approved final Protect hierarchy using existing real widgets.
+
+    No source, connector, scan, review or clear behavior is recreated here.  The
+    existing Upload/Paste/Connected buttons remain alive as compatibility actions
+    because the large Original-document entry surface delegates to them.  They are
+    simply removed from the compact command row so the same actions are not shown
+    twice.  The authoritative Clear button is moved beside Document/Paste text.
     """
+
     page = getattr(main_window, "protection_page", None)
     if page is None:
         return
 
     row_frame = getattr(page, "_protect_2026_unified_row", None)
-    workflow = getattr(page, "_protect_2026_workflow_button", None)
-    upload = getattr(page, "_protect_source_upload", None)
-    paste = getattr(page, "_protect_source_paste", None)
-    connected = getattr(page, "_protect_source_connected", None)
-    if row_frame is None or workflow is None or any(
-        button is None for button in (upload, paste, connected)
+    row = row_frame.layout() if row_frame is not None else None
+    context_bar = getattr(page, "_managed_workspace_context_bar", None)
+
+    # The large Original-document surface already exposes Upload and Paste text,
+    # and connected content has its dedicated Source selector + Browse action.
+    # Keep the canonical buttons alive but hidden instead of cloning/reconnecting
+    # their callbacks or adding another compatibility file.
+    for name in (
+        "_protect_2026_workflow_button",
+        "_protect_source_upload",
+        "_protect_source_paste",
+        "_protect_source_connected",
     ):
-        return
+        button = getattr(page, name, None)
+        if button is None:
+            continue
+        if isinstance(row, QHBoxLayout) and row.indexOf(button) >= 0:
+            row.removeWidget(button)
+        button.hide()
+        button.setMaximumWidth(0)
 
-    row = row_frame.layout()
-    if not isinstance(row, QHBoxLayout):
-        return
+    if context_bar is not None:
+        # Provider identity must remain readable even while an asynchronous brand
+        # logo is still loading.  Previous final styling made the text transparent,
+        # which produced a blank Source field whenever the logo was delayed.
+        source = context_bar.source_combo
+        source.setMinimumWidth(150)
+        source.setMaximumWidth(190)
+        source.view().setMinimumWidth(220)
+        source.setStyleSheet(
+            "QComboBox{background:#FFFFFF;color:#344054;border:1px solid #D0D5DD;"
+            "border-radius:9px;padding:7px 9px;font-size:9px;font-weight:750;}"
+            "QComboBox:hover{border-color:#AFC7FA;background:#FCFDFF;}"
+            f"QComboBox:focus{{border:1px solid {BLUE};}}"
+            "QComboBox::drop-down{border:none;width:25px;}"
+            "QComboBox QAbstractItemView{background:#FFFFFF;color:#344054;"
+            "border:1px solid #D0D5DD;selection-background-color:#EEF4FF;"
+            "selection-color:#101828;padding:4px;}"
+        )
 
-    # Remove the buttons from whichever compatibility layout currently owns
-    # them, then put the exact same widgets immediately after Workflow.
-    for button in (upload, paste, connected):
-        parent = button.parentWidget()
-        parent_layout = parent.layout() if parent is not None else None
-        if parent_layout is not None:
-            parent_layout.removeWidget(button)
+        context_bar.workspace_combo.setMinimumWidth(175)
+        context_bar.workspace_combo.setMaximumWidth(225)
+        context_bar.account_combo.setMinimumWidth(205)
+        context_bar.account_combo.setMaximumWidth(265)
+        context_bar.browse.setText("Browse connected content")
+        context_bar.browse.setMinimumWidth(170)
+        context_bar.browse.setMaximumWidth(205)
 
-    workflow_index = row.indexOf(workflow)
-    insert_at = workflow_index + 1 if workflow_index >= 0 else 0
-    for offset, button in enumerate((upload, paste, connected)):
-        row.insertWidget(insert_at + offset, button)
-        button.show()
+    # Add flags without changing the language codes used by the detector runtime.
+    language = getattr(page, "document_language_combo", None)
+    language_panel = getattr(page, "_protect_document_language_panel", None)
+    if language is not None:
+        for index in range(language.count()):
+            code = str(language.itemData(index) or "")
+            if code == "en":
+                language.setItemText(index, "🇺🇸  English")
+            elif code == "it":
+                language.setItemText(index, "🇮🇹  Italiano")
+        language.setMinimumWidth(125)
+        language.setMaximumWidth(145)
+    if language_panel is not None:
+        language_panel.setMinimumWidth(125)
+        language_panel.setMaximumWidth(145)
+
+    scan = getattr(page, "_protect_source_scan", None)
+    if scan is not None:
+        scan.setText("Scan + Protect")
+        scan.setMinimumWidth(155)
+        scan.setMaximumWidth(180)
+
+    # Reuse the existing EmbeddedSourceToolbar.  It already owns Document/Paste
+    # and the real Protected text / Original + Protected view controls; placing
+    # Clear here keeps every source/view action in one coherent row.
+    toolbar = page.findChild(QFrame, "EmbeddedSourceToolbar")
+    document = getattr(page, "_redesign_document_mode", None)
+    paste = getattr(page, "_redesign_paste_mode", None)
+    clear = getattr(page, "clear_button", None)
+    if toolbar is not None and paste is not None and clear is not None:
+        source_row = _find_layout(toolbar.layout(), paste)
+        if isinstance(source_row, QHBoxLayout):
+            _remove_from_parent_layout(clear)
+            clear.setParent(toolbar)
+            insert_at = source_row.indexOf(paste) + 1
+            source_row.insertWidget(max(0, insert_at), clear)
+            clear.setText("Clear")
+            clear.setMinimumHeight(36)
+            clear.setMinimumWidth(74)
+            clear.setMaximumWidth(88)
+            clear.setToolTip("Clear the current Protect source and return to the empty source choices.")
+            clear.setStyleSheet(
+                "QPushButton{background:#FFFFFF;color:#475467;border:1px solid #D0D5DD;"
+                "border-radius:8px;padding:6px 10px;font-size:9px;font-weight:800;}"
+                "QPushButton:hover{background:#F8FAFC;color:#344054;border-color:#98A2B3;}"
+                "QPushButton:pressed{background:#F2F4F7;}"
+            )
+            clear.show()
+
+        if document is not None:
+            document.setMinimumWidth(122)
+            document.setMaximumWidth(145)
+        paste.setMinimumWidth(122)
+        paste.setMaximumWidth(145)
+
+    # Keep the two document panels as the visual center and do not let this final
+    # compaction shrink the real text/document workspace established earlier.
+    splitter = getattr(page, "document_preview_splitter", None)
+    if splitter is not None:
+        splitter.setMinimumHeight(520)
+        splitter.setSizes([650, 650])
+    empty_state = getattr(page, "_protect_source_empty_state", None)
+    if empty_state is not None:
+        empty_state.setMinimumHeight(420)
+    text_input = getattr(page, "text_input", None)
+    if text_input is not None:
+        text_input.setMinimumHeight(420)
 
 
 def _install_back_to_options(page) -> None:
-    """Add one clear return affordance while the manual Paste editor is open.
-
-    This is presentation-only: returning delegates to the existing Clear action,
-    which already resets the Protect source/session and restores the EMPTY entry
-    surface. No source, scan, detector or protection behavior is duplicated here.
-    """
+    """Compatibility helper retained for older surfaces, but not used by v2026 final UI."""
     if page is None or getattr(page, "_protect_back_to_options_row", None) is not None:
         return
 
@@ -124,15 +240,9 @@ def _install_back_to_options(page) -> None:
         "color:#1D4ED8;border-color:#AFC7FA;}"
     )
     row.addWidget(button)
-
-    # Heading remains index 0. Put this compact return row immediately beneath
-    # it and above whichever source surface (EMPTY/PASTE/DOCUMENT) is active.
     layout.insertWidget(1, row_host, 0)
 
     def refresh() -> None:
-        # setVisible() in the entry-surface state machine changes the widget's
-        # hidden flag, so this remains truthful even before the whole window is
-        # exposed by Qt.
         paste_visible = not text_input.isHidden()
         empty_visible = not empty_state.isHidden()
         row_host.setVisible(paste_visible and not empty_visible)
@@ -141,9 +251,6 @@ def _install_back_to_options(page) -> None:
         QTimer.singleShot(0, refresh)
 
     def back_to_options() -> None:
-        # The approved behavior is a true return to source choice, not another
-        # parallel reset path. Reuse the existing Clear controller so any pasted
-        # draft/result/session state is cleared consistently.
         clear_button.click()
         QTimer.singleShot(0, refresh)
         QTimer.singleShot(120, refresh)
@@ -198,8 +305,8 @@ def apply_mockup_protect_refinement_suite_2026(main_window) -> None:
     # the empty-state upload/paste/drop surface without replacing any Protect
     # callbacks or engine behavior.
     apply_mockup_protect_entry_surface_2026(main_window)
-    # Keep those styled actions in the visible compact row, in the approved order:
-    # Workflow | Upload | Paste text | Connected source | workspace context ...
-    _keep_source_actions_in_unified_row(main_window)
-    # When manual Paste is open, offer an explicit return to the source choices.
-    _install_back_to_options(getattr(main_window, "protection_page", None))
+    # Final layout reconciliation.  This is deliberately inside the existing
+    # refinement suite rather than another UI patch file: duplicate upper source
+    # actions are hidden, Source remains logo+text, and the real Clear action is
+    # moved beside Document/Paste while all callbacks stay authoritative.
+    _finalize_command_and_view_rows(main_window)
