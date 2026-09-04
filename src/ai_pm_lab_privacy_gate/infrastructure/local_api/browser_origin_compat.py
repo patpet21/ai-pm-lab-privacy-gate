@@ -31,7 +31,7 @@ def _origin_for_token(registry, token: str | None) -> str:
     return ""
 
 
-def install_browser_origin_compat(server) -> None:
+def install_browser_origin_compat(server) -> bool:
     """Allow authenticated extension requests whose Chromium Origin is omitted.
 
     Security properties are preserved:
@@ -39,12 +39,22 @@ def install_browser_origin_compat(server) -> None:
     - an explicit non-extension Origin is never replaced or trusted;
     - the fallback activates only when Origin is absent *and* the request already
       carries a browser token that matches a credential stored by PrivacyGate.
-    """
-    handler_class = server.RequestHandlerClass
-    if getattr(handler_class, "_privacygate_browser_origin_compat", False):
-        return
 
-    original_browser_origin = handler_class._browser_origin
+    The manager accepts an injectable server factory for lifecycle/unit tests. Those
+    lightweight servers deliberately do not expose HTTP handler internals, so this
+    optional compatibility layer must safely no-op for them rather than turning an
+    otherwise healthy bridge lifecycle test into an application startup error.
+    """
+    handler_class = getattr(server, "RequestHandlerClass", None)
+    if handler_class is None:
+        return False
+
+    original_browser_origin = getattr(handler_class, "_browser_origin", None)
+    if not callable(original_browser_origin):
+        return False
+
+    if getattr(handler_class, "_privacygate_browser_origin_compat", False):
+        return True
 
     def browser_origin(self) -> str:
         origin = original_browser_origin(self)
@@ -60,3 +70,4 @@ def install_browser_origin_compat(server) -> None:
 
     handler_class._browser_origin = browser_origin
     handler_class._privacygate_browser_origin_compat = True
+    return True
