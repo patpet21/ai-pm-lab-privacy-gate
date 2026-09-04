@@ -20,6 +20,7 @@
       return (
         document.querySelector('div.ProseMirror[contenteditable="true"]') ||
         document.querySelector('[contenteditable="true"][data-placeholder]') ||
+        document.querySelector('fieldset [contenteditable="true"]') ||
         document.querySelector('textarea[placeholder*="message" i]') ||
         document.querySelector('textarea')
       );
@@ -179,11 +180,18 @@
       bar.style.visibility = "hidden";
       return;
     }
+
     const panelWidth = Math.min(Math.max(rect.width, 280), window.innerWidth - 24);
+    // Claude often places the composer flush against the viewport bottom. Keep
+    // the PrivacyGate pill visually below the composer when space exists, but
+    // clamp it inside the viewport instead of letting it disappear off-screen.
+    const desiredTop = rect.bottom + 6;
+    const safeTop = Math.max(6, Math.min(desiredTop, window.innerHeight - 34));
+
     Object.assign(bar.style, {
       visibility: "visible",
       left: `${Math.round(rect.left + rect.width / 2)}px`,
-      top: `${Math.round(rect.bottom + 6)}px`,
+      top: `${Math.round(safeTop)}px`,
       width: `${Math.round(panelWidth)}px`,
       transform: "translateX(-50%)"
     });
