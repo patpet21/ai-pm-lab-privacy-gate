@@ -122,6 +122,17 @@ def _unsupported_message(remote) -> str:
 def open_drive_browser(main_window) -> None:
     cloud_page = getattr(main_window, "cloud_automation_page", None)
     service = getattr(cloud_page, "_connected_apps_service", None) if cloud_page else None
+    from ai_pm_lab_privacy_gate.infrastructure.connectors.google_drive_picker_access import (
+        embedded_picker_enabled,
+    )
+
+    if service is not None and embedded_picker_enabled():
+        from ai_pm_lab_privacy_gate.ui.google_drive_embedded_picker import (
+            open_embedded_drive_picker,
+        )
+
+        open_embedded_drive_picker(main_window, service)
+        return
     if service is None or not hasattr(service, "list_drive_folder"):
         QMessageBox.warning(main_window, "Google Drive", "Google Drive folder navigation is unavailable in this build.")
         return

@@ -76,6 +76,9 @@ def authorize_desktop(
     timeout_seconds: int = 180,
     scopes: tuple[str, ...] | None = None,
     client_secret: str | None = None,
+    *,
+    include_granted_scopes: bool = True,
+    login_hint: str = "",
 ) -> dict:
     """Run Google's installed-app OAuth flow with PKCE and a loopback callback.
 
@@ -124,7 +127,7 @@ def authorize_desktop(
     server.timeout = 0.5
     redirect_uri = f"http://127.0.0.1:{server.server_port}"
 
-    auth_query = urlencode({
+    auth_parameters = {
         "client_id": client_id,
         "redirect_uri": redirect_uri,
         "response_type": "code",
@@ -133,11 +136,14 @@ def authorize_desktop(
         # Deliberately force account choice for multi-account even when the
         # browser already has a Google session.
         "prompt": "select_account consent",
-        "include_granted_scopes": "true",
+        "include_granted_scopes": "true" if include_granted_scopes else "false",
         "state": state,
         "code_challenge": challenge,
         "code_challenge_method": "S256",
-    })
+    }
+    if login_hint.strip():
+        auth_parameters["login_hint"] = login_hint.strip()
+    auth_query = urlencode(auth_parameters)
     webbrowser.open(f"{AUTH_URL}?{auth_query}")
 
     deadline = time.monotonic() + timeout_seconds

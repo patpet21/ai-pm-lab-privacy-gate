@@ -39,14 +39,19 @@ def _safe_filename(name: str) -> str:
     return cleaned or "Google Drive document"
 
 
-def materialize_google_drive_item(service: ConnectedAppsService, item: RemoteItem) -> Path:
+def materialize_google_drive_item(
+    service: ConnectedAppsService,
+    item: RemoteItem,
+    *,
+    access_token: str = "",
+) -> Path:
     """Download/export one approved Drive item to a managed local working file."""
     if item.provider != "google_drive":
         raise ValueError("This importer currently supports Google Drive only.")
     if item.kind == "application/vnd.google-apps.folder":
         raise ValueError("Open the folder first, then choose a file to import into Protect.")
 
-    token = service._token("google_drive")
+    token = access_token or service._token("google_drive")
     headers = {"Authorization": f"Bearer {token}"}
     export = _GOOGLE_EXPORTS.get(item.kind)
 
