@@ -1,8 +1,20 @@
 importScripts("session_registry.js");
 
-const BRIDGE = "http://127.0.0.1:8765";
+const DEFAULT_BRIDGE_PORT = 8765;
+const BRIDGE_PORT_KEY = "privacygateBridgePort";
+const PROFILE_KEY = "privacygateProtectionProfile";
+const DEFAULT_PROFILE_KEY = "property_management";
 const BROWSER_TOKEN_KEY = "privacygateBrowserCredentialV1";
 const SessionRegistry = globalThis.PrivacyGateSessionRegistry;
+const PROFILE_KEYS = new Set([
+  "general_business",
+  "property_management",
+  "realtor_brokerage",
+  "projects_renovations",
+  "construction",
+  "legal",
+  "healthcare_general"
+]);
 
 async function installPrivacyGateActionIcon() {
   try {
@@ -61,6 +73,44 @@ function detectPromptLanguage(text) {
   return "en";
 }
 
+function normalizeBridgePort(value) {
+  const port = Number.parseInt(String(value ?? ""), 10);
+  return Number.isInteger(port) && port >= 1024 && port <= 65535
+    ? port
+    : DEFAULT_BRIDGE_PORT;
+}
+
+function normalizeProfileKey(value) {
+  const key = typeof value === "string" ? value.trim() : "";
+  return PROFILE_KEYS.has(key) ? key : DEFAULT_PROFILE_KEY;
+}
+
+async function getExtensionSettings() {
+  const values = await chrome.storage.local.get({
+    [BRIDGE_PORT_KEY]: DEFAULT_BRIDGE_PORT,
+    [PROFILE_KEY]: DEFAULT_PROFILE_KEY
+  });
+  return {
+    bridgePort: normalizeBridgePort(values?.[BRIDGE_PORT_KEY]),
+    profileKey: normalizeProfileKey(values?.[PROFILE_KEY])
+  };
+}
+
+async function saveExtensionSettings({ bridgePort, profileKey }) {
+  const normalizedPort = normalizeBridgePort(bridgePort);
+  const normalizedProfile = normalizeProfileKey(profileKey);
+  await chrome.storage.local.set({
+    [BRIDGE_PORT_KEY]: normalizedPort,
+    [PROFILE_KEY]: normalizedProfile
+  });
+  return { bridgePort: normalizedPort, profileKey: normalizedProfile };
+}
+
+async function getBridgeBase() {
+  const { bridgePort } = await getExtensionSettings();
+  return `http://127.0.0.1:${bridgePort}`;
+}
+
 async function getBrowserToken() {
   const values = await chrome.storage.local.get(BROWSER_TOKEN_KEY);
   const token = values?.[BROWSER_TOKEN_KEY];
@@ -72,6 +122,14 @@ async function setBrowserToken(token) {
     await chrome.storage.local.set({ [BROWSER_TOKEN_KEY]: token });
   } else {
     await chrome.storage.local.remove(BROWSER_TOKEN_KEY);
+  }
+}
+
+async function responseJson(response) {
+  try {
+    return await response.json();
+  } catch (_error) {
+    return {};
   }
 }
 
@@ -89,22 +147,24 @@ async function bridgeJson(path, body, { authenticated = true } = {}) {
     headers.Authorization = `Bearer ${token}`;
   }
 
-  const response = await fetch(`${BRIDGE}${path}`, {
+  const bridge = await getBridgeBase();
+  const response = await fetch(`${bridge}${path}`, {
     method: "POST",
     cache: "no-store",
     headers,
     body: JSON.stringify(body)
   });
-  const data = await response.json();
+  const data = await responseJson(response);
   return { ok: response.ok, status: response.status, data };
 }
 
 async function baseBridgeStatus() {
-  const response = await fetch(`${BRIDGE}/v1/status`, {
+  const bridge = await getBridgeBase();
+  const response = await fetch(`${bridge}/v1/status`, {
     method: "GET",
     cache: "no-store"
   });
-  const data = await response.json();
+  const data = await responseJson(response);
   return {
     ok: response.ok && data?.status === "ready",
     status: response.status,
@@ -139,12 +199,13 @@ async function bridgeStatus() {
 
   try {
     const headers = { Authorization: `Bearer ${token}` };
-    const response = await fetch(`${BRIDGE}/v1/browser/status`, {
+    const bridge = await getBridgeBase();
+    const response = await fetch(`${bridge}/v1/browser/status`, {
       method: "GET",
       cache: "no-store",
       headers
     });
-    const data = await response.json();
+    const data = await responseJson(response);
 
     if (response.ok) {
       const paired = Boolean(data?.paired);
@@ -161,31 +222,41 @@ async function bridgeStatus() {
       };
     }
 
+    const pairingRejected =
+      response.status === 401 ||
+      response.status === 403 ||
+      data?.error === "browser_pairing_required";
+    if (pairingRejected) {
+      await setBrowserToken(null);
+      await SessionRegistry.clearAll();
+    }
     return {
-      ok: true,
+      ok: false,
       bridgeReady: true,
-      paired: true,
+      paired: false,
+      pairingRejected,
+      pairingError: !pairingRejected,
       status: response.status,
-      data: { ...data, status: "ready", paired: true }
+      data
     };
-  } catch (_error) {
+  } catch (error) {
     return {
-      ok: true,
-      bridgeReady: true,
-      paired: true,
-      status: base.status,
-      data: { ...base.data, paired: true }
+      ok: false,
+      bridgeReady: false,
+      paired: false,
+      error: String(error)
     };
   }
 }
 
 async function protectForConversation(message, sender) {
   const language = detectPromptLanguage(message.text);
+  const { profileKey } = await getExtensionSettings();
   let sessionId = await SessionRegistry.getSessionForSender(sender);
 
   const request = id => bridgeJson("/v1/browser/protect", {
     text: message.text,
-    profile_key: "property_management",
+    profile_key: profileKey,
     language,
     finding_ids: Array.isArray(message.findingIds) ? message.findingIds : [],
     replacement_mode: "reversible",
@@ -209,7 +280,7 @@ async function protectForConversation(message, sender) {
     await SessionRegistry.setSessionForSender(sender, response.data.session_id);
   }
 
-  return { ...response, detectedLanguage: language };
+  return { ...response, detectedLanguage: language, profileKey };
 }
 
 async function restoreForConversation(message, sender) {
@@ -238,11 +309,73 @@ async function restoreForConversation(message, sender) {
   return response;
 }
 
+async function revokeBrowserPairing() {
+  const token = await getBrowserToken();
+  if (!token) {
+    await SessionRegistry.clearAll();
+    return { ok: true, revoked: false, alreadyDisconnected: true };
+  }
+
+  const bridge = await getBridgeBase();
+  let response;
+  try {
+    response = await fetch(`${bridge}/v1/browser/pairing`, {
+      method: "DELETE",
+      cache: "no-store",
+      headers: { Authorization: `Bearer ${token}` }
+    });
+  } catch (error) {
+    return {
+      ok: false,
+      revoked: false,
+      error: `PrivacyGate Desktop is not reachable: ${String(error)}`
+    };
+  }
+
+  const data = await responseJson(response);
+  if (response.ok && data?.revoked === true) {
+    await setBrowserToken(null);
+    await SessionRegistry.clearAll();
+    return { ok: true, revoked: true };
+  }
+
+  if (response.status === 401 && data?.error === "browser_pairing_required") {
+    await setBrowserToken(null);
+    await SessionRegistry.clearAll();
+    return { ok: true, revoked: false, alreadyDisconnected: true };
+  }
+
+  return {
+    ok: false,
+    revoked: false,
+    status: response.status,
+    data,
+    error: "PrivacyGate Desktop could not revoke this browser credential. Keep the pairing and try again after the desktop app is updated and running."
+  };
+}
+
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message?.type === "PG_BRIDGE_STATUS") {
     bridgeStatus()
       .then(sendResponse)
       .catch(error => sendResponse({ ok: false, bridgeReady: false, paired: false, error: String(error) }));
+    return true;
+  }
+
+  if (message?.type === "PG_GET_EXTENSION_SETTINGS") {
+    getExtensionSettings()
+      .then(settings => sendResponse({ ok: true, ...settings }))
+      .catch(error => sendResponse({ ok: false, error: String(error) }));
+    return true;
+  }
+
+  if (message?.type === "PG_SET_EXTENSION_SETTINGS") {
+    saveExtensionSettings({
+      bridgePort: message.bridgePort,
+      profileKey: message.profileKey
+    })
+      .then(settings => sendResponse({ ok: true, ...settings }))
+      .catch(error => sendResponse({ ok: false, error: String(error) }));
     return true;
   }
 
@@ -271,20 +404,24 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 
   if (message?.type === "PG_FORGET_PAIRING") {
-    Promise.all([setBrowserToken(null), SessionRegistry.clearAll()])
-      .then(() => sendResponse({ ok: true }))
-      .catch(error => sendResponse({ ok: false, error: String(error) }));
+    revokeBrowserPairing()
+      .then(sendResponse)
+      .catch(error => sendResponse({ ok: false, revoked: false, error: String(error) }));
     return true;
   }
 
   if (message?.type === "PG_ANALYZE") {
-    const language = detectPromptLanguage(message.text);
-    bridgeJson("/v1/browser/analyze", {
-      text: message.text,
-      profile_key: "property_management",
-      language
-    })
-      .then(response => sendResponse({ ...response, detectedLanguage: language }))
+    (async () => {
+      const language = detectPromptLanguage(message.text);
+      const { profileKey } = await getExtensionSettings();
+      const response = await bridgeJson("/v1/browser/analyze", {
+        text: message.text,
+        profile_key: profileKey,
+        language
+      });
+      return { ...response, detectedLanguage: language, profileKey };
+    })()
+      .then(sendResponse)
       .catch(error => sendResponse({ ok: false, error: String(error) }));
     return true;
   }
@@ -317,18 +454,19 @@ chrome.tabs?.onRemoved?.addListener(tabId => {
 });
 
 async function analyzePdfForBrowser(message) {
-  const profileKey =
-    typeof message.profileKey === "string" && message.profileKey.trim()
+  const settings = await getExtensionSettings();
+  const requestedProfile =
+    typeof message.profileKey === "string" && PROFILE_KEYS.has(message.profileKey.trim())
       ? message.profileKey.trim()
-      : "general_business";
+      : settings.profileKey;
   const language = message.language === "it" ? "it" : "en";
   const response = await bridgeJson("/v1/browser/pdf/analyze", {
     filename: message.filename,
     file_base64: message.fileBase64,
-    profile_key: profileKey,
+    profile_key: requestedProfile,
     language
   });
-  return { ...response, detectedLanguage: language, profileKey };
+  return { ...response, detectedLanguage: language, profileKey: requestedProfile };
 }
 
 async function protectPdfForConversation(message, sender) {
