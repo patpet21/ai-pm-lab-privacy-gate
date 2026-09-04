@@ -70,6 +70,7 @@ def test_desktop_picker_uses_drive_file_only_and_registers_google_identity(
     assert captured["client_id"] == "desktop-client"
     assert captured["scopes"] == (access.DRIVE_FILE_SCOPE,)
     assert captured["include_granted_scopes"] is False
+    assert captured["login_hint"] == ""
     assert captured["extra_auth_parameters"] == {
         "prompt": "select_account consent",
         "trigger_onepick": "true",
@@ -88,6 +89,99 @@ def test_desktop_picker_uses_drive_file_only_and_registers_google_identity(
         )
         == "selected-token"
     )
+
+
+def test_active_selected_account_uses_login_hint_without_forcing_account_chooser(
+    monkeypatch,
+) -> None:
+    service = _Service()
+    service.secret_store.set(
+        "connected.google_drive.drive_file.accounts",
+        '["selected-a"]',
+    )
+    service.secret_store.set(
+        "connected.google_drive.drive_file.active",
+        "selected-a",
+    )
+    service.secret_store.set(
+        "connected.google_drive.drive_file.account.selected-a.email",
+        "alice@example.com",
+    )
+    service.secret_store.set(
+        "connected.google_drive.drive_file.account.selected-a.label",
+        "alice@example.com",
+    )
+    captured = {}
+
+    def fake_authorize(_client_id, **kwargs):
+        captured.update(kwargs)
+        return {
+            "access_token": "selected-token",
+            "refresh_token": "selected-refresh",
+            "expires_in": 3600,
+            "obtained_at": 9_999_999_000,
+            "picked_file_ids": "file-3",
+        }
+
+    monkeypatch.setattr(access, "authorize_desktop", fake_authorize)
+    monkeypatch.setattr(
+        access,
+        "_about_user",
+        lambda _service, _token: {
+            "permissionId": "permission-a",
+            "emailAddress": "alice@example.com",
+            "displayName": "Alice",
+        },
+    )
+
+    access.pick_additional_files(service)
+
+    assert captured["login_hint"] == "alice@example.com"
+    assert captured["extra_auth_parameters"]["prompt"] == "consent"
+    assert captured["scopes"] == (access.DRIVE_FILE_SCOPE,)
+    assert captured["include_granted_scopes"] is False
+
+
+def test_explicit_change_account_keeps_account_chooser(monkeypatch) -> None:
+    service = _Service()
+    service.secret_store.set(
+        "connected.google_drive.drive_file.accounts",
+        '["selected-a"]',
+    )
+    service.secret_store.set(
+        "connected.google_drive.drive_file.active",
+        "selected-a",
+    )
+    service.secret_store.set(
+        "connected.google_drive.drive_file.account.selected-a.email",
+        "alice@example.com",
+    )
+    captured = {}
+
+    def fake_authorize(_client_id, **kwargs):
+        captured.update(kwargs)
+        return {
+            "access_token": "token-b",
+            "refresh_token": "refresh-b",
+            "expires_in": 3600,
+            "obtained_at": 9_999_999_000,
+            "picked_file_ids": "b-1",
+        }
+
+    monkeypatch.setattr(access, "authorize_desktop", fake_authorize)
+    monkeypatch.setattr(
+        access,
+        "_about_user",
+        lambda _service, _token: {
+            "permissionId": "permission-b",
+            "emailAddress": "bob@example.com",
+        },
+    )
+
+    access.pick_additional_files(service, choose_account=True)
+
+    assert captured["login_hint"] == ""
+    assert captured["extra_auth_parameters"]["prompt"] == "select_account consent"
 
 
 def test_two_picker_accounts_keep_tokens_and_file_ids_separate(monkeypatch) -> None:
@@ -137,7 +231,7 @@ def test_two_picker_accounts_keep_tokens_and_file_ids_separate(monkeypatch) -> N
     assert account_a is not None
     assert account_a.label == "alice@example.com"
 
-    access.pick_additional_files(service)
+    access.pick_additional_files(service, choose_account=True)
     account_b = access.selected_file_active_account(service)
     assert account_b is not None
     assert account_b.label == "bob@example.com"

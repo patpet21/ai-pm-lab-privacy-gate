@@ -353,23 +353,34 @@ def stored_file_ids(
     return tuple(dict.fromkeys(str(value).strip() for value in values if str(value).strip()))
 
 
-def pick_additional_files(service: ConnectedAppsService) -> tuple[str, ...]:
+def pick_additional_files(
+    service: ConnectedAppsService,
+    *,
+    choose_account: bool = False,
+) -> tuple[str, ...]:
     """Use Google's official desktop Picker with drive.file only.
 
-    The browser handoff is intentionally independent from the Full Drive
-    ``drive.readonly`` connection. Google chooses the account for this Picker
-    session, then PrivacyGate identifies that account via Drive ``about.get`` and
-    stores its token and selected file ids in the separate drive.file registry.
+    Normal file selection stays on the active selected-file account whenever its
+    email is known. PrivacyGate passes that address as ``login_hint`` and keeps
+    Google's required consent prompt without unnecessarily forcing the account
+    chooser every time. ``choose_account=True`` is reserved for the explicit
+    Add/change account action.
     """
 
     client_id, client_secret = _client(service)
+    active = selected_file_active_account(service)
+    can_hint_active = bool(active is not None and active.email and not choose_account)
+    prompt = "consent" if can_hint_active else "select_account consent"
+    login_hint = active.email if can_hint_active and active is not None else ""
+
     payload = authorize_desktop(
         client_id,
         scopes=(DRIVE_FILE_SCOPE,),
         client_secret=client_secret,
         include_granted_scopes=False,
+        login_hint=login_hint,
         extra_auth_parameters={
-            "prompt": "select_account consent",
+            "prompt": prompt,
             "trigger_onepick": "true",
             "allow_multiple": "true",
         },

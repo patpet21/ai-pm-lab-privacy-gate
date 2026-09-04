@@ -6,9 +6,12 @@ from ai_pm_lab_privacy_gate.infrastructure.connectors.google_drive_file_access i
     list_selected_file_accounts,
 )
 from ai_pm_lab_privacy_gate.ui import connected_apps_browse_polish, protect_source_picker
-from ai_pm_lab_privacy_gate.ui.apps_hub import AppsHubPage
+from ai_pm_lab_privacy_gate.ui.apps_hub import AppsHubPage, _primary_style
 from ai_pm_lab_privacy_gate.ui.drive_browser import open_drive_browser
 from ai_pm_lab_privacy_gate.ui.gmail_inbox import open_gmail_inbox
+from ai_pm_lab_privacy_gate.ui.google_drive_access_center import (
+    open_google_drive_access_center,
+)
 
 
 _INSTALLED = False
@@ -49,8 +52,8 @@ def install_gmail_browser_route() -> None:
                 open_gmail_inbox(self.main_window)
                 return
             if provider == "google_drive":
-                # This route is deliberately Full Drive only. The independent
-                # drive.file Picker is AppDriveFile/open_drive_file_browser.
+                # The Apps card no longer exposes this directly, but keep the
+                # internal Full Drive route for Protect/source-picker callers.
                 open_drive_browser(self.main_window)
                 return
         original_browse(self, provider, title, supported)
@@ -86,16 +89,13 @@ def install_gmail_browser_route() -> None:
         original_refresh(self)
         full_count = full_drive_count(self)
         selected_count = selected_file_count(self)
+        drive_connected = bool(full_count or selected_count)
 
+        # Google Drive is now one product entry point. The access center explains
+        # Selected files vs Full Drive and contains both account-management flows.
         for button in self.findChildren(QPushButton, "AppBrowse"):
-            provider = str(button.property("provider") or "")
-            if provider == "google_drive":
-                button.setText("Browse Full Drive")
-                button.setToolTip(
-                    "Optional Full Drive mode (drive.readonly). "
-                    "Browse folders and choose files inside PrivacyGate."
-                )
-                button.setEnabled(bool(full_count))
+            if str(button.property("provider") or "") == "google_drive":
+                button.hide()
             else:
                 button.setText("Import")
                 button.setToolTip(
@@ -103,45 +103,37 @@ def install_gmail_browser_route() -> None:
                 )
 
         for button in self.findChildren(QPushButton, "AppConnect"):
-            provider = str(button.property("provider") or "")
-            if provider != "google_drive":
-                continue
-            button.setText(
-                "Full Drive accounts" if full_count else "Connect Full Drive"
-            )
-            button.setToolTip(
-                "Optional Full Drive mode (drive.readonly). "
-                "Connect or manage accounts that can browse Drive inside PrivacyGate."
-            )
+            if str(button.property("provider") or "") == "google_drive":
+                button.hide()
 
         for button in self.findChildren(QPushButton, "AppDriveFile"):
-            button.setText(
-                "Selected files only"
-                if not selected_count
-                else f"Selected files only · {selected_count}"
-            )
+            button.show()
+            button.setText("Open Google Drive")
+            button.setStyleSheet(_primary_style())
             button.setToolTip(
-                "Recommended privacy mode (drive.file). "
-                "Google grants PrivacyGate access only to files you explicitly select."
+                "Choose Selected files only or optional Full Drive access, and manage Google accounts."
             )
-            button.setEnabled(True)
+            if not bool(button.property("drive_access_center_wired")):
+                try:
+                    button.clicked.disconnect()
+                except (RuntimeError, TypeError):
+                    pass
+                button.clicked.connect(
+                    lambda _checked=False, page=self: open_google_drive_access_center(page)
+                )
+                button.setProperty("drive_access_center_wired", True)
 
         for status in self.findChildren(QLabel, "AppStatus"):
             if str(status.property("provider") or "") != "google_drive":
                 continue
-            if full_count and selected_count:
-                status.setText(f"FULL {full_count} · SELECTED {selected_count}")
-            elif full_count:
-                suffix = "ACCOUNT" if full_count == 1 else "ACCOUNTS"
-                status.setText(f"FULL DRIVE · {full_count} {suffix}")
-            elif selected_count:
-                suffix = "ACCOUNT" if selected_count == 1 else "ACCOUNTS"
-                status.setText(f"SELECTED FILES · {selected_count} {suffix}")
-            else:
-                continue
+            status.setText("CONNECTED" if drive_connected else "AVAILABLE")
             status.setStyleSheet(
-                "background:#E8F6F6;color:#0B7180;border:1px solid #B8E1E4;"
-                "border-radius:8px;padding:4px 7px;font-size:9px;font-weight:900;"
+                (
+                    "background:#E8F6F6;color:#0B7180;border:1px solid #B8E1E4;"
+                    if drive_connected
+                    else "background:#EAF2FA;color:#355F87;border:1px solid #C9DAEA;"
+                )
+                + "border-radius:8px;padding:4px 7px;font-size:9px;font-weight:900;"
             )
 
     AppsHubPage.refresh = apps_refresh
