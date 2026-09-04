@@ -35,6 +35,10 @@ class BrowserPairingRegistry:
     Multiple Chromium browsers can load the same unpacked extension and therefore
     share the same chrome-extension:// origin. Credentials are stored per client,
     not one-per-origin, so pairing Chrome does not invalidate AVG/Edge/Brave.
+
+    A client name is also the stable browser-instance key for current extension
+    builds. Re-pairing that same instance replaces its previous credential instead
+    of inflating the connected-browser count with stale tokens.
     """
 
     def __init__(self, secret_store: SecretStore) -> None:
@@ -125,6 +129,7 @@ class BrowserPairingRegistry:
         if not normalized_origin.startswith("chrome-extension://"):
             raise ValueError("browser extension origin required")
         timestamp = time.time() if now is None else float(now)
+        normalized_client_name = str(client_name or "Chromium")[:80]
         with self._lock:
             expected = self._challenge_code
             if expected is None or timestamp > self._challenge_expires_at:
@@ -143,10 +148,20 @@ class BrowserPairingRegistry:
             clients = origin_record.get("clients")
             if not isinstance(clients, list):
                 clients = []
+
+            # Current extension builds persist a stable browser-instance id inside
+            # client_name. If that same instance pairs again, revoke its older token
+            # before adding the replacement. Other browser instances keep working.
+            clients = [
+                item
+                for item in clients
+                if not isinstance(item, dict)
+                or str(item.get("client_name") or "") != normalized_client_name
+            ]
             clients.append(
                 {
                     "token_hash": self._token_hash(browser_token),
-                    "client_name": str(client_name or "Chromium")[:80],
+                    "client_name": normalized_client_name,
                     "paired_at": timestamp,
                 }
             )
