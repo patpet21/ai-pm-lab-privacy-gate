@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "PrivacyGate Browser Protection",
-  "version": "0.0.63",
+  "version": "0.0.64",
   "description": "Local-first protection for text, PDF, Word, Excel, PowerPoint, text files and images on supported AI websites.",
   "permissions": [
     "storage"
@@ -59,6 +59,7 @@
         "https://chatgpt.com/*"
       ],
       "js": [
+        "xlsx_attach_compat.js",
         "unified_file_guard_v3.js",
         "file_send_compat.js",
         "send_reentry_guard.js",
@@ -79,13 +80,14 @@
         "https://gemini.google.com/*"
       ],
       "js": [
+        "xlsx_attach_compat.js",
         "unified_file_guard_v3.js",
         "file_send_compat.js",
         "send_reentry_guard.js",
         "multi_ai_adapter_parity.js",
         "multi_ai_outgoing_registry.js",
         "multi_ai_bar_stable.js",
-        "multi_ai_restore_provider.js"
+        "multi_ai_restore_provider_v2.js"
       ],
       "run_at": "document_start"
     },
