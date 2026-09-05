@@ -13,9 +13,20 @@
     return element;
   }
 
+  function providerName() {
+    const host = location.hostname.toLowerCase();
+    if (host === "gemini.google.com") return "Gemini";
+    if (host === "claude.ai" || host.endsWith(".claude.ai")) return "Claude";
+    return "ChatGPT";
+  }
+
   function composer() {
     return (
       document.querySelector("#prompt-textarea") ||
+      document.querySelector('rich-textarea [contenteditable="true"]') ||
+      document.querySelector('[data-testid*="composer"] [contenteditable="true"]') ||
+      document.querySelector('[contenteditable="true"][role="textbox"]') ||
+      document.querySelector("textarea") ||
       document.querySelector('[contenteditable="true"]')
     );
   }
@@ -87,16 +98,17 @@
   async function showPostAttachInstruction() {
     const language = await getLanguage();
     const hasPrompt = Boolean(composerText().trim());
+    const provider = providerName();
 
     let message;
     if (language === "it") {
       message = hasPrompt
-        ? "PDF protetto e allegato. La tua richiesta è pronta: premi Invio per inviarla a ChatGPT."
-        : "PDF protetto e allegato. Scrivi una domanda o un'istruzione per ChatGPT, poi premi Invio.";
+        ? `PDF protetto e allegato. La tua richiesta è pronta: premi Invio per inviarla a ${provider}.`
+        : `PDF protetto e allegato. Puoi inviarlo direttamente a ${provider} oppure aggiungere una domanda o un'istruzione.`;
     } else {
       message = hasPrompt
-        ? "PDF protected and attached. Your request is ready: press Send to submit it to ChatGPT."
-        : "PDF protected and attached. Type a question or instruction for ChatGPT, then press Send.";
+        ? `PDF protected and attached. Your request is ready: press Send to submit it to ${provider}.`
+        : `PDF protected and attached. You can send it directly to ${provider}, or add a question or instruction first.`;
     }
 
     showHint(message);
