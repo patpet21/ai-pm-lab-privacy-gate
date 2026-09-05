@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "PrivacyGate Browser Protection",
-  "version": "0.0.60",
+  "version": "0.0.61",
   "description": "Local-first protection for text, PDF, Word, Excel, PowerPoint, text files and images on supported AI websites.",
   "permissions": [
     "storage"
@@ -59,6 +59,7 @@
         "https://chatgpt.com/*"
       ],
       "js": [
+        "pdf_drag_guard.js",
         "unified_file_guard.js",
         "file_send_compat.js",
         "send_reentry_guard.js",
