@@ -35,7 +35,13 @@ class TextDocumentService:
         if destination.suffix.lower() != suffix:
             destination = destination.with_suffix(suffix)
         destination.parent.mkdir(parents=True, exist_ok=True)
-        destination.write_text(result.combined_text, encoding="utf-8")
+        if source_document.source_kind == "csv":
+            # The extracted CSV text already contains the source file's actual
+            # line endings. Writing bytes avoids Windows text-mode newline
+            # translation turning an existing CRLF into CRCRLF.
+            destination.write_bytes(result.combined_text.encode("utf-8"))
+        else:
+            destination.write_text(result.combined_text, encoding="utf-8")
         return destination
 
     @classmethod
