@@ -11,6 +11,7 @@ def test_csv_is_first_class_document_format(tmp_path: Path) -> None:
     source = tmp_path / "operations.csv"
     original = "Name,Email,Status\nJane Smith,jane@example.com,Open\n"
     source.write_text(original, encoding="utf-8-sig")
+    source_text = source.read_bytes().decode("utf-8-sig")
 
     service = PrivacyGateService()
     document = service.document_from_file(source)
@@ -19,7 +20,8 @@ def test_csv_is_first_class_document_format(tmp_path: Path) -> None:
     assert ".csv" in DocumentPipelineService.SUPPORTED_SUFFIXES
     assert document.source_kind == "csv"
     assert document.source_path == source
-    assert text == original
+    assert text == source_text
+    assert text.replace("\r\n", "\n") == original
 
     start = text.index("Jane Smith")
     finding = Finding(
@@ -40,9 +42,11 @@ def test_csv_is_first_class_document_format(tmp_path: Path) -> None:
         document,
     )
 
-    protected_text = protected.read_text(encoding="utf-8")
+    protected_bytes = protected.read_bytes()
+    protected_text = protected_bytes.decode("utf-8")
     assert protected.suffix == ".csv"
     assert protected_text == result.combined_text
+    assert b"\r\r\n" not in protected_bytes
     assert "Jane Smith" not in protected_text
     assert "[[PG_PERSON_001]]" in protected_text
     assert ",jane@example.com,Open" in protected_text
