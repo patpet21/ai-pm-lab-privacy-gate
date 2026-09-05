@@ -27,7 +27,6 @@
     .connected p, .settings p, .coverage p { margin: 8px 0 0; font-size: 10px; line-height: 1.45; color: #61798a; }
     .coverage-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 9px; }
     .chip { padding: 5px 7px; border-radius: 999px; background: #eef6f7; color: #17636b; font-size: 9px; font-weight: 850; }
-    .chip.pending { background: #fff6e8; color: #9a651b; }
     .protection-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 12px; padding-top: 11px; border-top: 1px solid #edf1f4; }
     .protection-copy { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
     .protection-copy strong { font-size: 11px; font-weight: 800; color: #17384e; }
@@ -58,7 +57,7 @@
       <div class="brand">PrivacyGate</div>
     </div>
     <h1>Browser Protection</h1>
-    <p>Local protection before prompts and supported documents reach AI websites.</p>
+    <p>Local protection before prompts and files reach supported AI websites.</p>
   </div>
   <main>
     <div class="status">
@@ -68,7 +67,7 @@
 
     <section class="connected" id="connectedSection" hidden>
       <div class="connected-title"><span class="dot"></span>Connected locally</div>
-      <p>PrivacyGate is ready to check prompts before they leave your browser. Your local pairing stays saved across normal app and extension updates.</p>
+      <p>PrivacyGate Desktop is the local protection engine for browser text and files. Pairing remains saved across normal app and extension updates.</p>
       <div class="protection-row">
         <div class="protection-copy">
           <strong>Browser protection</strong>
@@ -87,14 +86,20 @@
     </section>
 
     <section class="coverage">
-      <div class="coverage-title">FreeV1 coverage</div>
+      <div class="coverage-title">Browser coverage</div>
       <div class="coverage-chips">
         <span class="chip">ChatGPT</span>
-        <span class="chip pending">Claude · validating</span>
-        <span class="chip pending">Gemini · validating</span>
-        <span class="chip">Text</span><span class="chip">PDF</span><span class="chip">Word .docx</span>
+        <span class="chip">Claude</span>
+        <span class="chip">Gemini</span>
+        <span class="chip">Text</span>
+        <span class="chip">PDF</span>
+        <span class="chip">Word</span>
+        <span class="chip">Excel</span>
+        <span class="chip">PowerPoint</span>
+        <span class="chip">TXT</span>
+        <span class="chip">PNG/JPG</span>
       </div>
-      <p>Claude and Gemini adapters are being validated before protection is enabled on those pages.</p>
+      <p>Files are analyzed and protected by the same local desktop document pipeline used by PrivacyGate itself.</p>
     </section>
 
     <section class="settings" id="settingsSection">
@@ -119,7 +124,7 @@
 
     <div id="message"></div>
     <button id="forgetButton" class="secondary" hidden>Disconnect this browser</button>
-    <div class="foot">No original prompt or restore mapping is sent to PrivacyGate servers.</div>
+    <div class="foot">Original file contents and restore mappings stay on this device; AI sites receive only the protected copy.</div>
   </main>
   <script src="popup.js"></script>
 </body>
