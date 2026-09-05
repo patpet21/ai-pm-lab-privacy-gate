@@ -5,21 +5,22 @@ import binascii
 import json
 import re
 import secrets
-import tempfile
 import threading
 import time
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from ai_pm_lab_privacy_gate.application.protect_session_service import namespace_protection_result
-from ai_pm_lab_privacy_gate.domain.models import AnalysisDocument, Finding
+from ai_pm_lab_privacy_gate.domain.models import ReplacementMapping
 from ai_pm_lab_privacy_gate.domain.profiles import get_profile
 from ai_pm_lab_privacy_gate.infrastructure.documents.document_pipeline import DocumentPipelineService
 from ai_pm_lab_privacy_gate.infrastructure.pii.languages import normalize_document_language
 from ai_pm_lab_privacy_gate.infrastructure.storage.ai_library_repository import AiLibraryRepository
 
-from .browser_document_idempotency import document_contains_privacygate_tokens
+from .browser_file_executor import (
+    BrowserFileProcessExecutor,
+    BrowserFileWorkerUnavailable,
+)
 from .browser_provider import browser_provider
 from .server import LocalApiHttpServer
 from .session_store import LocalSessionNotFound
@@ -36,19 +37,25 @@ _SESSION_ID_PATTERN = re.compile(r"^[a-f0-9]{32}$")
 
 @dataclass(frozen=True, slots=True)
 class BrowserFileAnalysis:
+    """Lightweight GUI-process record for one isolated worker analysis."""
+
     analysis_id: str
     filename: str
     suffix: str
-    source_bytes: bytes
-    document: AnalysisDocument
-    findings: tuple[Finding, ...]
+    source_kind: str
+    finding_ids: tuple[str, ...]
     profile_key: str
     language: str
     created_at: float
 
 
 class BrowserFileAnalysisStore:
-    """Small local-only cache between one browser review and one protection request."""
+    """Keep only review metadata in the desktop process.
+
+    Raw files, extracted documents, OCR geometry and NLP objects stay inside the
+    spawned browser-file worker. This store exists only to validate the second
+    protect request and expire abandoned reviews.
+    """
 
     def __init__(
         self,
@@ -66,11 +73,11 @@ class BrowserFileAnalysisStore:
     def create(
         self,
         *,
+        analysis_id: str,
         filename: str,
         suffix: str,
-        source_bytes: bytes,
-        document: AnalysisDocument,
-        findings: tuple[Finding, ...],
+        source_kind: str,
+        finding_ids: tuple[str, ...],
         profile_key: str,
         language: str,
     ) -> BrowserFileAnalysis:
@@ -81,17 +88,16 @@ class BrowserFileAnalysisStore:
                 oldest = min(self._items.values(), key=lambda item: item.created_at)
                 self._items.pop(oldest.analysis_id, None)
             item = BrowserFileAnalysis(
-                analysis_id=secrets.token_hex(16),
+                analysis_id=analysis_id,
                 filename=filename,
                 suffix=suffix,
-                source_bytes=bytes(source_bytes),
-                document=document,
-                findings=findings,
+                source_kind=source_kind,
+                finding_ids=finding_ids,
                 profile_key=profile_key,
                 language=language,
                 created_at=now,
             )
-            self._items[item.analysis_id] = item
+            self._items[analysis_id] = item
             return item
 
     def get(self, analysis_id: str) -> BrowserFileAnalysis:
@@ -200,15 +206,13 @@ def _protected_filename(filename: str) -> str:
     return f"{stem[:120]}_PrivacyGate{source.suffix.lower()}"
 
 
-class _FileOperationBusy(RuntimeError):
-    pass
+def install_browser_file_support(server: object, *, executor: Any | None = None) -> bool:
+    """Expose the desktop document capability through one isolated browser route.
 
-
-def install_browser_file_support(server: object) -> bool:
-    """Expose the desktop DocumentPipelineService through one authenticated browser route.
-
-    One file operation is allowed at a time. Duplicate browser listeners therefore
-    cannot fan out CPU-heavy PDF/OCR/model work and starve the desktop UI.
+    The HTTP transport remains in the desktop process, but every expensive file
+    operation runs in a single spawned process. A malformed PDF, OCR/native-library
+    crash, or CPU-heavy model load can therefore fail the browser request without
+    taking the Qt desktop with it.
     """
     if not isinstance(server, LocalApiHttpServer):
         return False
@@ -217,6 +221,7 @@ def install_browser_file_support(server: object) -> bool:
 
     server.browser_file_store = BrowserFileAnalysisStore()
     server.browser_file_operation_lock = threading.Lock()
+    server.browser_file_executor = executor or BrowserFileProcessExecutor()
     base_handler = server.RequestHandlerClass
 
     class BrowserFileRequestHandler(base_handler):  # type: ignore[misc, valid-type]
@@ -232,6 +237,13 @@ def install_browser_file_support(server: object) -> bool:
             value = getattr(self.server, "browser_file_operation_lock", None)
             if value is None:
                 raise RuntimeError("browser file operation lock is unavailable")
+            return value
+
+        @property
+        def _file_executor(self) -> Any:
+            value = getattr(self.server, "browser_file_executor", None)
+            if value is None or not callable(getattr(value, "execute", None)):
+                raise RuntimeError("browser file worker is unavailable")
             return value
 
         @property
@@ -289,6 +301,15 @@ def install_browser_file_support(server: object) -> bool:
                     if self.path.endswith("/analyze")
                     else self._protect_file(payload)
                 )
+            except BrowserFileWorkerUnavailable as error:
+                self._send_json(
+                    503,
+                    {
+                        "error": "file_worker_unavailable",
+                        "message": str(error),
+                    },
+                )
+                return
             except LocalSessionNotFound:
                 self._send_json(404, {"error": "session_not_found"})
                 return
@@ -323,57 +344,50 @@ def install_browser_file_support(server: object) -> bool:
             raw = _decode_file(payload.get("file_base64"), suffix)
             profile_key = _profile_key(payload)
             language = _language(payload)
+            analysis_id = secrets.token_hex(16)
 
-            with tempfile.TemporaryDirectory(prefix="privacygate-browser-file-") as temporary:
-                source = Path(temporary) / f"source{suffix}"
-                source.write_bytes(raw)
-                document = self.server.privacy_service.document_from_file(source)
-                if document_contains_privacygate_tokens(document):
-                    raise ValueError(
-                        "this file already contains PrivacyGate tokens; automatic re-protection is blocked"
-                    )
-                findings = tuple(
-                    self.server.privacy_service.analyze(
-                        document,
-                        get_profile(profile_key),
-                        language=language,
-                    )
+            worker_response = self._file_executor.execute(
+                {
+                    "operation": "analyze",
+                    "analysis_id": analysis_id,
+                    "filename": filename,
+                    "suffix": suffix,
+                    "source_bytes": raw,
+                    "profile_key": profile_key,
+                    "language": language,
+                }
+            )
+            findings = worker_response.get("findings")
+            if not isinstance(findings, list):
+                raise BrowserFileWorkerUnavailable(
+                    "browser file worker returned invalid findings"
                 )
-
-            item = self._file_store.create(
+            finding_ids = tuple(
+                str(row.get("finding_id"))
+                for row in findings
+                if isinstance(row, dict) and row.get("finding_id")
+            )
+            source_kind = str(worker_response.get("source_kind") or suffix.lstrip("."))
+            self._file_store.create(
+                analysis_id=analysis_id,
                 filename=filename,
                 suffix=suffix,
-                source_bytes=raw,
-                document=document,
-                findings=findings,
+                source_kind=source_kind,
+                finding_ids=finding_ids,
                 profile_key=profile_key,
                 language=language,
             )
-            page_by_number = {page.page_number: page for page in document.pages}
-            return {
-                "analysis_id": item.analysis_id,
-                "filename": filename,
-                "source_kind": document.source_kind,
-                "findings_count": len(findings),
-                "findings": [
-                    {
-                        "finding_id": finding.finding_id,
-                        "entity_type": finding.entity_type,
-                        "page_number": finding.page_number,
-                        "location": page_by_number.get(finding.page_number).location
-                        if page_by_number.get(finding.page_number) is not None
-                        else "",
-                        "score": round(float(finding.score), 6),
-                        "display_value": finding.text,
-                    }
-                    for finding in findings
-                ],
-                "requires_protection": bool(findings),
-                "profile_key": profile_key,
-                "language": language,
-                "review_values_local_only": True,
-                "local_only": True,
-            }
+
+            response = dict(worker_response)
+            response.pop("worker_pid", None)
+            response.update(
+                {
+                    "analysis_id": analysis_id,
+                    "local_only": True,
+                    "isolated_worker": True,
+                }
+            )
+            return response
 
         def _ensure_browser_session(self, session_id: str) -> None:
             try:
@@ -396,81 +410,101 @@ def install_browser_file_support(server: object) -> bool:
         def _protect_file(self, payload: dict[str, Any]) -> dict[str, object]:
             item = self._file_store.get(_analysis_id(payload))
             requested_ids = _finding_ids(payload)
-            session_id = _session_id(payload)
             provider = browser_provider(payload)
+            session_id = _session_id(payload)
 
             if requested_ids is None:
-                selected = item.findings
+                selected_ids = item.finding_ids
             else:
                 requested = set(requested_ids)
-                known = {finding.finding_id for finding in item.findings}
+                known = set(item.finding_ids)
                 unknown = requested - known
                 if unknown:
                     raise ValueError("finding_ids contains findings not present in this file")
-                selected = tuple(
-                    finding for finding in item.findings if finding.finding_id in requested
+                selected_ids = tuple(
+                    finding_id for finding_id in item.finding_ids if finding_id in requested
                 )
 
-            result = self.server.privacy_service.protect(
-                item.document,
-                selected,
-                replacement_mode="reversible",
-            )
-
-            if result.mappings:
+            namespace: str | None = None
+            created_session = False
+            if selected_ids:
                 if session_id is None:
                     session_id = self.server.session_store.create()
+                    created_session = True
                 else:
                     self._ensure_browser_session(session_id)
                 namespace = self.server.session_store.next_namespace(session_id)
-                result = namespace_protection_result(result, namespace)
-                self.server.session_store.add_mappings(session_id, result.mappings)
 
+            try:
+                worker_response = self._file_executor.execute(
+                    {
+                        "operation": "protect",
+                        "analysis_id": item.analysis_id,
+                        "finding_ids": list(selected_ids),
+                        "namespace": namespace,
+                    }
+                )
+            except Exception:
+                if created_session and session_id is not None:
+                    self.server.session_store.delete(session_id)
+                raise
+
+            mappings_payload = worker_response.get("mappings")
+            if not isinstance(mappings_payload, list):
+                raise BrowserFileWorkerUnavailable(
+                    "browser file worker returned invalid mappings"
+                )
+            mappings: tuple[ReplacementMapping, ...] = tuple(
+                ReplacementMapping(
+                    token=str(row["token"]),
+                    entity_type=str(row["entity_type"]),
+                    original_text=str(row["original_text"]),
+                )
+                for row in mappings_payload
+                if isinstance(row, dict)
+                and {"token", "entity_type", "original_text"} <= row.keys()
+            )
+
+            if mappings:
+                if session_id is None:
+                    raise BrowserFileWorkerUnavailable(
+                        "browser file worker returned reversible mappings without a session"
+                    )
+                self.server.session_store.add_mappings(session_id, mappings)
                 repository = self._ai_repository
                 if repository is not None:
-                    turn, mappings = self.server.session_store.snapshot(session_id)
+                    turn, stored_mappings = self.server.session_store.snapshot(session_id)
                     repository.save_session(
                         session_id=session_id,
                         provider=provider,
                         turn=turn,
-                        mappings=mappings,
+                        mappings=stored_mappings,
                     )
-            elif session_id is not None:
-                self._ensure_browser_session(session_id)
+            elif created_session and session_id is not None:
+                self.server.session_store.delete(session_id)
+                session_id = None
 
-            with tempfile.TemporaryDirectory(prefix="privacygate-browser-file-output-") as temporary:
-                source = Path(temporary) / f"source{item.suffix}"
-                destination = Path(temporary) / f"protected{item.suffix}"
-                source.write_bytes(item.source_bytes)
-                source_document = replace(item.document, source_path=source)
-
-                # For browser PDF handoff, use the clean text reflow output so AI
-                # providers receive the full reversible [[PG_...]] tokens. Desktop
-                # export can continue to use its layout-preserving raster mode.
-                if item.suffix == ".pdf":
-                    self.server.privacy_service.save_protected_pdf(result, destination)
-                else:
-                    self.server.privacy_service.save_protected_document(
-                        result,
-                        destination,
-                        source_document,
-                    )
-                protected_bytes = destination.read_bytes()
+            protected_bytes = worker_response.get("protected_file_bytes")
+            if not isinstance(protected_bytes, (bytes, bytearray)) or not protected_bytes:
+                raise BrowserFileWorkerUnavailable(
+                    "browser file worker did not return a protected file"
+                )
 
             self._file_store.delete(item.analysis_id)
             return {
-                "protected_file_base64": base64.b64encode(protected_bytes).decode("ascii"),
+                "protected_file_base64": base64.b64encode(bytes(protected_bytes)).decode("ascii"),
                 "protected_filename": _protected_filename(item.filename),
-                "source_kind": item.document.source_kind,
-                "applied_findings_count": len(result.applied_findings),
-                "applied_finding_ids": [
-                    finding.finding_id for finding in result.applied_findings
-                ],
-                "entity_types": sorted(
-                    {finding.entity_type for finding in result.applied_findings}
+                "source_kind": str(worker_response.get("source_kind") or item.source_kind),
+                "applied_findings_count": int(
+                    worker_response.get("applied_findings_count") or 0
                 ),
+                "applied_finding_ids": list(
+                    worker_response.get("applied_finding_ids") or []
+                ),
+                "entity_types": list(worker_response.get("entity_types") or []),
                 "session_id": session_id,
                 "local_only": True,
+                "isolated_worker": True,
             }
 
     BrowserFileRequestHandler.__name__ = "BrowserFileRequestHandler"
