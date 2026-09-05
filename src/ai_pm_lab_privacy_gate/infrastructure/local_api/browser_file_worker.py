@@ -5,20 +5,28 @@ import tempfile
 import time
 from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import Any
+from typing import Any, TYPE_CHECKING
 
-from ai_pm_lab_privacy_gate.application.privacy_service import PrivacyGateService
-from ai_pm_lab_privacy_gate.application.protect_session_service import (
-    namespace_protection_result,
-)
-from ai_pm_lab_privacy_gate.domain.models import AnalysisDocument, Finding
-from ai_pm_lab_privacy_gate.domain.profiles import get_profile
-
-from .browser_document_idempotency import document_contains_privacygate_tokens
+if TYPE_CHECKING:
+    from ai_pm_lab_privacy_gate.application.privacy_service import PrivacyGateService
+    from ai_pm_lab_privacy_gate.domain.models import AnalysisDocument, Finding
 
 
 WORKER_ANALYSIS_TTL_SECONDS = 10 * 60
 WORKER_ANALYSIS_MAX_ITEMS = 4
+
+
+def _configure_worker_resources() -> None:
+    """Keep the isolated browser worker from starving the Qt desktop process."""
+    for key in (
+        "OMP_NUM_THREADS",
+        "OPENBLAS_NUM_THREADS",
+        "MKL_NUM_THREADS",
+        "NUMEXPR_NUM_THREADS",
+        "VECLIB_MAXIMUM_THREADS",
+        "BLIS_NUM_THREADS",
+    ):
+        os.environ[key] = "1"
 
 
 @dataclass(slots=True)
@@ -27,8 +35,8 @@ class _WorkerAnalysis:
     filename: str
     suffix: str
     source_bytes: bytes
-    document: AnalysisDocument
-    findings: tuple[Finding, ...]
+    document: "AnalysisDocument"
+    findings: tuple["Finding", ...]
     profile_key: str
     language: str
     created_at: float
@@ -37,25 +45,30 @@ class _WorkerAnalysis:
 class BrowserFileWorkerRuntime:
     """Own heavy document/NLP work outside the Qt desktop process.
 
-    The runtime is deliberately stateful so one worker can keep the NLP model warm
-    and preserve OCR/layout analysis between the browser review and protection
-    steps. Nothing in this object is shared with the desktop GUI process when used
-    through BrowserFileProcessExecutor.
+    Heavy PrivacyGate/document imports are intentionally lazy so the parent Qt
+    process does not import the worker's NLP stack merely because the bridge is
+    enabled. The spawned worker also caps native numeric/NLP thread pools at one
+    thread so a scan cannot monopolize every CPU core and make the desktop appear
+    frozen.
     """
 
     def __init__(
         self,
-        service: PrivacyGateService | None = None,
+        service: "PrivacyGateService | None" = None,
         *,
         clock=time.monotonic,
     ) -> None:
+        _configure_worker_resources()
         self._service = service
         self._clock = clock
         self._analyses: dict[str, _WorkerAnalysis] = {}
 
     @property
-    def service(self) -> PrivacyGateService:
+    def service(self) -> "PrivacyGateService":
         if self._service is None:
+            _configure_worker_resources()
+            from ai_pm_lab_privacy_gate.application.privacy_service import PrivacyGateService
+
             self._service = PrivacyGateService()
         return self._service
 
@@ -83,6 +96,9 @@ class BrowserFileWorkerRuntime:
             self._analyses.pop(oldest.analysis_id, None)
 
     def _analyze(self, request: dict[str, Any]) -> dict[str, Any]:
+        from ai_pm_lab_privacy_gate.domain.profiles import get_profile
+        from .browser_document_idempotency import document_contains_privacygate_tokens
+
         analysis_id = str(request.get("analysis_id") or "")
         filename = str(request.get("filename") or "")
         suffix = str(request.get("suffix") or "")
@@ -153,6 +169,10 @@ class BrowserFileWorkerRuntime:
         }
 
     def _protect(self, request: dict[str, Any]) -> dict[str, Any]:
+        from ai_pm_lab_privacy_gate.application.protect_session_service import (
+            namespace_protection_result,
+        )
+
         analysis_id = str(request.get("analysis_id") or "")
         item = self._analyses.get(analysis_id)
         if item is None:
@@ -232,6 +252,7 @@ _RUNTIME: BrowserFileWorkerRuntime | None = None
 def run_browser_file_worker_request(request: dict[str, Any]) -> dict[str, Any]:
     """ProcessPool entrypoint. Keep one warm runtime per spawned worker process."""
     global _RUNTIME
+    _configure_worker_resources()
     if _RUNTIME is None:
         _RUNTIME = BrowserFileWorkerRuntime()
     return _RUNTIME.execute(request)
