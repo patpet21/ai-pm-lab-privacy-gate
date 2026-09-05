@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import json
+import os
 import threading
 from http.client import HTTPConnection
 from pathlib import Path
@@ -18,6 +19,7 @@ from ai_pm_lab_privacy_gate.infrastructure.local_api.browser_file import (
     install_browser_file_support,
 )
 from ai_pm_lab_privacy_gate.infrastructure.local_api.browser_file_executor import (
+    BrowserFileProcessExecutor,
     InlineBrowserFileExecutor,
 )
 from ai_pm_lab_privacy_gate.infrastructure.local_api.browser_pairing import BrowserPairingRegistry
@@ -127,6 +129,16 @@ def _protect_round_trip(server, source: Path, token: str) -> tuple[dict, bytes]:
     assert protected["session_id"]
     assert protected["isolated_worker"] is True
     return protected, base64.b64decode(protected["protected_file_base64"])
+
+
+def test_spawned_file_executor_uses_a_different_process() -> None:
+    executor = BrowserFileProcessExecutor(timeout_seconds=30)
+    try:
+        response = executor.execute({"operation": "ping"})
+        assert response["status"] == "ready"
+        assert int(response["worker_pid"]) != os.getpid()
+    finally:
+        executor.close()
 
 
 def test_unified_file_route_protects_docx(tmp_path: Path) -> None:
