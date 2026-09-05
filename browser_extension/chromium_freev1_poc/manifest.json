@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "PrivacyGate FreeV1 POC",
-  "version": "0.0.34",
-  "description": "PrivacyGate local browser protection proof of concept.",
+  "name": "PrivacyGate",
+  "version": "1.0.0",
+  "description": "Protect sensitive text and PDF content locally before sending it to supported AI assistants, with local restore.",
   "permissions": [
     "storage"
   ],
@@ -33,14 +33,18 @@
         "restore_overlay.js"
       ],
       "matches": [
-        "https://chatgpt.com/*"
+        "https://chatgpt.com/*",
+        "https://gemini.google.com/*",
+        "https://claude.ai/*"
       ]
     }
   ],
   "content_scripts": [
     {
       "matches": [
-        "https://chatgpt.com/*"
+        "https://chatgpt.com/*",
+        "https://gemini.google.com/*",
+        "https://claude.ai/*"
       ],
       "js": [
         "network_gate_main.js"
@@ -50,7 +54,9 @@
     },
     {
       "matches": [
-        "https://chatgpt.com/*"
+        "https://chatgpt.com/*",
+        "https://gemini.google.com/*",
+        "https://claude.ai/*"
       ],
       "js": [
         "observer_guard.js",
