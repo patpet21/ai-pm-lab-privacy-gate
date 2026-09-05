@@ -9,7 +9,7 @@ from typing import Any
 from .browser_file_worker_v2 import run_browser_file_worker_v2
 
 
-DEFAULT_FILE_WORKER_TIMEOUT_SECONDS = 75
+DEFAULT_FILE_WORKER_TIMEOUT_SECONDS = 55
 DEFAULT_FILE_WORKERS = 2
 
 
