@@ -3,44 +3,121 @@
   "name": "PrivacyGate Browser Protection",
   "version": "0.0.65",
   "description": "Local-first protection for text, PDF, Word, Excel, CSV, PowerPoint and images on supported AI websites.",
-  "permissions": ["storage"],
-  "host_permissions": ["http://127.0.0.1/*"],
-  "background": {"service_worker": "browser_background.js"},
-  "icons": {"16": "privacygate-16.png", "32": "privacygate-32.png", "48": "privacygate-48.png", "128": "privacygate-128.png"},
+  "permissions": [
+    "storage"
+  ],
+  "host_permissions": [
+    "http://127.0.0.1/*"
+  ],
+  "background": {
+    "service_worker": "browser_background.js"
+  },
+  "icons": {
+    "16": "privacygate-16.png",
+    "32": "privacygate-32.png",
+    "48": "privacygate-48.png",
+    "128": "privacygate-128.png"
+  },
   "action": {
     "default_title": "PrivacyGate Browser Protection",
     "default_popup": "popup.html",
-    "default_icon": {"16": "privacygate-16.png", "32": "privacygate-32.png"}
+    "default_icon": {
+      "16": "privacygate-16.png",
+      "32": "privacygate-32.png"
+    }
   },
-  "web_accessible_resources": [{
-    "resources": ["restore_overlay.html", "restore_overlay.js", "multi_ai_restore_overlay.html", "multi_ai_restore_overlay.js", "file_review_overlay.html", "file_review_overlay.js"],
-    "matches": ["https://chatgpt.com/*", "https://claude.ai/*", "https://gemini.google.com/*"]
-  }],
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "restore_overlay.html",
+        "restore_overlay.js",
+        "multi_ai_restore_overlay.html",
+        "multi_ai_restore_overlay.js",
+        "file_review_overlay.html",
+        "file_review_overlay.js"
+      ],
+      "matches": [
+        "https://chatgpt.com/*",
+        "https://claude.ai/*",
+        "https://gemini.google.com/*"
+      ]
+    }
+  ],
   "content_scripts": [
     {
-      "matches": ["https://chatgpt.com/*"],
-      "js": ["network_gate_main.js"],
+      "matches": [
+        "https://chatgpt.com/*"
+      ],
+      "js": [
+        "network_gate_main.js"
+      ],
       "run_at": "document_start",
       "world": "MAIN"
     },
     {
-      "matches": ["https://chatgpt.com/*"],
-      "js": ["csv_file_guard.js", "xlsx_attach_compat.js", "unified_file_guard_v3.js", "file_send_compat.js", "send_reentry_guard.js", "observer_guard.js", "network_gate_bridge.js", "legacy_restore_blocker.js", "content.js", "protection_state_sync.js", "assistant_restore_guard.js", "chatgpt_restore_auto_fallback.js", "notice_center_guard.js"],
+      "matches": [
+        "https://chatgpt.com/*"
+      ],
+      "js": [
+        "csv_file_guard.js",
+        "xlsx_attach_compat.js",
+        "unified_file_guard_v3.js",
+        "file_send_compat.js",
+        "send_reentry_guard.js",
+        "observer_guard.js",
+        "network_gate_bridge.js",
+        "legacy_restore_blocker.js",
+        "content.js",
+        "protection_state_sync.js",
+        "assistant_restore_guard.js",
+        "chatgpt_restore_auto_fallback.js",
+        "notice_center_guard.js"
+      ],
       "run_at": "document_start"
     },
     {
-      "matches": ["https://claude.ai/*"],
-      "js": ["csv_file_guard.js", "xlsx_attach_compat.js", "unified_file_guard_v3.js", "file_send_compat.js", "send_reentry_guard.js", "multi_ai_adapter_parity.js", "multi_ai_outgoing_registry.js", "multi_ai_bar_stable.js", "multi_ai_restore_provider_v2.js"],
+      "matches": [
+        "https://claude.ai/*"
+      ],
+      "js": [
+        "csv_file_guard.js",
+        "xlsx_attach_compat.js",
+        "unified_file_guard_v3.js",
+        "file_send_compat.js",
+        "send_reentry_guard.js",
+        "multi_ai_adapter_parity.js",
+        "multi_ai_outgoing_registry.js",
+        "multi_ai_bar_stable.js",
+        "multi_ai_restore_provider_v2.js"
+      ],
       "run_at": "document_start"
     },
     {
-      "matches": ["https://gemini.google.com/*"],
-      "js": ["csv_file_guard.js", "xlsx_attach_compat.js", "unified_file_guard_v3.js", "file_send_compat.js", "send_reentry_guard.js", "multi_ai_adapter_parity.js", "multi_ai_outgoing_registry.js", "multi_ai_bar_stable.js", "gemini_restore_provider_v3.js"],
+      "matches": [
+        "https://gemini.google.com/*"
+      ],
+      "js": [
+        "csv_file_guard.js",
+        "xlsx_attach_compat.js",
+        "unified_file_guard_v3.js",
+        "file_send_compat.js",
+        "send_reentry_guard.js",
+        "multi_ai_adapter_parity.js",
+        "multi_ai_outgoing_registry.js",
+        "multi_ai_bar_stable.js",
+        "gemini_restore_provider_v3.js"
+      ],
       "run_at": "document_start"
     },
     {
-      "matches": ["https://chatgpt.com/*", "https://claude.ai/*", "https://gemini.google.com/*"],
-      "js": ["text_review_controls_v2.js"],
+      "matches": [
+        "https://chatgpt.com/*",
+        "https://claude.ai/*",
+        "https://gemini.google.com/*"
+      ],
+      "js": [
+        "text_review_controls_v2.js"
+      ],
       "run_at": "document_start"
     }
   ]
