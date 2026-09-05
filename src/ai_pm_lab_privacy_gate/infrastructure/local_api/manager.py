@@ -114,11 +114,9 @@ class LocalApiManager:
             install_browser_revoke_support(server)
             install_browser_restore_auto(server)
 
-            # One browser file surface now routes through the exact same
-            # DocumentPipelineService used by desktop Protect. The previous
-            # PDF-only and DOCX-only route stack is deliberately not installed:
-            # stale/duplicate browser listeners therefore cannot trigger several
-            # independent scans of the same upload and starve the desktop UI.
+            # Browser uploads share the desktop document capability but heavy
+            # PDF/Office/OCR/NLP execution is isolated in a spawned Python worker.
+            # The Qt process owns only localhost transport, session mappings and UI.
             install_browser_file_support(server)
         except Exception as error:
             with self._lock:
@@ -164,10 +162,16 @@ class LocalApiManager:
             self._status = LocalApiStatus(state="disabled")
         if server is None:
             return
+
+        file_executor = getattr(server, "browser_file_executor", None)
         try:
             server.shutdown()
         finally:
-            server.server_close()
+            try:
+                if file_executor is not None and callable(getattr(file_executor, "close", None)):
+                    file_executor.close()
+            finally:
+                server.server_close()
         if thread is not None and thread.is_alive() and thread is not threading.current_thread():
             thread.join(timeout=2)
 
