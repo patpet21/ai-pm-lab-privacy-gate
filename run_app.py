@@ -25,6 +25,13 @@ if _src.exists():
     pythonpath_parts = [part for part in pythonpath_parts if os.path.normcase(part) != os.path.normcase(src_text)]
     os.environ["PYTHONPATH"] = os.pathsep.join([src_text, *pythonpath_parts])
 
+# The packaged Windows app also uses run_app.py as its PyInstaller entrypoint.
+# Install the additive CSV UI adapter before MainWindow imports ProtectionPage,
+# so both source runs and packaged builds expose the same CSV workflow.
+from ai_pm_lab_privacy_gate.ui.csv_document_support import install_csv_document_support
+
+install_csv_document_support()
+
 from ai_pm_lab_privacy_gate.app import main
 
 
