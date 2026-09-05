@@ -17,6 +17,9 @@ from ai_pm_lab_privacy_gate.infrastructure.local_api.browser_ai_persistence impo
 from ai_pm_lab_privacy_gate.infrastructure.local_api.browser_file import (
     install_browser_file_support,
 )
+from ai_pm_lab_privacy_gate.infrastructure.local_api.browser_file_executor import (
+    InlineBrowserFileExecutor,
+)
 from ai_pm_lab_privacy_gate.infrastructure.local_api.browser_pairing import BrowserPairingRegistry
 from ai_pm_lab_privacy_gate.infrastructure.local_api.server import create_local_api_server
 from ai_pm_lab_privacy_gate.infrastructure.security.secret_store import MemorySecretStore
@@ -83,7 +86,10 @@ def _server(tmp_path: Path):
         browser_pairing=pairing,
     )
     assert install_browser_ai_persistence(server, AiLibraryRepository(tmp_path / "library"))
-    assert install_browser_file_support(server)
+    assert install_browser_file_support(
+        server,
+        executor=InlineBrowserFileExecutor(service),
+    )
     thread = threading.Thread(target=server.serve_forever, kwargs={"poll_interval": 0.01}, daemon=True)
     thread.start()
     return server, thread
@@ -105,6 +111,7 @@ def _protect_round_trip(server, source: Path, token: str) -> tuple[dict, bytes]:
     assert status == 200
     assert analyzed["findings_count"] == 1
     assert analyzed["findings"][0]["display_value"] == EMAIL
+    assert analyzed["isolated_worker"] is True
 
     status, protected = _request(
         server,
@@ -118,6 +125,7 @@ def _protect_round_trip(server, source: Path, token: str) -> tuple[dict, bytes]:
     )
     assert status == 200
     assert protected["session_id"]
+    assert protected["isolated_worker"] is True
     return protected, base64.b64decode(protected["protected_file_base64"])
 
 
