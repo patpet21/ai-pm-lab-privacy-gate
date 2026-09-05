@@ -6,18 +6,20 @@ from ai_pm_lab_privacy_gate.domain.models import AnalysisDocument, PageContent, 
 
 
 class TextDocumentService:
-    """Read and write UTF text files through the same local protection pipeline."""
+    """Read and write UTF text/CSV files through the same local protection pipeline."""
 
-    SUPPORTED_SUFFIXES = {".txt"}
+    SUPPORTED_SUFFIXES = {".txt", ".csv"}
 
     def extract(self, path: str | Path) -> AnalysisDocument:
         source = self._validated_source(path)
         raw = source.read_bytes()
         text = self._decode(raw)
+        kind = source.suffix.lower().lstrip(".")
+        location = "CSV file" if kind == "csv" else "Text file"
         return AnalysisDocument(
-            source_kind="txt",
+            source_kind=kind,
             source_path=source,
-            pages=(PageContent(page_number=1, text=text, location="Text file"),),
+            pages=(PageContent(page_number=1, text=text, location=location),),
         )
 
     def write_protected(
@@ -26,11 +28,12 @@ class TextDocumentService:
         result: ProtectionResult,
         path: str | Path,
     ) -> Path:
-        if source_document.source_kind not in {"txt", "text"}:
-            raise ValueError("A text source document is required.")
+        if source_document.source_kind not in {"txt", "text", "csv"}:
+            raise ValueError("A text or CSV source document is required.")
+        suffix = ".csv" if source_document.source_kind == "csv" else ".txt"
         destination = Path(path)
-        if destination.suffix.lower() != ".txt":
-            destination = destination.with_suffix(".txt")
+        if destination.suffix.lower() != suffix:
+            destination = destination.with_suffix(suffix)
         destination.parent.mkdir(parents=True, exist_ok=True)
         destination.write_text(result.combined_text, encoding="utf-8")
         return destination
@@ -41,7 +44,7 @@ class TextDocumentService:
         if not source.exists():
             raise FileNotFoundError(source)
         if source.suffix.lower() not in cls.SUPPORTED_SUFFIXES:
-            raise ValueError("Supported text format is .txt.")
+            raise ValueError("Supported text formats are .txt and .csv.")
         return source
 
     @staticmethod
