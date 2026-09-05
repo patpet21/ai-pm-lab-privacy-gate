@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "PrivacyGate Browser Protection",
-  "version": "0.0.54",
+  "version": "0.0.55",
   "description": "Local-first protection for sensitive prompts, PDFs, and Word documents on supported AI websites.",
   "permissions": [
     "storage"
@@ -69,6 +69,7 @@
         "content.js",
         "protection_state_sync.js",
         "assistant_restore_guard.js",
+        "restore_status_guard.js",
         "notice_center_guard.js"
       ],
       "run_at": "document_start"
@@ -87,7 +88,8 @@
         "multi_ai_outgoing_registry.js",
         "multi_ai_bar_stable.js",
         "multi_ai_document_guard_v2.js",
-        "multi_ai_restore_provider.js"
+        "multi_ai_restore_provider.js",
+        "restore_status_guard.js"
       ],
       "run_at": "document_start"
     },
