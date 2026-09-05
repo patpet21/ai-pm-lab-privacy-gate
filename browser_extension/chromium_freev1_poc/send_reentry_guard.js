@@ -36,6 +36,12 @@
     );
   }
 
+  function composerText(box) {
+    if (!box) return "";
+    if (box instanceof HTMLTextAreaElement || box instanceof HTMLInputElement) return box.value || "";
+    return box.innerText || box.textContent || "";
+  }
+
   function sendScope(box) {
     if (!box) return null;
     return (
@@ -65,18 +71,19 @@
     );
   }
 
-  function isSendAttempt(event) {
+  function sendAttempt(event) {
     const box = composer();
-    if (!box) return false;
+    if (!box) return null;
     if (event.type === "keydown") {
-      return event.key === "Enter" && !event.shiftKey && !event.ctrlKey && !event.altKey && !event.metaKey &&
-        (event.target === box || box.contains?.(event.target));
+      if (!(event.key === "Enter" && !event.shiftKey && !event.ctrlKey && !event.altKey && !event.metaKey &&
+        (event.target === box || box.contains?.(event.target)))) return null;
+      return box;
     }
     if (event.type === "submit") {
-      return event.target instanceof HTMLFormElement && event.target.contains(box);
+      return event.target instanceof HTMLFormElement && event.target.contains(box) ? box : null;
     }
-    if (event.type === "click") return isSendButton(event.target, box);
-    return false;
+    if (event.type === "click") return isSendButton(event.target, box) ? box : null;
+    return null;
   }
 
   function privacyGateBusy() {
@@ -97,9 +104,16 @@
   }
 
   function guard(event) {
-    if (!enabled || !event.isTrusted || !isSendAttempt(event)) return;
-    const now = Date.now();
+    if (!enabled || !event.isTrusted) return;
+    const box = sendAttempt(event);
+    if (!box) return;
 
+    const attachmentState = globalThis.PrivacyGateAttachmentState;
+    if (attachmentState?.allowAttachmentOnlySend?.(composerText(box))) {
+      return;
+    }
+
+    const now = Date.now();
     if (privacyGateBusy()) {
       stop(event);
       return;
