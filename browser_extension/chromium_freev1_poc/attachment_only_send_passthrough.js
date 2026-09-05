@@ -6,6 +6,8 @@
   const host = location.hostname.toLowerCase();
   if (!new Set(["chatgpt.com", "claude.ai", "gemini.google.com"]).has(host)) return;
 
+  const PROTECTED_FILE_RE = /(?:_protected)?_privacygate(?:_\d+)?\.(?:pdf|docx)$/i;
+
   function composer() {
     if (host === "chatgpt.com") {
       return (
@@ -53,6 +55,40 @@
     );
   }
 
+  function isProtectedFileName(value) {
+    return PROTECTED_FILE_RE.test(String(value || "").trim());
+  }
+
+  function hasProtectedAttachment(box) {
+    const scope = sendScope(box) || document;
+
+    for (const input of Array.from(scope.querySelectorAll?.('input[type="file"]') || [])) {
+      if (!(input instanceof HTMLInputElement)) continue;
+      for (const file of Array.from(input.files || [])) {
+        if (isProtectedFileName(file?.name)) return true;
+      }
+    }
+
+    const candidates = Array.from(
+      scope.querySelectorAll?.('[title], [aria-label], [data-testid*="file" i], [data-test-id*="file" i]') || []
+    );
+    for (const element of candidates) {
+      if (!(element instanceof Element)) continue;
+      const values = [
+        element.getAttribute("title"),
+        element.getAttribute("aria-label"),
+        element.textContent
+      ];
+      if (values.some(value => {
+        const text = String(value || "");
+        return text.split(/\s+/).some(part => isProtectedFileName(part.replace(/[),;]+$/g, "")));
+      })) return true;
+    }
+
+    const scopeText = String(scope.innerText || scope.textContent || "");
+    return /(?:_protected)?_privacygate(?:_\d+)?\.(?:pdf|docx)\b/i.test(scopeText);
+  }
+
   function isSendButton(target, box) {
     if (!(target instanceof Element) || !box) return false;
     const button = target.closest('button, [role="button"]');
@@ -75,9 +111,9 @@
     ));
   }
 
-  function isAttachmentOnlySendAttempt(event) {
+  function isProtectedAttachmentOnlySendAttempt(event) {
     const box = composer();
-    if (!box || composerText(box).trim()) return false;
+    if (!box || composerText(box).trim() || !hasProtectedAttachment(box)) return false;
 
     if (event.type === "keydown") {
       return (
@@ -108,18 +144,18 @@
   const originalStopPropagation = Event.prototype.stopPropagation;
   const originalStopImmediatePropagation = Event.prototype.stopImmediatePropagation;
 
-  Event.prototype.preventDefault = function privacyGateAttachmentOnlyPreventDefault() {
-    if (isAttachmentOnlySendAttempt(this)) return;
+  Event.prototype.preventDefault = function privacyGateProtectedAttachmentPreventDefault() {
+    if (isProtectedAttachmentOnlySendAttempt(this)) return;
     return originalPreventDefault.call(this);
   };
 
-  Event.prototype.stopPropagation = function privacyGateAttachmentOnlyStopPropagation() {
-    if (isAttachmentOnlySendAttempt(this)) return;
+  Event.prototype.stopPropagation = function privacyGateProtectedAttachmentStopPropagation() {
+    if (isProtectedAttachmentOnlySendAttempt(this)) return;
     return originalStopPropagation.call(this);
   };
 
-  Event.prototype.stopImmediatePropagation = function privacyGateAttachmentOnlyStopImmediatePropagation() {
-    if (isAttachmentOnlySendAttempt(this)) return;
+  Event.prototype.stopImmediatePropagation = function privacyGateProtectedAttachmentStopImmediatePropagation() {
+    if (isProtectedAttachmentOnlySendAttempt(this)) return;
     return originalStopImmediatePropagation.call(this);
   };
 })();
