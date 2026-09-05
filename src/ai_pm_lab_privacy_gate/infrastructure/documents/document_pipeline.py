@@ -14,7 +14,7 @@ class DocumentPipelineService:
     """Single local router for every document format understood by PrivacyGate."""
 
     SUPPORTED_SUFFIXES = {
-        ".pdf", ".docx", ".xlsx", ".pptx", ".txt", ".png", ".jpg", ".jpeg"
+        ".pdf", ".docx", ".xlsx", ".pptx", ".txt", ".csv", ".png", ".jpg", ".jpeg"
     }
 
     def __init__(
@@ -40,13 +40,13 @@ class DocumentPipelineService:
             return self.office.extract(source)
         if suffix == ".pptx":
             return self.powerpoint.extract(source)
-        if suffix == ".txt":
+        if suffix in {".txt", ".csv"}:
             return self.text.extract(source)
         if suffix in ImageDocumentService.SUPPORTED_SUFFIXES:
             return self.image.extract(source)
         raise ValueError(
             "Supported document formats are PDF, Word (.docx), Excel (.xlsx), "
-            "PowerPoint (.pptx), text (.txt), PNG and JPG/JPEG images."
+            "PowerPoint (.pptx), text (.txt), CSV (.csv), PNG and JPG/JPEG images."
         )
 
     def write_protected(
@@ -64,7 +64,7 @@ class DocumentPipelineService:
             return self.office.write_protected(source_document, result, path)
         if kind == "pptx":
             return self.powerpoint.write_protected(source_document, result, path)
-        if kind in {"txt", "text"}:
+        if kind in {"txt", "text", "csv"}:
             return self.text.write_protected(source_document, result, path)
         if kind == "image":
             return self.image.write_protected(source_document, result, path)
