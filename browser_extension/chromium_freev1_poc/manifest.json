@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "PrivacyGate Browser Protection",
-  "version": "0.0.52",
-  "description": "Local-first protection for sensitive prompts, PDFs, and Word documents on supported AI websites.",
+  "version": "0.0.60",
+  "description": "Local-first protection for text, PDF, Word, Excel, PowerPoint, text files and images on supported AI websites.",
   "permissions": [
     "storage"
   ],
@@ -32,7 +32,9 @@
         "restore_overlay.html",
         "restore_overlay.js",
         "multi_ai_restore_overlay.html",
-        "multi_ai_restore_overlay.js"
+        "multi_ai_restore_overlay.js",
+        "file_review_overlay.html",
+        "file_review_overlay.js"
       ],
       "matches": [
         "https://chatgpt.com/*",
@@ -57,13 +59,12 @@
         "https://chatgpt.com/*"
       ],
       "js": [
+        "unified_file_guard.js",
+        "file_send_compat.js",
         "send_reentry_guard.js",
-        "attachment_only_send_passthrough.js",
         "observer_guard.js",
         "network_gate_bridge.js",
         "legacy_restore_blocker.js",
-        "pdf_drag_guard.js",
-        "document_upload_guard.js",
         "content.js",
         "protection_state_sync.js",
         "assistant_restore_guard.js",
@@ -78,12 +79,12 @@
         "https://gemini.google.com/*"
       ],
       "js": [
+        "unified_file_guard.js",
+        "file_send_compat.js",
         "send_reentry_guard.js",
-        "attachment_only_send_passthrough.js",
         "multi_ai_adapter_parity.js",
         "multi_ai_outgoing_registry.js",
         "multi_ai_bar_stable.js",
-        "multi_ai_document_guard_v2.js",
         "multi_ai_restore_provider.js"
       ],
       "run_at": "document_start"
