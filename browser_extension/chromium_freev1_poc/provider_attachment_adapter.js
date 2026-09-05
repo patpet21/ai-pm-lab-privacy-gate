@@ -68,7 +68,7 @@
   function excluded(element) {
     return Boolean(
       element?.closest?.(
-        '[id^="privacygate-"], .privacygate-secure-restore-frame, .privacygate-auto-restore-frame'
+        '[id^="privacygate-"], .privacygate-secure-restore-frame, .privacygate-auto-restore-frame, .privacygate-response-status'
       )
     );
   }
@@ -76,12 +76,11 @@
   function filenameAppearsInProviderDom(filename) {
     const name = String(filename || "");
     if (!name) return false;
-    const root = providerScope();
-    if (!(root instanceof Element || root instanceof Document)) return false;
+    const root = document.body || document.documentElement;
+    if (!(root instanceof Element)) return false;
 
     const attributes = ["title", "aria-label", "data-file-name", "data-filename", "data-testid", "data-test-id"];
-    const nodes = root.querySelectorAll?.("*") || [];
-    for (const element of nodes) {
+    for (const element of root.querySelectorAll?.("*") || []) {
       if (!(element instanceof Element) || excluded(element)) continue;
       for (const attr of attributes) {
         const value = element.getAttribute?.(attr);
@@ -89,10 +88,7 @@
       }
     }
 
-    const walker = document.createTreeWalker(
-      root instanceof Document ? root.documentElement : root,
-      NodeFilter.SHOW_TEXT
-    );
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
     let node = walker.nextNode();
     while (node) {
       const parent = node.parentElement;
@@ -120,12 +116,11 @@
     );
   }
 
-  function bestInput(exclude = null) {
+  function bestInput() {
     const box = composer();
     const boxRect = box?.getBoundingClientRect?.();
     let best = null;
     for (const input of nativeInputs()) {
-      if (input === exclude) continue;
       const accept = String(input.accept || "").toLowerCase();
       let score = 0;
       if (/pdf|docx|word|officedocument/.test(accept)) score += 100;
@@ -176,10 +171,10 @@
     return null;
   }
 
-  async function retryNativeInput(file, originalInput = null) {
-    const direct = bestInput(originalInput);
-    if (direct && inject(direct, file)) {
-      if (await waitForAcceptance(file, 1000)) return true;
+  async function retryNativeInput(file) {
+    let input = bestInput();
+    if (input && inject(input, file)) {
+      if (await waitForAcceptance(file, 1100)) return true;
     }
 
     const trigger = attachTrigger();
@@ -190,9 +185,8 @@
     const deadline = Date.now() + RETRY_INPUT_WINDOW_MS;
     while (Date.now() < deadline) {
       await sleep(80);
-      const input = bestInput(originalInput);
-      if (!input) continue;
-      if (!inject(input, file)) continue;
+      input = bestInput();
+      if (!input || !inject(input, file)) continue;
       if (await waitForAcceptance(file, 1100)) return true;
     }
     return false;
@@ -225,12 +219,13 @@
     const box = composer();
     if (!box || state.semanticText(composerText(box))) return;
 
-    // Gemini variants sometimes keep Send disabled after a programmatic file
-    // handoff when the prompt is visually empty. A word-joiner is invisible to
-    // the user but gives Gemini a real editor state without exposing any data.
+    // Some Gemini Chromium variants leave the provider Send control disabled
+    // after accepting a generated File while the editor is visually empty.
+    // A word-joiner creates a real editor state without exposing or displaying
+    // any user data; PrivacyGate still treats this value as semantically empty.
     if (!String(composerText(box)).includes(GEMINI_ATTACHMENT_ONLY_MARKER)) {
       setComposerText(box, GEMINI_ATTACHMENT_ONLY_MARKER);
-      await sleep(80);
+      await sleep(120);
     }
   }
 
@@ -264,7 +259,7 @@
     window.__privacyGateProviderAttachmentNoticeTimer = setTimeout(() => element.remove(), 5200);
   }
 
-  async function confirmOrRecover(file, sourceInput = null) {
+  async function confirmOrRecover(file) {
     if (!protectedFile(file)) return false;
     pendingFile = file;
     state.markPrepared(file.name);
@@ -278,7 +273,7 @@
       return true;
     }
 
-    if (await retryNativeInput(file, sourceInput)) {
+    if (await retryNativeInput(file)) {
       if (token !== confirmationToken) return false;
       state.markAttached(file.name);
       pendingFile = null;
@@ -307,8 +302,7 @@
     if (retrying) return;
     const file = filesFromEvent(event).find(protectedFile);
     if (!file) return;
-    const sourceInput = event.target instanceof HTMLInputElement ? event.target : null;
-    confirmOrRecover(file, sourceInput).catch(() => {});
+    confirmOrRecover(file).catch(() => {});
   }
 
   function isLikelyAttachGesture(target) {
