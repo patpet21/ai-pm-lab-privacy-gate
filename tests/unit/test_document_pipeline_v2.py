@@ -39,7 +39,7 @@ def _finding(document, value: str, entity_type: str = "PERSON") -> Finding:
 
 def test_unified_pipeline_exposes_expected_formats() -> None:
     assert DocumentPipelineService.SUPPORTED_SUFFIXES == {
-        ".pdf", ".docx", ".xlsx", ".pptx", ".txt", ".png", ".jpg", ".jpeg"
+        ".pdf", ".docx", ".xlsx", ".pptx", ".txt", ".csv", ".png", ".jpg", ".jpeg"
     }
 
 
