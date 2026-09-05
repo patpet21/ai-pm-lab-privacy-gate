@@ -9,9 +9,9 @@
   if (!state) return;
 
   const PROTECTED_FILE_RE = /(?:_protected)?_privacygate(?:_\d+)?\.(?:pdf|docx)$/i;
-  const GEMINI_ATTACHMENT_ONLY_MARKER = "\u2060";
-  const CONFIRM_TIMEOUT_MS = 2800;
+  const CONFIRM_TIMEOUT_MS = 3000;
   const RETRY_INPUT_WINDOW_MS = 1900;
+  const GEMINI_AUTO_PROMPT = "Analyze the attached document.";
   let pendingFile = null;
   let retrying = false;
   let confirmationToken = 0;
@@ -73,40 +73,6 @@
     );
   }
 
-  function filenameAppearsInProviderDom(filename) {
-    const name = String(filename || "");
-    if (!name) return false;
-    const root = document.body || document.documentElement;
-    if (!(root instanceof Element)) return false;
-
-    const attributes = ["title", "aria-label", "data-file-name", "data-filename", "data-testid", "data-test-id"];
-    for (const element of root.querySelectorAll?.("*") || []) {
-      if (!(element instanceof Element) || excluded(element)) continue;
-      for (const attr of attributes) {
-        const value = element.getAttribute?.(attr);
-        if (typeof value === "string" && value.includes(name)) return true;
-      }
-    }
-
-    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
-    let node = walker.nextNode();
-    while (node) {
-      const parent = node.parentElement;
-      if (parent && !excluded(parent) && String(node.nodeValue || "").includes(name)) return true;
-      node = walker.nextNode();
-    }
-    return false;
-  }
-
-  async function waitForAcceptance(file, timeoutMs = CONFIRM_TIMEOUT_MS) {
-    const deadline = Date.now() + timeoutMs;
-    while (Date.now() < deadline) {
-      if (filenameAppearsInProviderDom(file.name)) return true;
-      await sleep(100);
-    }
-    return false;
-  }
-
   function nativeInputs() {
     return Array.from(document.querySelectorAll('input[type="file"]')).filter(input =>
       input instanceof HTMLInputElement &&
@@ -114,6 +80,89 @@
       !input.id?.startsWith("privacygate-") &&
       !input.closest?.('[id^="privacygate-"]')
     );
+  }
+
+  function normalizeText(value) {
+    return String(value || "").replace(/\s+/g, " ").trim().toLowerCase();
+  }
+
+  function filenameParts(filename) {
+    const full = String(filename || "").trim();
+    const lower = full.toLowerCase();
+    const dot = lower.lastIndexOf(".");
+    const stem = dot > 0 ? lower.slice(0, dot) : lower;
+    const ext = dot > 0 ? lower.slice(dot) : "";
+    const tail = stem.slice(-22);
+    const head = stem.slice(0, 28);
+    return { full: lower, stem, ext, head, tail };
+  }
+
+  function elementText(element) {
+    if (!(element instanceof Element) || excluded(element)) return "";
+    const values = [
+      element.getAttribute("title"),
+      element.getAttribute("aria-label"),
+      element.getAttribute("data-file-name"),
+      element.getAttribute("data-filename"),
+      element.textContent
+    ];
+    return normalizeText(values.filter(Boolean).join(" "));
+  }
+
+  function likelyAttachmentElements() {
+    const scope = providerScope();
+    if (!(scope instanceof Element || scope instanceof Document)) return [];
+    const selectors = [
+      '[data-testid*="attach" i]', '[data-testid*="file" i]',
+      '[data-test-id*="attach" i]', '[data-test-id*="file" i]',
+      '[class*="attach" i]', '[class*="file-chip" i]', '[class*="attachment" i]',
+      '[aria-label*="remove file" i]', '[aria-label*="remove attachment" i]',
+      '[title$=".pdf" i]', '[title$=".docx" i]'
+    ].join(",");
+    return Array.from(scope.querySelectorAll?.(selectors) || []).filter(el =>
+      el instanceof Element && !excluded(el)
+    );
+  }
+
+  function attachmentEvidenceScore() {
+    let score = 0;
+    for (const input of nativeInputs()) {
+      score += Array.from(input.files || []).length * 4;
+    }
+    score += likelyAttachmentElements().length;
+    return score;
+  }
+
+  function filenameAppearsInProviderDom(filename) {
+    const parts = filenameParts(filename);
+    if (!parts.full) return false;
+
+    for (const input of nativeInputs()) {
+      for (const file of Array.from(input.files || [])) {
+        if (normalizeText(file?.name) === parts.full) return true;
+      }
+    }
+
+    const candidates = likelyAttachmentElements();
+    for (const element of candidates) {
+      const text = elementText(element);
+      if (!text) continue;
+      if (text.includes(parts.full)) return true;
+      if (parts.head.length >= 16 && text.includes(parts.head)) return true;
+      if (parts.tail.length >= 12 && text.includes(parts.tail)) return true;
+      if (parts.ext && text.includes(parts.ext) && text.includes("privacygate")) return true;
+    }
+    return false;
+  }
+
+  async function waitForAcceptance(file, baselineScore = 0, timeoutMs = CONFIRM_TIMEOUT_MS) {
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+      if (filenameAppearsInProviderDom(file.name)) return true;
+      if (attachmentEvidenceScore() > baselineScore) return true;
+      await sleep(100);
+    }
+    return false;
   }
 
   function bestInput() {
@@ -173,8 +222,9 @@
 
   async function retryNativeInput(file) {
     let input = bestInput();
+    let baseline = attachmentEvidenceScore();
     if (input && inject(input, file)) {
-      if (await waitForAcceptance(file, 1100)) return true;
+      if (await waitForAcceptance(file, baseline, 1200)) return true;
     }
 
     const trigger = attachTrigger();
@@ -186,8 +236,10 @@
     while (Date.now() < deadline) {
       await sleep(80);
       input = bestInput();
-      if (!input || !inject(input, file)) continue;
-      if (await waitForAcceptance(file, 1100)) return true;
+      if (!input) continue;
+      baseline = attachmentEvidenceScore();
+      if (!inject(input, file)) continue;
+      if (await waitForAcceptance(file, baseline, 1200)) return true;
     }
     return false;
   }
@@ -219,14 +271,12 @@
     const box = composer();
     if (!box || state.semanticText(composerText(box))) return;
 
-    // Some Gemini Chromium variants leave the provider Send control disabled
-    // after accepting a generated File while the editor is visually empty.
-    // A word-joiner creates a real editor state without exposing or displaying
-    // any user data; PrivacyGate still treats this value as semantically empty.
-    if (!String(composerText(box)).includes(GEMINI_ATTACHMENT_ONLY_MARKER)) {
-      setComposerText(box, GEMINI_ATTACHMENT_ONLY_MARKER);
-      await sleep(120);
-    }
+    // Gemini currently requires a real prompt in some Chromium builds even when
+    // a document is attached. Add a visible neutral prompt so the user can still
+    // use Attach -> Protect -> Send without typing anything manually.
+    setComposerText(box, GEMINI_AUTO_PROMPT);
+    box.setAttribute?.("data-privacygate-auto-prompt", "true");
+    await sleep(140);
   }
 
   function showAdapterNotice(message, kind = "error") {
@@ -256,7 +306,7 @@
     element.style.background = kind === "success" ? "#065f46" : "#991b1b";
     element.textContent = message;
     clearTimeout(window.__privacyGateProviderAttachmentNoticeTimer);
-    window.__privacyGateProviderAttachmentNoticeTimer = setTimeout(() => element.remove(), 5200);
+    window.__privacyGateProviderAttachmentNoticeTimer = setTimeout(() => element.remove(), 4200);
   }
 
   async function confirmOrRecover(file) {
@@ -264,8 +314,9 @@
     pendingFile = file;
     state.markPrepared(file.name);
     const token = ++confirmationToken;
+    const baseline = attachmentEvidenceScore();
 
-    if (await waitForAcceptance(file)) {
+    if (await waitForAcceptance(file, baseline)) {
       if (token !== confirmationToken) return false;
       state.markAttached(file.name);
       pendingFile = null;
@@ -278,14 +329,13 @@
       state.markAttached(file.name);
       pendingFile = null;
       await prepareAttachmentOnlyComposer();
-      showAdapterNotice(`PrivacyGate — ${file.name} attached after provider retry.`, "success");
       return true;
     }
 
     if (token !== confirmationToken) return false;
     state.markPrepared(file.name);
     showAdapterNotice(
-      `PrivacyGate — the protected file is ready, but ${host === "claude.ai" ? "Claude" : host === "gemini.google.com" ? "Gemini" : "ChatGPT"} has not confirmed the attachment. Click its Attach button once; PrivacyGate will retry the protected file only.`,
+      `PrivacyGate — protected file ready, but ${host === "claude.ai" ? "Claude" : host === "gemini.google.com" ? "Gemini" : "ChatGPT"} did not confirm the attachment. Use Attach once to retry the protected file.`,
       "error"
     );
     return false;
@@ -324,13 +374,13 @@
     const file = pendingFile;
     if (!protectedFile(file)) return;
     await sleep(120);
+    const baseline = attachmentEvidenceScore();
     const input = bestInput();
     if (input) inject(input, file);
-    if (await waitForAcceptance(file, 2200)) {
+    if (await waitForAcceptance(file, baseline, 2300)) {
       state.markAttached(file.name);
       pendingFile = null;
       await prepareAttachmentOnlyComposer();
-      showAdapterNotice(`PrivacyGate — ${file.name} protected locally and attached.`, "success");
     }
   }
 
