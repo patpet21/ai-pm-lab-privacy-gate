@@ -14,13 +14,14 @@ def test_csv_is_first_class_document_format(tmp_path: Path) -> None:
 
     service = PrivacyGateService()
     document = service.document_from_file(source)
+    text = document.pages[0].text
 
     assert ".csv" in DocumentPipelineService.SUPPORTED_SUFFIXES
     assert document.source_kind == "csv"
     assert document.source_path == source
-    assert document.combined_text == original
+    assert text == original
 
-    start = document.combined_text.index("Jane Smith")
+    start = text.index("Jane Smith")
     finding = Finding(
         finding_id="csv-person-1",
         entity_type="PERSON",
@@ -29,7 +30,7 @@ def test_csv_is_first_class_document_format(tmp_path: Path) -> None:
         end=start + len("Jane Smith"),
         score=1.0,
         page_number=1,
-        context=document.combined_text,
+        context=text,
     )
     result = service.protect(document, (finding,))
 
@@ -39,10 +40,11 @@ def test_csv_is_first_class_document_format(tmp_path: Path) -> None:
         document,
     )
 
+    protected_text = protected.read_text(encoding="utf-8")
     assert protected.suffix == ".csv"
-    assert protected.read_text(encoding="utf-8") == result.combined_text
-    assert "Jane Smith" not in protected.read_text(encoding="utf-8")
-    assert "[[PG_PERSON_001]]" in protected.read_text(encoding="utf-8")
-    assert ",jane@example.com,Open" in protected.read_text(encoding="utf-8")
+    assert protected_text == result.combined_text
+    assert "Jane Smith" not in protected_text
+    assert "[[PG_PERSON_001]]" in protected_text
+    assert ",jane@example.com,Open" in protected_text
     assert companion == tmp_path / "operations_protected.txt"
     assert companion.read_text(encoding="utf-8") == result.combined_text
