@@ -32,6 +32,37 @@ from ai_pm_lab_privacy_gate.ui.csv_document_support import install_csv_document_
 
 install_csv_document_support()
 
+# Settings service pages are built after several visual layers have already
+# reparented the original controls. The legacy lookup used to accept any ancestor
+# QFrame containing a matching label, which could accidentally move the whole
+# Settings control center inside the Updates service page. Restrict discovery to
+# the original functional SettingsPremiumCard so Updates keeps only its own real
+# update controls and the Settings launcher remains separate.
+from PySide6.QtWidgets import QFrame, QLabel, QWidget
+import ai_pm_lab_privacy_gate.ui.settings_service_pages_2026 as _settings_service_pages_2026
+
+
+def _find_exact_settings_card(settings: QWidget, heading: str) -> QFrame | None:
+    for frame in settings.findChildren(QFrame, "SettingsPremiumCard"):
+        for label in frame.findChildren(QLabel):
+            if label.text().strip() == heading:
+                return frame
+
+    # Compatibility fallback: walk upward from the exact heading, but still
+    # accept only the canonical functional card. Never return a broad container.
+    for label in settings.findChildren(QLabel):
+        if label.text().strip() != heading:
+            continue
+        current = label.parentWidget()
+        while current is not None and current is not settings:
+            if isinstance(current, QFrame) and current.objectName() == "SettingsPremiumCard":
+                return current
+            current = current.parentWidget()
+    return None
+
+
+_settings_service_pages_2026._find_card = _find_exact_settings_card
+
 from ai_pm_lab_privacy_gate.app import main
 
 
