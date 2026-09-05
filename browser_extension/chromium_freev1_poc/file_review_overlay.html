@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>PrivacyGate file review</title>
+  <style>
+    :root { color-scheme: light; font-family: Arial, sans-serif; }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; width: 100%; height: 100%; background: transparent; }
+    body { display: flex; align-items: center; justify-content: center; padding: 24px; background: rgba(15,23,42,.48); backdrop-filter: blur(2px); }
+    .card { width: min(860px,96vw); max-height: min(820px,92vh); display:flex; flex-direction:column; overflow:hidden; background:#fff; color:#172033; border:1px solid #dce3eb; border-radius:18px; box-shadow:0 24px 70px rgba(15,23,42,.32); }
+    header { padding:20px 22px 16px; border-bottom:1px solid #e7ebf0; }
+    .brand { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:8px; }
+    .brand strong { color:#2348b5; font-size:13px; letter-spacing:.08em; text-transform:uppercase; }
+    .badge { padding:6px 9px; border-radius:999px; background:#e9f7f1; color:#126246; font-size:11px; font-weight:800; }
+    h1 { margin:0 0 5px; font-size:20px; }
+    .subtitle { margin:0; color:#647084; font-size:12.5px; line-height:1.45; overflow-wrap:anywhere; }
+    .settings { display:flex; flex-wrap:wrap; gap:10px; align-items:end; margin-top:14px; }
+    label.setting { display:flex; flex-direction:column; gap:5px; color:#5b667a; font-size:10.5px; font-weight:800; text-transform:uppercase; letter-spacing:.04em; }
+    select { min-height:36px; padding:0 32px 0 10px; border:1px solid #cdd5df; border-radius:9px; background:#fff; color:#273247; font-weight:700; }
+    .toolbar { display:flex; align-items:center; justify-content:space-between; gap:10px; padding:10px 22px; background:#f8fafc; border-bottom:1px solid #e7ebf0; }
+    .toolbar div { display:flex; gap:7px; }
+    button { cursor:pointer; font:inherit; }
+    .mini { padding:6px 9px; border:1px solid #d7dee8; border-radius:8px; background:#fff; color:#334155; font-size:11px; font-weight:750; }
+    .count { color:#647084; font-size:11.5px; font-weight:700; }
+    .list { padding:12px 22px; overflow:auto; display:flex; flex-direction:column; gap:8px; }
+    .row { display:grid; grid-template-columns:22px minmax(130px,170px) minmax(210px,1fr) minmax(110px,180px); align-items:center; gap:10px; padding:11px 12px; border:1px solid #e1e6ed; border-radius:11px; background:#fbfcfe; }
+    .row input { width:17px; height:17px; margin:0; accent-color:#2348b5; }
+    .type { width:fit-content; padding:5px 8px; border-radius:999px; background:#eef2ff; color:#3448a3; font-size:10.5px; font-weight:850; overflow-wrap:anywhere; }
+    .value { color:#172033; font-size:12px; font-weight:700; overflow-wrap:anywhere; }
+    .location { color:#647084; font-size:10.5px; overflow-wrap:anywhere; }
+    footer { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:14px 22px 18px; border-top:1px solid #e7ebf0; }
+    .actions { display:flex; gap:8px; }
+    .cancel { padding:10px 14px; border:1px solid #cdd5df; border-radius:9px; background:#fff; color:#273247; font-weight:700; }
+    .rescan { padding:10px 14px; border:1px solid #9aa7b6; border-radius:9px; background:#f8fafc; color:#334155; font-weight:750; }
+    .protect { padding:10px 15px; border:1px solid #2348b5; border-radius:9px; background:#2348b5; color:#fff; font-weight:800; }
+    .empty { padding:28px 22px; color:#475569; text-align:center; }
+    @media (max-width:700px) { .row { grid-template-columns:22px 1fr; } .type,.value,.location { grid-column:2; } footer { align-items:flex-start; flex-direction:column; } }
+  </style>
+</head>
+<body>
+  <section class="card" aria-label="PrivacyGate local file review">
+    <header>
+      <div class="brand"><strong>PrivacyGate · File Review</strong><span class="badge">LOCAL ONLY</span></div>
+      <h1>Review detected information</h1>
+      <p class="subtitle" id="subtitle">Waiting for local analysis…</p>
+      <div class="settings">
+        <label class="setting">Profile<select id="profile"></select></label>
+        <label class="setting">Language<select id="language"><option value="en">English</option><option value="it">Italiano</option></select></label>
+      </div>
+    </header>
+    <div class="toolbar"><div><button class="mini" id="all">Select all</button><button class="mini" id="none">Clear all</button></div><span class="count" id="count"></span></div>
+    <div class="list" id="list"></div>
+    <footer><span class="count" id="selected"></span><div class="actions"><button class="cancel" id="cancel">Cancel</button><button class="rescan" id="rescan">Rescan</button><button class="protect" id="protect">Protect & Attach</button></div></footer>
+  </section>
+  <script src="file_review_overlay.js"></script>
+</body>
+</html>
