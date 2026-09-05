@@ -354,7 +354,7 @@ class PrivacyGateService:
         if destination.suffix.lower() != ".txt":
             destination = destination.with_suffix(".txt")
         destination.parent.mkdir(parents=True, exist_ok=True)
-        destination.write_text(result.combined_text, encoding="utf-8")
+        destination.write_bytes(result.combined_text.encode("utf-8"))
         return destination
 
     def save_protected_pdf(
