@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "PrivacyGate Browser Protection",
-  "version": "0.0.52",
+  "version": "0.0.53",
   "description": "Local-first protection for sensitive prompts, PDFs, and Word documents on supported AI websites.",
   "permissions": [
     "storage"
@@ -57,6 +57,7 @@
         "https://chatgpt.com/*"
       ],
       "js": [
+        "attachment_state.js",
         "send_reentry_guard.js",
         "attachment_only_send_passthrough.js",
         "observer_guard.js",
@@ -67,7 +68,6 @@
         "content.js",
         "protection_state_sync.js",
         "assistant_restore_guard.js",
-        "chatgpt_restore_auto_fallback.js",
         "notice_center_guard.js"
       ],
       "run_at": "document_start"
@@ -78,6 +78,7 @@
         "https://gemini.google.com/*"
       ],
       "js": [
+        "attachment_state.js",
         "send_reentry_guard.js",
         "attachment_only_send_passthrough.js",
         "multi_ai_adapter_parity.js",
