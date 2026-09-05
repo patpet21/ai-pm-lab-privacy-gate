@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "PrivacyGate Browser Protection",
-  "version": "0.0.53",
+  "version": "0.0.54",
   "description": "Local-first protection for sensitive prompts, PDFs, and Word documents on supported AI websites.",
   "permissions": [
     "storage"
@@ -58,6 +58,7 @@
       ],
       "js": [
         "attachment_state.js",
+        "provider_attachment_adapter.js",
         "send_reentry_guard.js",
         "attachment_only_send_passthrough.js",
         "observer_guard.js",
@@ -79,6 +80,7 @@
       ],
       "js": [
         "attachment_state.js",
+        "provider_attachment_adapter.js",
         "send_reentry_guard.js",
         "attachment_only_send_passthrough.js",
         "multi_ai_adapter_parity.js",
