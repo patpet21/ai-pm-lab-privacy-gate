@@ -51,4 +51,6 @@ def test_csv_is_first_class_document_format(tmp_path: Path) -> None:
     assert "[[PG_PERSON_001]]" in protected_text
     assert ",jane@example.com,Open" in protected_text
     assert companion == tmp_path / "operations_protected.txt"
-    assert companion.read_text(encoding="utf-8") == result.combined_text
+    companion_bytes = companion.read_bytes()
+    assert companion_bytes.decode("utf-8") == result.combined_text
+    assert b"\r\r\n" not in companion_bytes
