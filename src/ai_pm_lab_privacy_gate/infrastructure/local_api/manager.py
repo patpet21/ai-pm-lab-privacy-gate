@@ -20,7 +20,7 @@ from ai_pm_lab_privacy_gate.infrastructure.storage.ai_library_repository import 
 )
 
 from .browser_ai_persistence import install_browser_ai_persistence
-from .browser_file import install_browser_file_support
+from .browser_file_v2 import install_browser_file_support_v2
 from .browser_origin_compat import install_browser_origin_compat
 from .browser_pairing import (
     BrowserPairingChallenge,
@@ -59,8 +59,6 @@ class LocalApiManager:
         self.preferences = PreferencesStore(self.data_dir)
         self.secrets = secret_store or platform_secret_store(self.data_dir)
         self.browser_pairing = BrowserPairingRegistry(self.secrets)
-        # Uses the same library.db as Personal Library, but dedicated AI tables.
-        # Real values and protected chat text are encrypted with LocalProtector.
         self.ai_library = AiLibraryRepository(self.data_dir)
         self._server_factory = server_factory
         self.allowed_origins = tuple(allowed_origins)
@@ -113,11 +111,7 @@ class LocalApiManager:
             install_browser_ai_persistence(server, self.ai_library)
             install_browser_revoke_support(server)
             install_browser_restore_auto(server)
-
-            # Browser uploads share the desktop document capability but heavy
-            # PDF/Office/OCR/NLP execution is isolated in a spawned Python worker.
-            # The Qt process owns only localhost transport, session mappings and UI.
-            install_browser_file_support(server)
+            install_browser_file_support_v2(server)
         except Exception as error:
             with self._lock:
                 self._status = LocalApiStatus(
@@ -163,7 +157,7 @@ class LocalApiManager:
         if server is None:
             return
 
-        file_executor = getattr(server, "browser_file_executor", None)
+        file_executor = getattr(server, "browser_file_executor_v2", None)
         try:
             server.shutdown()
         finally:
