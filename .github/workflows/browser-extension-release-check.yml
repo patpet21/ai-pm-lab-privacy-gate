@@ -1,0 +1,130 @@
+name: PrivacyGate browser extension release check
+
+on:
+  push:
+    branches:
+      - release/browser-extension-v1-prepublish-20260905
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate-and-package:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out release branch
+        uses: actions/checkout@v4
+
+      - name: Validate manifest and package references
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          root = Path('browser_extension/chromium_freev1_poc')
+          manifest_path = root / 'manifest.json'
+          manifest = json.loads(manifest_path.read_text(encoding='utf-8'))
+
+          assert manifest['manifest_version'] == 3
+          assert manifest['name'] == 'PrivacyGate'
+          assert manifest['version'] == '1.0.0'
+          assert 'POC' not in manifest['name'].upper()
+          assert len(manifest.get('description', '')) <= 132
+
+          supported = {
+              'https://chatgpt.com/*',
+              'https://gemini.google.com/*',
+              'https://claude.ai/*',
+          }
+
+          content_matches = set()
+          for script in manifest.get('content_scripts', []):
+              content_matches.update(script.get('matches', []))
+              for filename in script.get('js', []):
+                  path = root / filename
+                  assert path.is_file(), f'Missing content script: {filename}'
+
+          assert supported <= content_matches, (
+              'Missing supported provider match patterns: '
+              + ', '.join(sorted(supported - content_matches))
+          )
+
+          for item in manifest.get('web_accessible_resources', []):
+              assert supported <= set(item.get('matches', []))
+              for filename in item.get('resources', []):
+                  path = root / filename
+                  assert path.is_file(), f'Missing web-accessible resource: {filename}'
+
+          background = manifest.get('background', {}).get('service_worker')
+          assert background and (root / background).is_file(), 'Missing background service worker'
+
+          host_permissions = set(manifest.get('host_permissions', []))
+          assert host_permissions == {'http://127.0.0.1:8765/*'}, host_permissions
+          assert set(manifest.get('permissions', [])) == {'storage'}
+
+          combined = (manifest.get('name', '') + ' ' + manifest.get('description', '')).lower()
+          assert 'excel' not in combined and 'spreadsheet' not in combined
+
+          print('Manifest validation PASS')
+          PY
+
+      - name: Check JavaScript syntax
+        shell: bash
+        run: |
+          set -euo pipefail
+          while IFS= read -r -d '' file; do
+            node --check "$file"
+          done < <(find browser_extension/chromium_freev1_poc -type f -name '*.js' -print0)
+          echo 'JavaScript syntax PASS'
+
+      - name: Build Chrome Web Store ZIP
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          from zipfile import ZipFile, ZIP_DEFLATED
+
+          source = Path('browser_extension/chromium_freev1_poc')
+          output = Path('PrivacyGate-Chrome-v1.0.0.zip')
+          excluded_suffixes = {'.md', '.pyc'}
+          excluded_names = {'.DS_Store'}
+
+          with ZipFile(output, 'w', compression=ZIP_DEFLATED) as archive:
+              for path in sorted(source.rglob('*')):
+                  if not path.is_file():
+                      continue
+                  if path.name in excluded_names or path.suffix.lower() in excluded_suffixes:
+                      continue
+                  if '__pycache__' in path.parts:
+                      continue
+                  archive.write(path, path.relative_to(source))
+
+          print(f'Created {output} ({output.stat().st_size} bytes)')
+          PY
+
+      - name: Verify ZIP root and manifest
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json
+          from zipfile import ZipFile
+
+          with ZipFile('PrivacyGate-Chrome-v1.0.0.zip') as archive:
+              names = set(archive.namelist())
+              assert 'manifest.json' in names, 'manifest.json must be at ZIP root'
+              manifest = json.loads(archive.read('manifest.json').decode('utf-8'))
+              assert manifest['name'] == 'PrivacyGate'
+              assert manifest['version'] == '1.0.0'
+              assert not any(name.endswith('.md') for name in names)
+              print(f'ZIP validation PASS — {len(names)} packaged files')
+          PY
+
+      - name: Upload Chrome Web Store package
+        uses: actions/upload-artifact@v4
+        with:
+          name: PrivacyGate-Chrome-v1.0.0
+          path: PrivacyGate-Chrome-v1.0.0.zip
+          if-no-files-found: error
+          retention-days: 14
