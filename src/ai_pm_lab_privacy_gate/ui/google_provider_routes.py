@@ -5,7 +5,6 @@ from PySide6.QtWidgets import QLabel, QPushButton
 from ai_pm_lab_privacy_gate.infrastructure.connectors.gmail_addon_transport import (
     GmailAddonTransport,
     MODE_ACTION,
-    MODE_READONLY,
 )
 from ai_pm_lab_privacy_gate.infrastructure.connectors.google_drive_file_access import (
     list_selected_file_accounts,
@@ -13,7 +12,6 @@ from ai_pm_lab_privacy_gate.infrastructure.connectors.google_drive_file_access i
 from ai_pm_lab_privacy_gate.ui import connected_apps_browse_polish, protect_source_picker
 from ai_pm_lab_privacy_gate.ui.apps_hub import AppsHubPage, _primary_style
 from ai_pm_lab_privacy_gate.ui.gmail_addon_mode_picker import (
-    get_active_gmail_mode,
     open_configured_gmail_import,
     open_gmail_mode_picker,
 )
@@ -58,10 +56,10 @@ def _gmail_addon_state(page: AppsHubPage) -> tuple[bool, str]:
     if data_dir is None:
         return False, MODE_ACTION
     try:
-        action = GmailAddonTransport(data_dir, mode=MODE_ACTION)
-        readonly = GmailAddonTransport(data_dir, mode=MODE_READONLY)
-        connected = bool((action.endpoint and action.paired) or (readonly.endpoint and readonly.paired))
-        return connected, get_active_gmail_mode(page.main_window)
+        from ai_pm_lab_privacy_gate.infrastructure.connectors.gmail_addon_accounts import GmailAccountRegistry
+        accounts = GmailAccountRegistry(data_dir).accounts()
+        count = sum(bool(a.get('endpoint') and a.get('paired')) for a in accounts)
+        return bool(count), str(count)
     except Exception:
         return False, MODE_ACTION
 
@@ -104,7 +102,7 @@ def install_google_provider_routes() -> None:
                 "GMAIL",
                 "#E8F6F6",
                 "#0B7180",
-                "Uses the Gmail mode configured in Apps.",
+                "Choose a connected account and send one message from the Gmail sidebar.",
             )
         return original_provider_status(service, key, availability)
 
@@ -186,7 +184,7 @@ def install_google_provider_routes() -> None:
                 button.setText("Import")
                 button.setEnabled(True)
                 button.setToolTip(
-                    "Import the current Gmail message using the Gmail mode configured in Apps."
+                    "Choose a Gmail account and receive the message you explicitly send."
                 )
             else:
                 button.setText("Import")
@@ -204,7 +202,7 @@ def install_google_provider_routes() -> None:
                 button.setText("Manage Gmail")
                 button.setStyleSheet(_primary_style())
                 button.setToolTip(
-                    "Configure Standard or Enhanced Gmail access and choose which mode Protect uses."
+                    "Add and manage separately paired Gmail accounts."
                 )
 
         for button in self.findChildren(QPushButton, "AppDriveFile"):
@@ -237,7 +235,7 @@ def install_google_provider_routes() -> None:
                     + "border-radius:8px;padding:4px 7px;font-size:9px;font-weight:900;"
                 )
             elif provider == "gmail":
-                mode_label = "ENHANCED" if gmail_mode == MODE_READONLY else "STANDARD"
+                mode_label = gmail_mode + (" ACCOUNT" if gmail_mode == "1" else " ACCOUNTS")
                 status.setText(mode_label if gmail_connected else "SETUP")
                 status.setStyleSheet(
                     (

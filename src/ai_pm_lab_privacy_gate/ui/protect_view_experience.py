@@ -124,7 +124,7 @@ def _open_original_protected(page) -> None:
     # Gmail body/non-document sources have their dedicated text comparison tab.
     gmail_compare = getattr(page, "_gmail_component_text_compare_index", None)
     if (
-        dict(getattr(page, "_gmail_component_results", {}) or {})
+        tuple(getattr(page, "_gmail_component_manifest", ()) or ())
         and document is not None
         and getattr(document, "source_kind", "") not in _DOCUMENT_KINDS
         and gmail_compare is not None

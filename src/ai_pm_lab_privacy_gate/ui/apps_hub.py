@@ -32,7 +32,7 @@ GOLD = "#D3A13B"
 APPS = (
     # Google / Microsoft productivity
     ("google_drive", "Google Drive", "Files, Docs, Sheets and folders.", "cloud", "Productivity", True, "OAuth / API"),
-    ("gmail", "Gmail", "Selected email messages and attachments.", "contact", "Communication", True, "OAuth / API"),
+    ("gmail", "Gmail", "Send one selected email from Gmail to local Protect.", "contact", "Communication", True, "Gmail Add-on"),
     ("google_calendar", "Google Calendar", "Meetings, inspections and project calendars.", "history", "Productivity", False, "OAuth / API"),
     ("google_contacts", "Google Contacts", "Clients, owners, tenants and vendors.", "contact", "CRM & Contacts", False, "OAuth / API"),
     ("onedrive", "OneDrive", "Microsoft files and folders.", "cloud", "Productivity", False, "MCP / OAuth review"),
@@ -325,6 +325,11 @@ class AppsHubPage(QWidget):
             button.setEnabled(supported and self._connected(provider))
 
     def _connect(self, provider: str, title: str, supported: bool, integration_path: str) -> None:
+        if provider == "gmail":
+            from .gmail_addon_accounts_ui import open_gmail_accounts
+            open_gmail_accounts(self.main_window)
+            self.refresh()
+            return
         if not supported:
             QMessageBox.information(
                 self,

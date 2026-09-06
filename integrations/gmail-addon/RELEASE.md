@@ -1,0 +1,9 @@
+# Gmail action-only release
+
+Apps manages independent Gmail account cards. Protect selects an account, waits for an explicit Send to PrivacyGate action, previews text, and imports into the existing local Scan/Protect pipeline. Attachments and mailbox OAuth are excluded. Labels are supplied by the user; check the Gmail avatar when pairing each account. One Gmail account pairs to one device at a time.
+
+The Gmail scope is gmail.addons.current.message.action; keep the execute and storage infrastructure permissions in appsscript.json. Do not add readonly scopes. Non-sensitive scopes do not require restricted-scope CASA; public distribution still requires the applicable Google branding and Marketplace review. Never instruct customers to bypass an unverified-app screen.
+
+Publish the updated Code.gs and manifest using a standard Google Cloud project with matching consent-screen and Marketplace SDK scopes. Remove old restricted scopes from that project's verification request and coordinate cancellation of the old request with Google. Verify installation with an unrelated consumer account and a Workspace account (administrator policy may apply). Only after publication and verified consent, set resources/gmail-addon-release.json to published, consent_verified true, the official Marketplace listing URL and the production Apps Script /exec endpoint, then rebuild the app. No production URL is invented in this change.
+
+For an existing development installation, set PRIVACYGATE_GMAIL_ADDON_DEVELOPMENT=1 to expose endpoint configuration in Apps. This is not a customer installation path. Existing action pairing is migrated into a separate account card and its key moves into the platform secret store. Enhanced connections are not migrated. Removing an account deletes its local pairing key; uninstall/revoke the add-on separately in Google if desired.

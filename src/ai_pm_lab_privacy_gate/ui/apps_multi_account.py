@@ -14,7 +14,8 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from ai_pm_lab_privacy_gate.infrastructure.connectors.multi_account_registry import MULTI_ACCOUNT_PROVIDERS
+from ai_pm_lab_privacy_gate.infrastructure.connectors.multi_account_registry import MULTI_ACCOUNT_PROVIDERS as _LEGACY_PROVIDERS
+MULTI_ACCOUNT_PROVIDERS = tuple(p for p in _LEGACY_PROVIDERS if p != "gmail")
 from ai_pm_lab_privacy_gate.ui.apps_hub import AppsHubPage, _primary_style, _secondary_style
 
 

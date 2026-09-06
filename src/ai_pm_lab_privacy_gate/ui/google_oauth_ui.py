@@ -26,7 +26,7 @@ def _google_connection_notice(parent, provider: str, title: str) -> bool:
     own consent screen. It helps users understand why an unverified-app warning
     can appear during the current beta and exactly what PrivacyGate will request.
     """
-    if provider not in {"google_drive", "gmail"}:
+    if provider not in {"google_drive"}:
         return True
 
     is_drive = provider == "google_drive"
@@ -163,7 +163,7 @@ def _install_apps_google_connection_notice() -> None:
         supported: bool,
         integration_path: str,
     ) -> None:
-        if supported and provider in {"google_drive", "gmail"}:
+        if supported and provider in {"google_drive"}:
             if not _google_connection_notice(self, provider, title):
                 return
         previous_connect(self, provider, title, supported, integration_path)

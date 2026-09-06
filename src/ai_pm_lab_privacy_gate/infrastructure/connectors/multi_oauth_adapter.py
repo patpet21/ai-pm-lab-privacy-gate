@@ -71,12 +71,7 @@ def _store_token_payload(self: ConnectedAppsService, provider: str, payload: dic
 
 
 def _connect_gmail_oauth(self: ConnectedAppsService) -> None:
-    client_id = _google_client_id(self, "gmail")
-    client_secret = _google_client_secret(self)
-    payload = authorize_desktop(client_id, scopes=GMAIL_SCOPES, client_secret=client_secret)
-    if client_secret:
-        self.secret_store.set("oauth.google.client_secret", client_secret)
-    _store_token_payload(self, "gmail", payload, client_id=client_id)
+    raise RuntimeError("Connect Gmail through Apps > Manage Gmail. Mailbox OAuth is no longer supported.")
 
 
 def _connect_clickup_oauth(self: ConnectedAppsService) -> None:

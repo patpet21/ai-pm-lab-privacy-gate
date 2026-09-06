@@ -29,18 +29,18 @@ function buildPrivacyGateCard(e) {
     section.addWidget(
       CardService.newTextParagraph().setText(
         '<b>Pair this Gmail add-on with PrivacyGate once.</b><br>' +
-        'Open PrivacyGate → Protect → Gmail and copy the pairing code shown there.'
+        'Open PrivacyGate → Apps → Gmail → Add Gmail account. Copy the code for this account. Use a different card for each Gmail account.'
       )
     );
     section.addWidget(
       CardService.newTextInput()
         .setFieldName('pairing_code')
         .setTitle('PrivacyGate pairing code')
-        .setHint('Paste the one-time code from PrivacyGate')
+        .setHint('Paste this account’s pairing code from Apps')
     );
     section.addWidget(
       CardService.newTextButton()
-        .setText('Pair with PrivacyGate')
+        .setText('Connect')
         .setTextButtonStyle(CardService.TextButtonStyle.FILLED)
         .setOnClickAction(CardService.newAction().setFunctionName('pairPrivacyGateDevice'))
     );
@@ -60,7 +60,7 @@ function buildPrivacyGateCard(e) {
     section.addWidget(
       CardService.newTextParagraph().setText(
         '<b>Ready to send this selected email.</b><br>' +
-        'PrivacyGate will receive this message and its supported attachments once. ' +
+        'In PrivacyGate, open Protect → Gmail and select this account. Keep that window open, then send. Only this message’s text is transferred. ' +
         'It does not receive access to the rest of your mailbox.'
       )
     );
@@ -137,7 +137,7 @@ function sendCurrentMessageToPrivacyGate(e) {
       recipients: String(message.getTo() || ''),
       sent_at: formatDate_(message.getDate()),
       body: String(message.getPlainBody() || ''),
-      attachments: collectAttachments_(message)
+      attachments: []
     };
 
     const json = JSON.stringify(payload);
@@ -270,21 +270,6 @@ function writePayload_(channel, payloadB64, signature) {
     }),
     PG_CACHE_TTL_SECONDS
   );
-}
-
-function collectAttachments_(message) {
-  const attachments = message.getAttachments({
-    includeInlineImages: false,
-    includeAttachments: true
-  }) || [];
-
-  return attachments.map(function(blob) {
-    return {
-      filename: String(blob.getName() || 'attachment.bin'),
-      mime_type: String(blob.getContentType() || 'application/octet-stream'),
-      data_b64: stripPadding_(Utilities.base64EncodeWebSafe(blob.getBytes()))
-    };
-  });
 }
 
 function readFormString_(e, fieldName) {

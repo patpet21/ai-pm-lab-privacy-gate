@@ -56,6 +56,7 @@ def _show_unprotected_source(page, key: str) -> None:
     if document.source_kind not in _DOCUMENT_KINDS or document.source_path is None:
         index = getattr(page, "_gmail_component_text_compare_index", 0)
         page.preview_tabs.setTabVisible(1, False)
+        page.preview_tabs.setTabVisible(index, True)
         page.preview_tabs.setCurrentIndex(index)
         original = getattr(page, "_gmail_component_original_text", None)
         protected = getattr(page, "_gmail_component_protected_text", None)
