@@ -5,6 +5,9 @@ from time import monotonic
 from PySide6.QtCore import QPoint, QTimer, Qt
 from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QMenu, QVBoxLayout, QWidgetAction
 
+from ai_pm_lab_privacy_gate.ui.account_devices_foundation_2026 import (
+    install_account_devices_foundation_2026,
+)
 from ai_pm_lab_privacy_gate.ui.account_release_polish_2026 import (
     install_account_release_polish_2026,
 )
@@ -116,7 +119,7 @@ def _build_menu(controller) -> QMenu:
         settings_action.triggered.connect(controller._open_settings)
         return menu
 
-    plan_action = menu.addAction("Account & Plan")
+    plan_action = menu.addAction("Account & Devices")
     apps_action = menu.addAction("Connected Apps")
     settings_action = menu.addAction("Settings")
     organization_action = None
@@ -211,3 +214,4 @@ def apply_account_menu_popup_2026(main_window) -> None:
     ux = install_privacygate_account_ux_2026(main_window, controller)
     install_account_startup_onboarding_fix_2026(main_window, ux)
     install_account_release_polish_2026(main_window, controller)
+    install_account_devices_foundation_2026(main_window, controller)
