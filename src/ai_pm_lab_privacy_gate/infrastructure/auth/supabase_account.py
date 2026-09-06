@@ -63,6 +63,7 @@ class SupabaseAccountClient:
     def __init__(self, identity_store: ConnectionIdentityStore) -> None:
         self.identity_store = identity_store
         self.secrets = identity_store.secrets
+        self._current_session: AccountSession | None = None
         self._http = httpx.Client(
             timeout=20,
             verify=truststore.SSLContext(ssl.PROTOCOL_TLS_CLIENT),
@@ -79,6 +80,11 @@ class SupabaseAccountClient:
     @property
     def current_email(self) -> str | None:
         return self.secrets.get(USER_EMAIL_SECRET)
+
+    @property
+    def current_session(self) -> AccountSession | None:
+        """Return the active access-token session held only in process memory."""
+        return self._current_session
 
     def register(self, email: str, password: str) -> RegistrationResult:
         response = self._http.post(
@@ -136,6 +142,7 @@ class SupabaseAccountClient:
         self.clear_local_session()
 
     def clear_local_session(self) -> None:
+        self._current_session = None
         for name in (REFRESH_TOKEN_SECRET, USER_ID_SECRET, USER_EMAIL_SECRET):
             self.secrets.delete(name)
 
@@ -200,6 +207,7 @@ class SupabaseAccountClient:
         return devices
 
     def _save(self, session: AccountSession) -> None:
+        self._current_session = session
         self.secrets.set(REFRESH_TOKEN_SECRET, session.refresh_token)
         self.secrets.set(USER_ID_SECRET, session.user_id)
         self.secrets.set(USER_EMAIL_SECRET, session.email)
