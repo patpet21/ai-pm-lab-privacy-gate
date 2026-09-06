@@ -7,7 +7,7 @@ from ai_pm_lab_privacy_gate.infrastructure.connectors.google_drive_file_access i
 )
 from ai_pm_lab_privacy_gate.ui import connected_apps_browse_polish, protect_source_picker
 from ai_pm_lab_privacy_gate.ui.apps_hub import AppsHubPage, _primary_style
-from ai_pm_lab_privacy_gate.ui.gmail_addon_import import open_gmail_addon_import
+from ai_pm_lab_privacy_gate.ui.gmail_addon_mode_picker import open_gmail_mode_picker
 from ai_pm_lab_privacy_gate.ui.gmail_inbox import open_gmail_inbox
 from ai_pm_lab_privacy_gate.ui.google_drive_access_center import (
     open_google_drive_access_center,
@@ -26,8 +26,8 @@ class _ProtectSourceServiceProxy:
 
     def is_connected(self, provider: str) -> bool:
         if provider == "gmail":
-            # Protect's Gmail entry is the Workspace Add-on path. It does not
-            # depend on the legacy mailbox-wide gmail.readonly connector.
+            # Protect's Gmail entry exposes two current-message add-on modes and
+            # does not depend on the legacy mailbox-wide gmail.readonly connector.
             return True
         if self._service is None:
             return False
@@ -48,7 +48,7 @@ def _open_drive_access_center_from_main_window(main_window) -> None:
 
 
 def install_google_provider_routes() -> None:
-    """Route Google providers while keeping Protect Gmail Add-on scoped to Protect."""
+    """Route Google providers while keeping Protect Gmail add-on modes scoped to Protect."""
     global _INSTALLED
     if _INSTALLED:
         return
@@ -58,9 +58,9 @@ def install_google_provider_routes() -> None:
 
     def routed_open(main_window, provider: str, title: str) -> None:
         if provider == "gmail":
-            # Protect uses the current-message Gmail Add-on path. No mailbox-wide
-            # gmail.readonly connection is required for this entry point.
-            open_gmail_addon_import(main_window)
+            # Protect now lets the user choose between the proven explicit-send
+            # action mode and the richer current-message readonly preview mode.
+            open_gmail_mode_picker(main_window)
             return
         if provider == "google_drive":
             # Protect must use the same Google Drive product entry point as Apps:
@@ -79,8 +79,8 @@ def install_google_provider_routes() -> None:
 
     # The source picker previously required service.is_connected("gmail") before it
     # called its source opener. That check belongs to the old OAuth connector. Wrap
-    # only Protect's source-service lookup so Gmail Add-on can open without changing
-    # the real Apps/Connected Apps connection state.
+    # only Protect's source-service lookup so Gmail can open without changing the
+    # real Apps/Connected Apps connection state.
     original_source_service = protect_source_picker._source_service
 
     def protect_source_service(main_window):
@@ -93,10 +93,10 @@ def install_google_provider_routes() -> None:
     def protect_provider_status(service, key: str, availability: str):
         if key == "gmail":
             return (
-                "ADD-ON",
+                "2 MODES",
                 "#E8F6F6",
                 "#0B7180",
-                "Select one Gmail message with the PrivacyGate Add-on; no mailbox-wide connection required.",
+                "Choose Standard privacy mode or Enhanced Gmail preview; neither requires mailbox-wide gmail.readonly access.",
             )
         return original_provider_status(service, key, availability)
 
@@ -112,8 +112,8 @@ def install_google_provider_routes() -> None:
     ) -> None:
         if supported and self._connected(provider):
             if provider == "gmail":
-                # Keep the existing Apps Gmail browser untouched for now. The new
-                # Add-on path is intentionally scoped to Protect in this release fix.
+                # Keep the existing Apps Gmail browser untouched for now. The two
+                # add-on choices are intentionally scoped to Protect in this release fix.
                 open_gmail_inbox(self.main_window)
                 return
             if provider == "google_drive":
