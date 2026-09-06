@@ -5,6 +5,9 @@ from time import monotonic
 from PySide6.QtCore import QPoint, QTimer, Qt
 from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QMenu, QVBoxLayout, QWidgetAction
 
+from ai_pm_lab_privacy_gate.ui.account_release_polish_2026 import (
+    install_account_release_polish_2026,
+)
 from ai_pm_lab_privacy_gate.ui.account_startup_onboarding_fix_2026 import (
     install_account_startup_onboarding_fix_2026,
 )
@@ -177,7 +180,9 @@ def _toggle_account_menu(controller) -> None:
         active.close()
         return
 
-    dismissed_at = float(getattr(controller, "_privacygate_account_menu_dismissed_at", 0.0) or 0.0)
+    dismissed_at = float(
+        getattr(controller, "_privacygate_account_menu_dismissed_at", 0.0) or 0.0
+    )
     if monotonic() - dismissed_at < 0.20:
         return
     _show_account_menu(controller)
@@ -185,14 +190,18 @@ def _toggle_account_menu(controller) -> None:
 
 def apply_account_menu_popup_2026(main_window) -> None:
     controller = getattr(main_window, "_privacygate_account_menu_controller", None)
-    if controller is None or bool(getattr(controller, "_privacygate_account_popup_2026", False)):
+    if controller is None or bool(
+        getattr(controller, "_privacygate_account_popup_2026", False)
+    ):
         return
 
     try:
         controller.button.clicked.disconnect()
     except (RuntimeError, TypeError):
         pass
-    controller.button.clicked.connect(lambda _checked=False: _toggle_account_menu(controller))
+    controller.button.clicked.connect(
+        lambda _checked=False: _toggle_account_menu(controller)
+    )
     controller._privacygate_account_popup_menu = None
     controller._privacygate_account_menu_dismissed_at = 0.0
     controller._privacygate_account_popup_2026 = True
@@ -201,3 +210,4 @@ def apply_account_menu_popup_2026(main_window) -> None:
     # Supabase identity instead of exposing a second MCP-only registration flow.
     ux = install_privacygate_account_ux_2026(main_window, controller)
     install_account_startup_onboarding_fix_2026(main_window, ux)
+    install_account_release_polish_2026(main_window, controller)
