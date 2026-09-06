@@ -7,6 +7,7 @@ from ai_pm_lab_privacy_gate.infrastructure.connectors.google_drive_file_access i
 )
 from ai_pm_lab_privacy_gate.ui import connected_apps_browse_polish, protect_source_picker
 from ai_pm_lab_privacy_gate.ui.apps_hub import AppsHubPage, _primary_style
+from ai_pm_lab_privacy_gate.ui.gmail_addon_import import open_gmail_addon_import
 from ai_pm_lab_privacy_gate.ui.gmail_inbox import open_gmail_inbox
 from ai_pm_lab_privacy_gate.ui.google_drive_access_center import (
     open_google_drive_access_center,
@@ -14,6 +15,28 @@ from ai_pm_lab_privacy_gate.ui.google_drive_access_center import (
 
 
 _INSTALLED = False
+
+
+class _ProtectSourceServiceProxy:
+    """Expose Gmail Add-on availability to Protect without faking Apps/OAuth state."""
+
+    def __init__(self, service) -> None:
+        self._service = service
+        self.data_dir = getattr(service, "data_dir", None) if service is not None else None
+
+    def is_connected(self, provider: str) -> bool:
+        if provider == "gmail":
+            # Protect's Gmail entry is the Workspace Add-on path. It does not
+            # depend on the legacy mailbox-wide gmail.readonly connector.
+            return True
+        if self._service is None:
+            return False
+        return bool(self._service.is_connected(provider))
+
+    def __getattr__(self, name: str):
+        if self._service is None:
+            raise AttributeError(name)
+        return getattr(self._service, name)
 
 
 def _open_drive_access_center_from_main_window(main_window) -> None:
@@ -25,7 +48,7 @@ def _open_drive_access_center_from_main_window(main_window) -> None:
 
 
 def install_google_provider_routes() -> None:
-    """Route Google providers to their import pickers and keep Drive modes distinct."""
+    """Route Google providers while keeping Protect Gmail Add-on scoped to Protect."""
     global _INSTALLED
     if _INSTALLED:
         return
@@ -35,7 +58,9 @@ def install_google_provider_routes() -> None:
 
     def routed_open(main_window, provider: str, title: str) -> None:
         if provider == "gmail":
-            open_gmail_inbox(main_window)
+            # Protect uses the current-message Gmail Add-on path. No mailbox-wide
+            # gmail.readonly connection is required for this entry point.
+            open_gmail_addon_import(main_window)
             return
         if provider == "google_drive":
             # Protect must use the same Google Drive product entry point as Apps:
@@ -46,11 +71,36 @@ def install_google_provider_routes() -> None:
 
     connected_apps_browse_polish._open_source_browser = routed_open
     # Some managed Protect routing intentionally asks for the preserved/raw source
-    # opener after workspace-policy approval.  Keep that alias pointed at the same
+    # opener after workspace-policy approval. Keep that alias pointed at the same
     # Google router so it cannot fall back to the legacy Full Drive-only browser.
     connected_apps_browse_polish._privacygate_raw_open_source_browser = routed_open
     # protect_source_picker imported the function directly, so update its alias too.
     protect_source_picker._open_source_browser = routed_open
+
+    # The source picker previously required service.is_connected("gmail") before it
+    # called its source opener. That check belongs to the old OAuth connector. Wrap
+    # only Protect's source-service lookup so Gmail Add-on can open without changing
+    # the real Apps/Connected Apps connection state.
+    original_source_service = protect_source_picker._source_service
+
+    def protect_source_service(main_window):
+        return _ProtectSourceServiceProxy(original_source_service(main_window))
+
+    protect_source_picker._source_service = protect_source_service
+
+    original_provider_status = protect_source_picker._provider_status
+
+    def protect_provider_status(service, key: str, availability: str):
+        if key == "gmail":
+            return (
+                "ADD-ON",
+                "#E8F6F6",
+                "#0B7180",
+                "Select one Gmail message with the PrivacyGate Add-on; no mailbox-wide connection required.",
+            )
+        return original_provider_status(service, key, availability)
+
+    protect_source_picker._provider_status = protect_provider_status
 
     original_browse = AppsHubPage._browse
 
@@ -62,6 +112,8 @@ def install_google_provider_routes() -> None:
     ) -> None:
         if supported and self._connected(provider):
             if provider == "gmail":
+                # Keep the existing Apps Gmail browser untouched for now. The new
+                # Add-on path is intentionally scoped to Protect in this release fix.
                 open_gmail_inbox(self.main_window)
                 return
             if provider == "google_drive":

@@ -1,0 +1,32 @@
+{
+  "timeZone": "America/New_York",
+  "dependencies": {},
+  "exceptionLogging": "STACKDRIVER",
+  "runtimeVersion": "V8",
+  "oauthScopes": [
+    "https://www.googleapis.com/auth/gmail.addons.execute",
+    "https://www.googleapis.com/auth/gmail.addons.current.message.readonly",
+    "https://www.googleapis.com/auth/script.storage"
+  ],
+  "addOns": {
+    "common": {
+      "name": "PrivacyGate",
+      "logoUrl": "https://www.gstatic.com/images/branding/product/2x/gmail_48dp.png",
+      "layoutProperties": {
+        "primaryColor": "#0B7180",
+        "secondaryColor": "#062B4F"
+      },
+      "homepageTrigger": {
+        "runFunction": "onHomepage"
+      }
+    },
+    "gmail": {
+      "contextualTriggers": [
+        {
+          "unconditional": {},
+          "onTriggerFunction": "onGmailMessageOpen"
+        }
+      ]
+    }
+  }
+}
