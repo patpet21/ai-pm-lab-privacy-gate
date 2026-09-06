@@ -5,6 +5,10 @@ from time import monotonic
 from PySide6.QtCore import QPoint, QTimer, Qt
 from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QMenu, QVBoxLayout, QWidgetAction
 
+from ai_pm_lab_privacy_gate.ui.privacygate_account_ux_2026 import (
+    install_privacygate_account_ux_2026,
+)
+
 
 NAVY = "#062B4F"
 TEAL = "#0B7180"
@@ -15,9 +19,6 @@ def _menu_width(controller) -> int:
     sidebar = getattr(controller.main_window, "sidebar", None)
     if sidebar is None:
         return max(210, controller.button.width())
-    # Keep the popup visually inside the sidebar instead of letting the account
-    # card spill over the content area. Ten pixels of breathing room per side is
-    # enough to preserve the rounded-card treatment.
     return max(210, int(sidebar.width()) - 20)
 
 
@@ -32,7 +33,8 @@ def _header_action(controller, menu: QMenu, width: int) -> QWidgetAction:
     row.setContentsMargins(11, 11, 11, 11)
     row.setSpacing(9)
 
-    avatar = QLabel(controller._initials())
+    signed_in = bool(controller.account_client.current_user_id)
+    avatar = QLabel(controller._initials() if signed_in else "PG")
     avatar.setAlignment(Qt.AlignmentFlag.AlignCenter)
     avatar.setFixedSize(38, 38)
     avatar.setStyleSheet(
@@ -43,12 +45,12 @@ def _header_action(controller, menu: QMenu, width: int) -> QWidgetAction:
 
     text = QVBoxLayout()
     text.setSpacing(2)
-    name = QLabel(controller._display_name())
+    name = QLabel(controller._display_name() if signed_in else "PrivacyGate Account")
     name.setWordWrap(True)
     name.setStyleSheet(
         f"color:{NAVY};font-size:12px;font-weight:900;border:none;background:transparent;"
     )
-    email = QLabel(controller.email or "Not signed in")
+    email = QLabel(controller.email if signed_in and controller.email else "Not signed in")
     email.setWordWrap(True)
     email.setStyleSheet(
         f"color:{MUTED};font-size:8px;border:none;background:transparent;"
@@ -61,7 +63,7 @@ def _header_action(controller, menu: QMenu, width: int) -> QWidgetAction:
     text.addWidget(name)
     text.addWidget(email)
     text.addWidget(plan)
-    if controller.state.organization_name:
+    if signed_in and controller.state.organization_name:
         org = QLabel(controller.state.organization_name)
         org.setWordWrap(True)
         org.setStyleSheet(
@@ -88,7 +90,27 @@ def _build_menu(controller) -> QMenu:
     menu.addAction(_header_action(controller, menu, width))
     menu.addSeparator()
 
-    plan_action = menu.addAction("Plan & Account")
+    ux = getattr(controller.main_window, "_privacygate_account_ux_controller", None)
+    signed_in = bool(controller.account_client.current_user_id)
+
+    if not signed_in and ux is not None:
+        create_action = menu.addAction("Create free account")
+        sign_in_action = menu.addAction("Sign in")
+        settings_action = menu.addAction("Settings")
+        menu.addSeparator()
+        local_action = menu.addAction("Local features remain available without an account")
+        local_action.setEnabled(False)
+
+        create_action.triggered.connect(
+            lambda _checked=False: ux.open_account(initial_mode="create")
+        )
+        sign_in_action.triggered.connect(
+            lambda _checked=False: ux.open_account(initial_mode="sign_in")
+        )
+        settings_action.triggered.connect(controller._open_settings)
+        return menu
+
+    plan_action = menu.addAction("Account & Plan")
     apps_action = menu.addAction("Connected Apps")
     settings_action = menu.addAction("Settings")
     organization_action = None
@@ -104,13 +126,14 @@ def _build_menu(controller) -> QMenu:
     if organization_action is not None:
         organization_action.triggered.connect(controller._open_organization)
     edit_name_action.triggered.connect(controller._edit_display_name)
-    sign_out_action.triggered.connect(controller._sign_out)
+    if ux is not None:
+        sign_out_action.triggered.connect(ux.sign_out)
+    else:
+        sign_out_action.triggered.connect(controller._sign_out)
     return menu
 
 
 def _show_account_menu(controller) -> None:
-    # The collapsed sidebar is intentionally expanded first: a 56px popup is not
-    # useful, and this keeps the account card aligned to the normal sidebar width.
     if not bool(getattr(controller.main_window, "sidebar_expanded", True)):
         controller.main_window._set_sidebar_expanded(True)
         QTimer.singleShot(0, lambda: _show_account_menu(controller))
@@ -148,13 +171,9 @@ def _show_account_menu(controller) -> None:
 def _toggle_account_menu(controller) -> None:
     active = getattr(controller, "_privacygate_account_popup_menu", None)
     if active is not None and active.isVisible():
-        # Clicking ACCOUNT while the card is open acts as a true toggle.
         active.close()
         return
 
-    # QMenu closes itself when the user clicks outside. On some Qt/Windows builds
-    # that same click can then reach the underlying Account button; suppress the
-    # immediate reopen so one click on Account still means "close".
     dismissed_at = float(getattr(controller, "_privacygate_account_menu_dismissed_at", 0.0) or 0.0)
     if monotonic() - dismissed_at < 0.20:
         return
@@ -174,3 +193,7 @@ def apply_account_menu_popup_2026(main_window) -> None:
     controller._privacygate_account_popup_menu = None
     controller._privacygate_account_menu_dismissed_at = 0.0
     controller._privacygate_account_popup_2026 = True
+
+    # Account is a PrivacyGate-level capability. Remote MCP reuses this exact
+    # Supabase identity instead of exposing a second MCP-only registration flow.
+    install_privacygate_account_ux_2026(main_window, controller)
