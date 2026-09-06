@@ -75,6 +75,35 @@ def _format_message(message: GmailAddonMessage) -> str:
     return "\n".join(lines).strip()
 
 
+def _bring_to_front(dialog: QDialog, main_window) -> None:
+    """Best-effort foreground activation after Gmail delivers a message."""
+    try:
+        main_window.showNormal()
+        main_window.raise_()
+        main_window.activateWindow()
+    except Exception:
+        pass
+
+    try:
+        dialog.showNormal()
+        dialog.raise_()
+        dialog.activateWindow()
+        QApplication.alert(dialog, 3000)
+    except Exception:
+        pass
+
+    if os.name == "nt":
+        try:
+            import ctypes
+
+            hwnd = int(dialog.winId())
+            user32 = ctypes.windll.user32
+            user32.ShowWindow(hwnd, 9)  # SW_RESTORE
+            user32.SetForegroundWindow(hwnd)
+        except Exception:
+            pass
+
+
 def open_gmail_addon_import(main_window) -> None:
     """Receive one explicitly selected Gmail message through the Gmail Add-on.
 
@@ -85,7 +114,7 @@ def open_gmail_addon_import(main_window) -> None:
     transport = GmailAddonTransport(_data_dir(main_window))
     dialog = QDialog(main_window)
     dialog.setObjectName("GmailAddonImportDialog")
-    dialog.setWindowTitle("Gmail — import selected email")
+    dialog.setWindowTitle("Gmail → PrivacyGate")
     dialog.resize(780, 650)
     dialog.setMinimumSize(690, 560)
     dialog.setStyleSheet("QDialog#GmailAddonImportDialog{background:#F8FBFC;}")
@@ -103,11 +132,11 @@ def open_gmail_addon_import(main_window) -> None:
     head.addWidget(mark)
 
     titles = QVBoxLayout()
-    title = QLabel("Import one Gmail message")
+    title = QLabel("Bring a Gmail message into Protect")
     title.setStyleSheet(f"color:{NAVY};font-size:21px;font-weight:950;")
     subtitle = QLabel(
-        "Choose the email in Gmail with the PrivacyGate add-on. "
-        "This window receives that one message automatically and brings it into Protect."
+        "1. Open an email in Gmail  •  2. Click “Send to PrivacyGate”  •  "
+        "3. PrivacyGate receives it and comes back to the front automatically."
     )
     subtitle.setWordWrap(True)
     subtitle.setStyleSheet(f"color:{MUTED};font-size:9px;font-weight:550;")
@@ -125,8 +154,8 @@ def open_gmail_addon_import(main_window) -> None:
     root.addLayout(head)
 
     privacy = QLabel(
-        "No mailbox-wide Gmail permission. Google exposes only the message you explicitly send "
-        "from the add-on; PrivacyGate processes it locally after receipt."
+        "Only the email you explicitly choose is transferred. PrivacyGate does not receive "
+        "mailbox-wide access and processes the received content locally."
     )
     privacy.setWordWrap(True)
     privacy.setStyleSheet(
@@ -190,8 +219,8 @@ def open_gmail_addon_import(main_window) -> None:
     message_title = QLabel("Waiting for a selected email")
     message_title.setStyleSheet(f"color:{NAVY};font-size:12px;font-weight:900;")
     message_meta = QLabel(
-        "Open an email in Gmail, click the PrivacyGate add-on in the right sidebar, "
-        "then choose “Send to PrivacyGate”. You do not need to come back and press Receive."
+        "Keep this window open, then choose an email in Gmail and click “Send to PrivacyGate”. "
+        "When it arrives, PrivacyGate will bring this window back to the front automatically."
     )
     message_meta.setWordWrap(True)
     message_meta.setStyleSheet(f"color:{MUTED};font-size:9px;")
@@ -251,19 +280,19 @@ def open_gmail_addon_import(main_window) -> None:
             state["mode"] = "idle"
         elif transport.paired:
             badge.setText("READY")
-            status_title.setText("Gmail Add-on paired")
+            status_title.setText("Gmail is connected")
             status_text.setText(
-                "PrivacyGate is waiting here automatically. Select an email in Gmail and send it "
-                "with the PrivacyGate add-on."
+                "Choose an email in Gmail and click “Send to PrivacyGate”. "
+                "This window will return to the front automatically when the email arrives."
             )
             state_label.setText("Waiting for Gmail")
             state["mode"] = "poll"
         else:
             badge.setText("PAIR ONCE")
-            status_title.setText("Pair the Gmail Add-on once")
+            status_title.setText("Pair Gmail with this device once")
             status_text.setText(
                 "Copy this one-time device code into the PrivacyGate add-on in Gmail. "
-                "After pairing, the code disappears and future imports require no transfer code."
+                "After pairing, future imports do not require another transfer code."
             )
             state_label.setText("Waiting for pairing")
             state["mode"] = "status"
@@ -317,7 +346,10 @@ def open_gmail_addon_import(main_window) -> None:
         components.setCurrentRow(0)
         use.setEnabled(True)
         badge.setText("RECEIVED")
+        status_title.setText("Email received from Gmail")
+        status_text.setText("Review the email below, then choose “Use in Protect”.")
         state_label.setText("Selected email received")
+        _bring_to_front(dialog, main_window)
 
     def do_background_operation():
         mode = str(state.get("mode") or "")
@@ -395,7 +427,7 @@ def open_gmail_addon_import(main_window) -> None:
             "item_kind": "email",
             "source_component": component_kind,
             "source_component_title": component_title,
-            "access_model": "gmail_addons_current_message_readonly",
+            "access_model": "gmail_addons_current_message_action",
         }
         main_window._show_page(0)
         dialog.accept()
