@@ -205,14 +205,20 @@ class PrivacyGateDevicesController:
         if self.worker is not None:
             return
 
+        session = self.account_client.current_session
+        if session is None:
+            self.count.setText("VALIDATING")
+            self.refresh_button.setEnabled(False)
+            self._render_message(
+                "PrivacyGate is validating the saved account session. Device metadata will appear automatically when the session is ready."
+            )
+            return
+
         self.refresh_button.setEnabled(False)
         self.count.setText("SYNCING")
         self._render_message("Refreshing authorized device metadata…")
 
         def load_devices() -> list[DeviceSummary]:
-            session = self.account_client.restore_session()
-            if session is None:
-                return []
             return self.account_client.list_devices(session)
 
         worker = FunctionWorker(load_devices)
