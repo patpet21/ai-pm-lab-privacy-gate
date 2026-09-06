@@ -16,7 +16,12 @@ import httpx
 
 CONFIG_FILENAME = "gmail_addon.json"
 ENV_ENDPOINT = "PRIVACYGATE_GMAIL_ADDON_ENDPOINT"
+ENV_READONLY_ENDPOINT = "PRIVACYGATE_GMAIL_ADDON_READONLY_ENDPOINT"
 MAX_ATTACHMENT_BYTES = 6 * 1024 * 1024
+
+MODE_ACTION = "action"
+MODE_READONLY = "readonly"
+_SUPPORTED_MODES = {MODE_ACTION, MODE_READONLY}
 
 
 @dataclass(frozen=True)
@@ -39,37 +44,51 @@ class GmailAddonMessage:
 
 
 class GmailAddonTransport:
-    """Small local client for the short-lived Apps Script relay used by the Gmail add-on.
+    """Local client for the short-lived Apps Script relay used by Gmail add-ons.
 
-    The relay never grants PrivacyGate mailbox access. The Gmail add-on can read only
-    the message the user is actively viewing, and places that selected payload into a
-    short-lived Google Apps Script cache. PrivacyGate polls the relay with a high-entropy
-    device channel, verifies the HMAC, then consumes the payload once.
+    PrivacyGate supports two independent Gmail add-on profiles:
+    - ``action`` keeps the existing explicit-send, non-sensitive current-message flow.
+    - ``readonly`` supports the richer current-message preview add-on.
+
+    The legacy action profile keeps using the original ``channel`` / ``endpoint`` /
+    ``paired`` keys so existing users remain paired after this upgrade. The readonly
+    profile is stored independently and therefore cannot overwrite the proven action
+    configuration.
     """
 
-    def __init__(self, data_dir: Path) -> None:
+    def __init__(self, data_dir: Path, mode: str = MODE_ACTION) -> None:
+        normalized = str(mode or MODE_ACTION).strip().lower()
+        if normalized not in _SUPPORTED_MODES:
+            raise ValueError(f"Unsupported Gmail add-on mode: {mode}")
+        self.mode = normalized
         self.data_dir = Path(data_dir)
         self.data_dir.mkdir(parents=True, exist_ok=True)
         self.config_path = self.data_dir / CONFIG_FILENAME
         self._config = self._load_config()
-        if not str(self._config.get("channel") or "").strip():
-            self._config["channel"] = secrets.token_urlsafe(18)
+        if not str(self._config.get(self._key("channel")) or "").strip():
+            self._config[self._key("channel")] = secrets.token_urlsafe(18)
             self._save_config()
+
+    def _key(self, name: str) -> str:
+        if self.mode == MODE_ACTION:
+            return name
+        return f"readonly_{name}"
 
     @property
     def channel(self) -> str:
-        return str(self._config.get("channel") or "").strip()
+        return str(self._config.get(self._key("channel")) or "").strip()
 
     @property
     def endpoint(self) -> str:
-        env = os.environ.get(ENV_ENDPOINT, "").strip()
+        env_name = ENV_ENDPOINT if self.mode == MODE_ACTION else ENV_READONLY_ENDPOINT
+        env = os.environ.get(env_name, "").strip()
         if env:
             return env
-        return str(self._config.get("endpoint") or "").strip()
+        return str(self._config.get(self._key("endpoint")) or "").strip()
 
     @property
     def paired(self) -> bool:
-        return bool(self._config.get("paired", False))
+        return bool(self._config.get(self._key("paired"), False))
 
     def set_endpoint(self, endpoint: str) -> None:
         value = endpoint.strip()
@@ -78,16 +97,16 @@ class GmailAddonTransport:
             or value.startswith("https://script.googleusercontent.com/")
         ):
             raise ValueError("Use the HTTPS Apps Script web-app deployment URL.")
-        self._config["endpoint"] = value
+        self._config[self._key("endpoint")] = value
         self._save_config()
 
     def mark_paired(self, paired: bool = True) -> None:
-        self._config["paired"] = bool(paired)
+        self._config[self._key("paired")] = bool(paired)
         self._save_config()
 
     def reset_pairing(self) -> None:
-        self._config["channel"] = secrets.token_urlsafe(18)
-        self._config["paired"] = False
+        self._config[self._key("channel")] = secrets.token_urlsafe(18)
+        self._config[self._key("paired")] = False
         self._save_config()
 
     def check_pairing(self, timeout: float = 2.5) -> bool:
