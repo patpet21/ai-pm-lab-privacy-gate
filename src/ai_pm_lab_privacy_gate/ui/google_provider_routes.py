@@ -2,13 +2,21 @@ from __future__ import annotations
 
 from PySide6.QtWidgets import QLabel, QPushButton
 
+from ai_pm_lab_privacy_gate.infrastructure.connectors.gmail_addon_transport import (
+    GmailAddonTransport,
+    MODE_ACTION,
+    MODE_READONLY,
+)
 from ai_pm_lab_privacy_gate.infrastructure.connectors.google_drive_file_access import (
     list_selected_file_accounts,
 )
 from ai_pm_lab_privacy_gate.ui import connected_apps_browse_polish, protect_source_picker
 from ai_pm_lab_privacy_gate.ui.apps_hub import AppsHubPage, _primary_style
-from ai_pm_lab_privacy_gate.ui.gmail_addon_mode_picker import open_gmail_mode_picker
-from ai_pm_lab_privacy_gate.ui.gmail_inbox import open_gmail_inbox
+from ai_pm_lab_privacy_gate.ui.gmail_addon_mode_picker import (
+    get_active_gmail_mode,
+    open_configured_gmail_import,
+    open_gmail_mode_picker,
+)
 from ai_pm_lab_privacy_gate.ui.google_drive_access_center import (
     open_google_drive_access_center,
 )
@@ -18,7 +26,7 @@ _INSTALLED = False
 
 
 class _ProtectSourceServiceProxy:
-    """Expose Gmail Add-on availability to Protect without faking Apps/OAuth state."""
+    """Expose Gmail Add-on availability to Protect without using the old Apps OAuth route."""
 
     def __init__(self, service) -> None:
         self._service = service
@@ -26,8 +34,6 @@ class _ProtectSourceServiceProxy:
 
     def is_connected(self, provider: str) -> bool:
         if provider == "gmail":
-            # Protect's Gmail entry exposes two current-message add-on modes and
-            # does not depend on the legacy mailbox-wide gmail.readonly connector.
             return True
         if self._service is None:
             return False
@@ -40,15 +46,28 @@ class _ProtectSourceServiceProxy:
 
 
 def _open_drive_access_center_from_main_window(main_window) -> None:
-    """Open the one Drive entry point from Protect or other main-window callers."""
     apps_page = getattr(main_window, "apps_hub_page", None)
     if apps_page is None:
         return
     open_google_drive_access_center(apps_page)
 
 
+def _gmail_addon_state(page: AppsHubPage) -> tuple[bool, str]:
+    service = getattr(page, "service", None)
+    data_dir = getattr(service, "data_dir", None) if service is not None else None
+    if data_dir is None:
+        return False, MODE_ACTION
+    try:
+        action = GmailAddonTransport(data_dir, mode=MODE_ACTION)
+        readonly = GmailAddonTransport(data_dir, mode=MODE_READONLY)
+        connected = bool((action.endpoint and action.paired) or (readonly.endpoint and readonly.paired))
+        return connected, get_active_gmail_mode(page.main_window)
+    except Exception:
+        return False, MODE_ACTION
+
+
 def install_google_provider_routes() -> None:
-    """Route Google providers while keeping Protect Gmail add-on modes scoped to Protect."""
+    """Keep Gmail setup in Apps and let Protect use the configured Gmail mode."""
     global _INSTALLED
     if _INSTALLED:
         return
@@ -58,29 +77,18 @@ def install_google_provider_routes() -> None:
 
     def routed_open(main_window, provider: str, title: str) -> None:
         if provider == "gmail":
-            # Protect now lets the user choose between the proven explicit-send
-            # action mode and the richer current-message readonly preview mode.
-            open_gmail_mode_picker(main_window)
+            # Protect does not configure Gmail. It simply uses the mode selected in Apps.
+            open_configured_gmail_import(main_window)
             return
         if provider == "google_drive":
-            # Protect must use the same Google Drive product entry point as Apps:
-            # Selected files only is recommended, Full Drive remains optional.
             _open_drive_access_center_from_main_window(main_window)
             return
         original_open(main_window, provider, title)
 
     connected_apps_browse_polish._open_source_browser = routed_open
-    # Some managed Protect routing intentionally asks for the preserved/raw source
-    # opener after workspace-policy approval. Keep that alias pointed at the same
-    # Google router so it cannot fall back to the legacy Full Drive-only browser.
     connected_apps_browse_polish._privacygate_raw_open_source_browser = routed_open
-    # protect_source_picker imported the function directly, so update its alias too.
     protect_source_picker._open_source_browser = routed_open
 
-    # The source picker previously required service.is_connected("gmail") before it
-    # called its source opener. That check belongs to the old OAuth connector. Wrap
-    # only Protect's source-service lookup so Gmail can open without changing the
-    # real Apps/Connected Apps connection state.
     original_source_service = protect_source_picker._source_service
 
     def protect_source_service(main_window):
@@ -93,14 +101,31 @@ def install_google_provider_routes() -> None:
     def protect_provider_status(service, key: str, availability: str):
         if key == "gmail":
             return (
-                "2 MODES",
+                "GMAIL",
                 "#E8F6F6",
                 "#0B7180",
-                "Choose Standard privacy mode or Enhanced Gmail preview; neither requires mailbox-wide gmail.readonly access.",
+                "Uses the Gmail mode configured in Apps.",
             )
         return original_provider_status(service, key, availability)
 
     protect_source_picker._provider_status = protect_provider_status
+
+    original_connect = AppsHubPage._connect
+
+    def apps_connect(
+        self: AppsHubPage,
+        provider: str,
+        title: str,
+        supported: bool,
+        integration_path: str,
+    ) -> None:
+        if provider == "gmail":
+            open_gmail_mode_picker(self.main_window)
+            self.refresh()
+            return
+        original_connect(self, provider, title, supported, integration_path)
+
+    AppsHubPage._connect = apps_connect
 
     original_browse = AppsHubPage._browse
 
@@ -110,15 +135,12 @@ def install_google_provider_routes() -> None:
         title: str,
         supported: bool,
     ) -> None:
-        if supported and self._connected(provider):
-            if provider == "gmail":
-                # Keep the existing Apps Gmail browser untouched for now. The two
-                # add-on choices are intentionally scoped to Protect in this release fix.
-                open_gmail_inbox(self.main_window)
-                return
-            if provider == "google_drive":
-                open_google_drive_access_center(self)
-                return
+        if provider == "gmail":
+            open_configured_gmail_import(self.main_window)
+            return
+        if supported and self._connected(provider) and provider == "google_drive":
+            open_google_drive_access_center(self)
+            return
         original_browse(self, provider, title, supported)
 
     AppsHubPage._browse = apps_browse
@@ -153,12 +175,19 @@ def install_google_provider_routes() -> None:
         full_count = full_drive_count(self)
         selected_count = selected_file_count(self)
         drive_connected = bool(full_count or selected_count)
+        gmail_connected, gmail_mode = _gmail_addon_state(self)
 
-        # Google Drive is now one product entry point. The access center explains
-        # Selected files vs Full Drive and contains both account-management flows.
         for button in self.findChildren(QPushButton, "AppBrowse"):
-            if str(button.property("provider") or "") == "google_drive":
+            provider = str(button.property("provider") or "")
+            if provider == "google_drive":
                 button.hide()
+            elif provider == "gmail":
+                button.show()
+                button.setText("Import")
+                button.setEnabled(True)
+                button.setToolTip(
+                    "Import the current Gmail message using the Gmail mode configured in Apps."
+                )
             else:
                 button.setText("Import")
                 button.setToolTip(
@@ -166,8 +195,17 @@ def install_google_provider_routes() -> None:
                 )
 
         for button in self.findChildren(QPushButton, "AppConnect"):
-            if str(button.property("provider") or "") == "google_drive":
+            provider = str(button.property("provider") or "")
+            if provider == "google_drive":
                 button.hide()
+            elif provider == "gmail":
+                button.show()
+                button.setEnabled(True)
+                button.setText("Manage Gmail")
+                button.setStyleSheet(_primary_style())
+                button.setToolTip(
+                    "Configure Standard or Enhanced Gmail access and choose which mode Protect uses."
+                )
 
         for button in self.findChildren(QPushButton, "AppDriveFile"):
             button.show()
@@ -187,16 +225,27 @@ def install_google_provider_routes() -> None:
                 button.setProperty("drive_access_center_wired", True)
 
         for status in self.findChildren(QLabel, "AppStatus"):
-            if str(status.property("provider") or "") != "google_drive":
-                continue
-            status.setText("CONNECTED" if drive_connected else "AVAILABLE")
-            status.setStyleSheet(
-                (
-                    "background:#E8F6F6;color:#0B7180;border:1px solid #B8E1E4;"
-                    if drive_connected
-                    else "background:#EAF2FA;color:#355F87;border:1px solid #C9DAEA;"
+            provider = str(status.property("provider") or "")
+            if provider == "google_drive":
+                status.setText("CONNECTED" if drive_connected else "AVAILABLE")
+                status.setStyleSheet(
+                    (
+                        "background:#E8F6F6;color:#0B7180;border:1px solid #B8E1E4;"
+                        if drive_connected
+                        else "background:#EAF2FA;color:#355F87;border:1px solid #C9DAEA;"
+                    )
+                    + "border-radius:8px;padding:4px 7px;font-size:9px;font-weight:900;"
                 )
-                + "border-radius:8px;padding:4px 7px;font-size:9px;font-weight:900;"
-            )
+            elif provider == "gmail":
+                mode_label = "ENHANCED" if gmail_mode == MODE_READONLY else "STANDARD"
+                status.setText(mode_label if gmail_connected else "SETUP")
+                status.setStyleSheet(
+                    (
+                        "background:#E8F6F6;color:#0B7180;border:1px solid #B8E1E4;"
+                        if gmail_connected
+                        else "background:#EAF2FA;color:#355F87;border:1px solid #C9DAEA;"
+                    )
+                    + "border-radius:8px;padding:4px 7px;font-size:9px;font-weight:900;"
+                )
 
     AppsHubPage.refresh = apps_refresh
