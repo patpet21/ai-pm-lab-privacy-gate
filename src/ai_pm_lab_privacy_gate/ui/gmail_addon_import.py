@@ -25,6 +25,7 @@ from ai_pm_lab_privacy_gate.infrastructure.connectors.gmail_addon_transport impo
     GmailAddonMessage,
     GmailAddonTransport,
 )
+from ai_pm_lab_privacy_gate.ui import gmail_component_preview_polish, gmail_component_session
 from ai_pm_lab_privacy_gate.ui.iconography import icon
 
 
@@ -77,46 +78,129 @@ def _format_message(message: GmailAddonMessage) -> str:
 
 def _bring_to_front(dialog: QDialog, main_window) -> None:
     """Best-effort foreground activation after Gmail delivers a message."""
-    try:
-        main_window.showNormal()
-        main_window.raise_()
-        main_window.activateWindow()
-    except Exception:
-        pass
 
-    try:
-        dialog.showNormal()
-        dialog.raise_()
-        dialog.activateWindow()
-        QApplication.alert(dialog, 3000)
-    except Exception:
-        pass
-
-    if os.name == "nt":
+    def activate() -> None:
         try:
-            import ctypes
-
-            hwnd = int(dialog.winId())
-            user32 = ctypes.windll.user32
-            user32.ShowWindow(hwnd, 9)  # SW_RESTORE
-            user32.SetForegroundWindow(hwnd)
+            main_window.showNormal()
+            main_window.raise_()
+            main_window.activateWindow()
         except Exception:
             pass
+        try:
+            dialog.showNormal()
+            dialog.raise_()
+            dialog.activateWindow()
+            QApplication.alert(dialog, 3000)
+        except Exception:
+            pass
+        if os.name == "nt":
+            try:
+                import ctypes
+
+                hwnd = int(dialog.winId())
+                user32 = ctypes.windll.user32
+                SW_RESTORE = 9
+                HWND_TOPMOST = -1
+                HWND_NOTOPMOST = -2
+                SWP_NOMOVE = 0x0002
+                SWP_NOSIZE = 0x0001
+                flags = SWP_NOMOVE | SWP_NOSIZE
+                user32.ShowWindow(hwnd, SW_RESTORE)
+                user32.SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0, flags)
+                user32.SetForegroundWindow(hwnd)
+                user32.SetWindowPos(hwnd, HWND_NOTOPMOST, 0, 0, 0, 0, flags)
+            except Exception:
+                pass
+
+    activate()
+    QTimer.singleShot(120, activate)
+    QTimer.singleShot(400, activate)
+
+
+def _adopt_addon_component(main_window, message: GmailAddonMessage, kind: str, index: int, transport) -> tuple[str, str]:
+    """Put one selected Gmail component into the existing Gmail-aware Protect runtime."""
+    protect = main_window.protection_page
+    gmail_component_session.apply_gmail_component_session(main_window)
+
+    if kind == "body":
+        content = _format_message(message)
+        paste_button = getattr(protect, "_redesign_paste_mode", None)
+        if paste_button is not None and not paste_button.isChecked():
+            paste_button.click()
+        protect.input_tabs.setCurrentIndex(0)
+        protect.text_input.setPlainText(content)
+        component_title = "Email body"
+        component_kind = "email_body"
+        component = {
+            "key": "gmail_body",
+            "label": "Email body",
+            "component_kind": "body",
+            "text": content,
+            "path": "",
+        }
+    else:
+        attachment = message.attachments[int(index)]
+        local_path = transport.materialize_attachment(attachment)
+        document_button = getattr(protect, "_redesign_document_mode", None)
+        if document_button is not None and not document_button.isChecked():
+            document_button.click()
+        protect.input_tabs.setCurrentIndex(1)
+        protect.pdf_path.setText(str(local_path))
+        component_title = attachment.filename
+        component_kind = Path(attachment.filename).suffix.lower().lstrip(".") or "attachment"
+        component = {
+            "key": "gmail_attachment_1",
+            "label": component_title,
+            "component_kind": "attachment",
+            "text": "",
+            "path": str(local_path),
+        }
+
+    protect._gmail_component_manifest = (component,)
+    protect._gmail_component_sources = {}
+    protect._gmail_component_results = {}
+    protect._gmail_component_active_key = str(component["key"])
+    protect._gmail_package_active = False
+    protect.current_document = None
+    protect.current_findings = ()
+    protect.current_result = None
+    protect.findings_table.setRowCount(0)
+    protect.category_list.clear()
+    protect.preview.clear()
+    protect._set_result_actions(False)
+
+    protect._external_source_name = " • ".join(
+        part for part in ("Gmail Add-on", message.subject, component_title) if part
+    )
+    protect._external_source_metadata = {
+        "provider": "gmail",
+        "provider_label": "Gmail Add-on",
+        "item_id": message.message_id,
+        "thread_id": message.thread_id,
+        "item_title": message.subject,
+        "item_kind": "email",
+        "source_component": component_kind,
+        "source_component_title": component_title,
+        "package_mode": "gmail_message_package",
+        "selected_components": [component_title],
+        "email_body_selected": kind == "body",
+        "attachment_count": 0 if kind == "body" else 1,
+        "access_model": "gmail_addons_current_message_action",
+    }
+
+    gmail_component_session._refresh_component_strip(protect)
+    gmail_component_preview_polish._show_unprotected_source(protect, str(component["key"]))
+    return component_title, component_kind
 
 
 def open_gmail_addon_import(main_window) -> None:
-    """Receive one explicitly selected Gmail message through the Gmail Add-on.
-
-    PrivacyGate never receives mailbox-wide OAuth access here. The only email
-    available to this flow is the message the user explicitly sends from the
-    PrivacyGate Gmail add-on.
-    """
+    """Receive one explicitly selected Gmail message through the Gmail Add-on."""
     transport = GmailAddonTransport(_data_dir(main_window))
     dialog = QDialog(main_window)
     dialog.setObjectName("GmailAddonImportDialog")
     dialog.setWindowTitle("Gmail → PrivacyGate")
-    dialog.resize(780, 650)
-    dialog.setMinimumSize(690, 560)
+    dialog.resize(800, 660)
+    dialog.setMinimumSize(700, 570)
     dialog.setStyleSheet("QDialog#GmailAddonImportDialog{background:#F8FBFC;}")
 
     root = QVBoxLayout(dialog)
@@ -132,11 +216,10 @@ def open_gmail_addon_import(main_window) -> None:
     head.addWidget(mark)
 
     titles = QVBoxLayout()
-    title = QLabel("Bring a Gmail message into Protect")
+    title = QLabel("Import one Gmail message")
     title.setStyleSheet(f"color:{NAVY};font-size:21px;font-weight:950;")
     subtitle = QLabel(
-        "1. Open an email in Gmail  •  2. Click “Send to PrivacyGate”  •  "
-        "3. PrivacyGate receives it and comes back to the front automatically."
+        "Open the email in Gmail, click “Send to PrivacyGate”, then review it here before protecting it."
     )
     subtitle.setWordWrap(True)
     subtitle.setStyleSheet(f"color:{MUTED};font-size:9px;font-weight:550;")
@@ -154,8 +237,8 @@ def open_gmail_addon_import(main_window) -> None:
     root.addLayout(head)
 
     privacy = QLabel(
-        "Only the email you explicitly choose is transferred. PrivacyGate does not receive "
-        "mailbox-wide access and processes the received content locally."
+        "Only the email you explicitly choose is transferred. PrivacyGate does not receive mailbox-wide access; "
+        "the received content is processed locally on this device."
     )
     privacy.setWordWrap(True)
     privacy.setStyleSheet(
@@ -169,8 +252,8 @@ def open_gmail_addon_import(main_window) -> None:
         "QFrame#GmailAddonStatusCard{background:#FFFFFF;border:1px solid #D7E2EA;border-radius:11px;}"
     )
     status_layout = QVBoxLayout(status_card)
-    status_layout.setContentsMargins(14, 12, 14, 12)
-    status_layout.setSpacing(7)
+    status_layout.setContentsMargins(14, 11, 14, 11)
+    status_layout.setSpacing(6)
 
     status_title = QLabel("Checking Gmail Add-on…")
     status_title.setStyleSheet(f"color:{NAVY};font-size:12px;font-weight:900;")
@@ -217,33 +300,34 @@ def open_gmail_addon_import(main_window) -> None:
     preview_layout.setSpacing(7)
 
     message_title = QLabel("Waiting for a selected email")
-    message_title.setStyleSheet(f"color:{NAVY};font-size:12px;font-weight:900;")
+    message_title.setStyleSheet(f"color:{NAVY};font-size:13px;font-weight:900;")
     message_meta = QLabel(
-        "Keep this window open, then choose an email in Gmail and click “Send to PrivacyGate”. "
-        "When it arrives, PrivacyGate will bring this window back to the front automatically."
+        "Keep this window open. When the selected Gmail message arrives, its subject, sender and body appear here."
     )
     message_meta.setWordWrap(True)
     message_meta.setStyleSheet(f"color:{MUTED};font-size:9px;")
     preview_layout.addWidget(message_title)
     preview_layout.addWidget(message_meta)
 
-    components = QListWidget()
-    components.setMinimumHeight(105)
-    components.setStyleSheet(
-        "QListWidget{background:#FAFCFD;border:1px solid #E1E8ED;border-radius:8px;padding:4px;}"
-        "QListWidget::item{padding:7px;border-radius:6px;}"
-        "QListWidget::item:selected{background:#E8F6F6;color:#0B7180;}"
-    )
-    preview_layout.addWidget(components)
-
     body_preview = QTextEdit()
     body_preview.setReadOnly(True)
-    body_preview.setPlaceholderText("The selected email will appear here automatically.")
+    body_preview.setPlaceholderText("The selected email body will appear here automatically.")
+    body_preview.setMinimumHeight(235)
     body_preview.setStyleSheet(
-        "QTextEdit{background:#FAFCFD;color:#17384E;border:1px solid #E1E8ED;"
-        "border-radius:8px;padding:8px;font-size:9px;}"
+        "QTextEdit{background:#FFFFFF;color:#17384E;border:1px solid #D7E2EA;"
+        "border-radius:8px;padding:12px;font-size:10px;}"
     )
     preview_layout.addWidget(body_preview, 1)
+
+    components = QListWidget()
+    components.setMaximumHeight(92)
+    components.setStyleSheet(
+        "QListWidget{background:#FAFCFD;border:1px solid #E1E8ED;border-radius:8px;padding:4px;}"
+        "QListWidget::item{padding:6px;border-radius:6px;}"
+        "QListWidget::item:selected{background:#E8F6F6;color:#0B7180;}"
+    )
+    components.hide()
+    preview_layout.addWidget(components)
     root.addWidget(preview, 1)
 
     footer = QHBoxLayout()
@@ -272,28 +356,19 @@ def open_gmail_addon_import(main_window) -> None:
         if not endpoint_ready:
             badge.setText("SETUP")
             status_title.setText("Gmail Add-on test deployment is not configured")
-            status_text.setText(
-                "The public release will ship with this endpoint already configured. "
-                "For the current development build, configure the Apps Script web-app deployment once."
-            )
+            status_text.setText("Configure the Apps Script web-app endpoint once for this development build.")
             state_label.setText("Setup required")
             state["mode"] = "idle"
         elif transport.paired:
             badge.setText("READY")
             status_title.setText("Gmail is connected")
-            status_text.setText(
-                "Choose an email in Gmail and click “Send to PrivacyGate”. "
-                "This window will return to the front automatically when the email arrives."
-            )
+            status_text.setText("Open one email in Gmail and click “Send to PrivacyGate”.")
             state_label.setText("Waiting for Gmail")
             state["mode"] = "poll"
         else:
             badge.setText("PAIR ONCE")
             status_title.setText("Pair Gmail with this device once")
-            status_text.setText(
-                "Copy this one-time device code into the PrivacyGate add-on in Gmail. "
-                "After pairing, future imports do not require another transfer code."
-            )
+            status_text.setText("Copy this one-time device code into the PrivacyGate add-on in Gmail.")
             state_label.setText("Waiting for pairing")
             state["mode"] = "status"
 
@@ -321,6 +396,7 @@ def open_gmail_addon_import(main_window) -> None:
         transport.reset_pairing()
         pairing_value.setText(transport.channel)
         components.clear()
+        components.hide()
         body_preview.clear()
         state["message"] = None
         use.setEnabled(False)
@@ -329,25 +405,24 @@ def open_gmail_addon_import(main_window) -> None:
     def render_message(message: GmailAddonMessage) -> None:
         state["message"] = message
         message_title.setText(message.subject or "(No subject)")
-        meta = message.sender
-        if message.sent_at:
-            meta = f"{meta} • {message.sent_at}" if meta else message.sent_at
-        message_meta.setText(meta or "Selected Gmail message")
-        body_preview.setPlainText(_format_message(message))
+        meta_parts = [part for part in (message.sender, message.sent_at) if part]
+        message_meta.setText("  •  ".join(meta_parts) or "Selected Gmail message")
+        body_preview.setPlainText(message.body.strip() or "(No plain-text email body)")
         components.clear()
 
-        body_item = QListWidgetItem("Email body")
+        body_item = QListWidgetItem("Email message")
         body_item.setData(Qt.ItemDataRole.UserRole, ("body", -1))
         components.addItem(body_item)
         for index, attachment in enumerate(message.attachments):
-            item = QListWidgetItem(f"{attachment.filename}  •  attachment")
+            item = QListWidgetItem(f"Attachment: {attachment.filename}")
             item.setData(Qt.ItemDataRole.UserRole, ("attachment", index))
             components.addItem(item)
         components.setCurrentRow(0)
+        components.setVisible(bool(message.attachments))
         use.setEnabled(True)
         badge.setText("RECEIVED")
-        status_title.setText("Email received from Gmail")
-        status_text.setText("Review the email below, then choose “Use in Protect”.")
+        status_title.setText("Email received — ready for Protect")
+        status_text.setText("Review the message below. “Use in Protect” will show the original text immediately before scanning.")
         state_label.setText("Selected email received")
         _bring_to_front(dialog, main_window)
 
@@ -376,7 +451,6 @@ def open_gmail_addon_import(main_window) -> None:
             elif kind == "poll" and isinstance(result, GmailAddonMessage):
                 render_message(result)
             return
-
         if state.get("mode") in {"status", "poll"}:
             state["future"] = executor.submit(do_background_operation)
 
@@ -388,51 +462,32 @@ def open_gmail_addon_import(main_window) -> None:
         choice = current.data(Qt.ItemDataRole.UserRole)
         if not isinstance(choice, tuple) or len(choice) != 2:
             return
-
-        protect = main_window.protection_page
         kind, index = choice
-        component_title = "Email body"
-        component_kind = "email_body"
-
         try:
-            if kind == "body":
-                paste_button = getattr(protect, "_redesign_paste_mode", None)
-                if paste_button is not None and not paste_button.isChecked():
-                    paste_button.click()
-                protect.input_tabs.setCurrentIndex(0)
-                protect.text_input.setPlainText(_format_message(message))
-            else:
-                attachment = message.attachments[int(index)]
-                local_path = transport.materialize_attachment(attachment)
-                document_button = getattr(protect, "_redesign_document_mode", None)
-                if document_button is not None and not document_button.isChecked():
-                    document_button.click()
-                protect.input_tabs.setCurrentIndex(1)
-                protect.pdf_path.setText(str(local_path))
-                component_title = attachment.filename
-                component_kind = Path(attachment.filename).suffix.lower().lstrip(".") or "attachment"
+            component_title, _component_kind = _adopt_addon_component(
+                main_window,
+                message,
+                str(kind),
+                int(index),
+                transport,
+            )
         except Exception as exc:
             QMessageBox.warning(dialog, "Unable to import from Gmail", str(exc))
             return
 
-        protect._external_source_name = " • ".join(
-            part for part in ("Gmail Add-on", message.subject, component_title) if part
-        )
-        protect._external_source_metadata = {
-            "provider": "gmail",
-            "provider_label": "Gmail Add-on",
-            "item_id": message.message_id,
-            "thread_id": message.thread_id,
-            "item_title": message.subject,
-            "item_kind": "email",
-            "source_component": component_kind,
-            "source_component_title": component_title,
-            "access_model": "gmail_addons_current_message_action",
-        }
         main_window._show_page(0)
+        protect = main_window.protection_page
+
+        def show_source_again() -> None:
+            key = str(getattr(protect, "_gmail_component_active_key", "") or "")
+            if key:
+                gmail_component_session._refresh_component_strip(protect)
+                gmail_component_preview_polish._show_unprotected_source(protect, key)
+
+        QTimer.singleShot(0, show_source_again)
         dialog.accept()
         main_window.statusBar().showMessage(
-            f"Imported from Gmail Add-on: {component_title} — ready for local scan",
+            f"Imported from Gmail Add-on: {component_title} — original source visible and ready for local scan",
             9000,
         )
 
