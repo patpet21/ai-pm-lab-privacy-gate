@@ -5,6 +5,9 @@ from time import monotonic
 from PySide6.QtCore import QPoint, QTimer, Qt
 from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QMenu, QVBoxLayout, QWidgetAction
 
+from ai_pm_lab_privacy_gate.ui.account_startup_onboarding_fix_2026 import (
+    install_account_startup_onboarding_fix_2026,
+)
 from ai_pm_lab_privacy_gate.ui.privacygate_account_ux_2026 import (
     install_privacygate_account_ux_2026,
 )
@@ -196,4 +199,5 @@ def apply_account_menu_popup_2026(main_window) -> None:
 
     # Account is a PrivacyGate-level capability. Remote MCP reuses this exact
     # Supabase identity instead of exposing a second MCP-only registration flow.
-    install_privacygate_account_ux_2026(main_window, controller)
+    ux = install_privacygate_account_ux_2026(main_window, controller)
+    install_account_startup_onboarding_fix_2026(main_window, ux)
