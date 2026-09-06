@@ -60,7 +60,7 @@ function buildPrivacyGateCard(e) {
     section.addWidget(
       CardService.newTextParagraph().setText(
         '<b>Ready to send this selected email.</b><br>' +
-        'In PrivacyGate, open Protect → Gmail and select this account. Keep that window open, then send. Only this message’s text is transferred. ' +
+        'In PrivacyGate, open Protect → Gmail and select this account. Keep that window open, then send. This message text and its supported attachments are transferred once. ' +
         'It does not receive access to the rest of your mailbox.'
       )
     );
@@ -137,7 +137,7 @@ function sendCurrentMessageToPrivacyGate(e) {
       recipients: String(message.getTo() || ''),
       sent_at: formatDate_(message.getDate()),
       body: String(message.getPlainBody() || ''),
-      attachments: []
+      attachments: collectAttachments_(message)
     };
 
     const json = JSON.stringify(payload);
@@ -270,6 +270,21 @@ function writePayload_(channel, payloadB64, signature) {
     }),
     PG_CACHE_TTL_SECONDS
   );
+}
+
+function collectAttachments_(message) {
+  const attachments = message.getAttachments({
+    includeInlineImages: false,
+    includeAttachments: true
+  }) || [];
+
+  return attachments.map(function(blob) {
+    return {
+      filename: String(blob.getName() || 'attachment.bin'),
+      mime_type: String(blob.getContentType() || 'application/octet-stream'),
+      data_b64: stripPadding_(Utilities.base64EncodeWebSafe(blob.getBytes()))
+    };
+  });
 }
 
 function readFormString_(e, fieldName) {
