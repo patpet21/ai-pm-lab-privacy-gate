@@ -40,6 +40,10 @@ TEXT = '#526C7D'
 BORDER = '#D7E2EA'
 SOFT = '#EEF5F8'
 DANGER = '#A33A3A'
+GMAIL_ACCOUNT_CHOOSER_URL = (
+    'https://accounts.google.com/AccountChooser?continue='
+    'https%3A%2F%2Fmail.google.com%2F'
+)
 
 
 def release_settings():
@@ -160,20 +164,20 @@ class GmailPairingDialog(QDialog):
         )
         root.addWidget(heading)
         root.addWidget(
-            _text('Two steps only: make PrivacyGate available in this Gmail account, then pair it with this device.')
+            _text('Choose the Google account you want to pair, then connect that Gmail account to this device.')
         )
 
         install_url, endpoint = release_settings()
         first = _card(
             root,
-            '1. Make PrivacyGate available in Gmail',
-            'Each Google account needs its own PrivacyGate add-on installation. Open Gmail using the account you want to connect.',
+            '1. Choose the Gmail account',
+            'PrivacyGate opens Google’s account chooser so adding another account does not silently reuse the Gmail account already open in your browser.',
         )
         buttons = QHBoxLayout()
         buttons.setSpacing(10)
-        gmail = QPushButton('Open Gmail')
+        gmail = QPushButton('Choose Gmail account')
         gmail.setStyleSheet(_button_style(True))
-        gmail.clicked.connect(lambda: QDesktopServices.openUrl(QUrl('https://mail.google.com/')))
+        gmail.clicked.connect(lambda: QDesktopServices.openUrl(QUrl(GMAIL_ACCOUNT_CHOOSER_URL)))
         buttons.addWidget(gmail)
 
         install = QPushButton('Install PrivacyGate add-on')
@@ -186,7 +190,7 @@ class GmailPairingDialog(QDialog):
         if not install_url:
             first.addWidget(
                 _text(
-                    'Public Marketplace installation is not live yet. For testing, install the Apps Script test deployment in this Google account, reload Gmail, then continue below.',
+                    'Public Marketplace installation is not live yet. During testing, PrivacyGate must be available in the specific Google account you selected before pairing it below.',
                     small=True,
                 )
             )
@@ -194,7 +198,7 @@ class GmailPairingDialog(QDialog):
         second = _card(
             root,
             '2. Pair this device',
-            'In Gmail, open an email and open PrivacyGate from the right-side add-on bar. Paste the pairing code below and press Connect.',
+            'In that Gmail account, open an email and open PrivacyGate from the right-side add-on bar. Paste the pairing code below and press Connect.',
         )
         second.addWidget(_text('Pairing code', small=True))
         self.code = QLineEdit(self.transport.channel)
@@ -315,17 +319,15 @@ class GmailAccountsDialog(QDialog):
         )
         root.addWidget(heading)
         root.addWidget(
-            _text('Connect each Gmail account once. PrivacyGate only receives the email you explicitly send from the Gmail add-on.')
+            _text('Manage the Gmail accounts paired with this PrivacyGate device. Each account is independent and can be selected when importing an email into Protect.')
         )
-
-        how = _card(root, 'How it works')
-        how.addWidget(
-            _text('1. Install PrivacyGate in Gmail   →   2. Pair this device   →   3. Choose the account when importing an email in Protect')
+        root.addWidget(
+            _text('Adding another account opens Google’s account chooser first, so PrivacyGate does not simply reopen the Gmail account already active in your browser.', small=True)
         )
 
         top_actions = QHBoxLayout()
         top_actions.setSpacing(10)
-        add = QPushButton('Add Gmail account')
+        add = QPushButton('Add another Gmail account')
         add.setObjectName('GmailAddAccount')
         add.setStyleSheet(_button_style(True))
         add.clicked.connect(self.add_account)
@@ -372,32 +374,32 @@ class GmailAccountsDialog(QDialog):
 
         accounts = self.registry.accounts()
         if not accounts:
-            empty = _card(self.rows, 'No Gmail accounts connected yet')
-            empty.addWidget(_text('Click “Add Gmail account” above to connect your first account.'))
+            empty = _card(self.rows, 'No Gmail accounts connected')
+            empty.addWidget(_text('Use “Add another Gmail account” to choose a Google account and pair it with this device.'))
             return
 
         for account in accounts:
             ready = bool(account.get('paired') and account.get('endpoint'))
             active = ready and account['id'] == self.registry.active_id
             if ready:
-                state = 'Connected to this device'
+                state = 'Connected'
                 if active:
-                    state += ' · Default account'
+                    state += ' · Default for Gmail imports'
             else:
-                state = 'Not connected yet · Finish pairing'
+                state = 'Not connected · Pair this account to finish setup'
 
             inner = _card(self.rows, account['label'], state)
             actions = QHBoxLayout()
             actions.setSpacing(10)
 
-            pair = QPushButton('Connection details' if ready else 'Connect account')
+            pair = QPushButton('Connection details' if ready else 'Pair this account')
             pair.setStyleSheet(_button_style(not ready))
             pair.clicked.connect(
                 lambda _=False, key=account['id']: self.pair_account(key)
             )
             actions.addWidget(pair)
 
-            choose = QPushButton('Default account' if active else 'Set as default')
+            choose = QPushButton('Default account' if active else 'Use as default')
             choose.setStyleSheet(_button_style(False))
             choose.setEnabled(ready and not active)
             choose.clicked.connect(
@@ -499,10 +501,10 @@ def show_gmail_help(parent):
     account = _card(
         root,
         '2. Check the Google account',
-        'PrivacyGate must be installed separately for each Google account. Check the avatar at the top right of Gmail before pairing.',
+        'PrivacyGate must be available separately for each Google account. Check the avatar at the top right of Gmail before pairing.',
     )
     account.addWidget(
-        _text('The + button opens the Google Workspace Marketplace; it is not the PrivacyGate add-on itself.', small=True)
+        _text('If you are adding another account, use “Choose Gmail account” in PrivacyGate so Google asks which account to open.', small=True)
     )
 
     url, _ = release_settings()
@@ -514,7 +516,7 @@ def show_gmail_help(parent):
     else:
         root.addWidget(
             _text(
-                'Marketplace installation is not live yet. During testing, install the Apps Script test deployment using the same Google account, then reload Gmail.'
+                'Marketplace installation is not live yet. During testing, PrivacyGate must be available in the same Google account you are pairing.'
             )
         )
 
