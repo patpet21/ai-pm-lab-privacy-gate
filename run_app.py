@@ -32,6 +32,16 @@ from ai_pm_lab_privacy_gate.ui.csv_document_support import install_csv_document_
 
 install_csv_document_support()
 
+# Gmail add-on messages must be receivable whenever PrivacyGate is running, not
+# only while the user has manually opened the Import from Gmail dialog. Install
+# the app-level receiver before MainWindow is constructed so Gmail can be the
+# starting point of the workflow.
+from ai_pm_lab_privacy_gate.ui.gmail_addon_background_receiver import (
+    install_gmail_addon_background_receiver,
+)
+
+install_gmail_addon_background_receiver()
+
 # Settings service pages are built after several visual layers have already
 # reparented the original controls. The legacy lookup used to accept any ancestor
 # QFrame containing a matching label, which could accidentally move the whole
