@@ -13,8 +13,8 @@ mailbox-wide `gmail.readonly` access.
 5. PrivacyGate receives the selected message automatically while the desktop app is
    running and polling the production relay. No per-message transfer code and no
    manual **Receive email text** button are required.
-6. Choose **Email body** or one received attachment in PrivacyGate and continue with
-   the normal local Scan / Review / Protect flow.
+6. PrivacyGate imports the email body into the normal local Scan / Review / Protect
+   flow. Attachments are not imported by this Gmail flow yet; use Upload for files.
 
 Google Workspace Add-ons run inside Gmail. Without mailbox-wide Gmail API access,
 the desktop app cannot list the user's inbox itself; the add-on can only work with
