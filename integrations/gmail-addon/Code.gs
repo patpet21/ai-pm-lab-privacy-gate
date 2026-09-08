@@ -60,8 +60,8 @@ function buildPrivacyGateCard(e) {
     section.addWidget(
       CardService.newTextParagraph().setText(
         '<b>Ready to send this selected email.</b><br>' +
-        'In PrivacyGate, open Protect → Gmail and select this account. Keep that window open, then send. This message text and its supported attachments are transferred once. ' +
-        'It does not receive access to the rest of your mailbox.'
+        'In PrivacyGate, open Protect → Gmail and select this account. Keep that window open, then send. This selected email is transferred once. ' +
+        'It does not give PrivacyGate access to the rest of your mailbox.'
       )
     );
     section.addWidget(
