@@ -24,7 +24,7 @@ Do not put those values in this repository.
 6. In Gmail™, open a test email.
 7. Open the PrivacyGate add-on and choose **Send to PrivacyGate**.
 8. Return to PrivacyGate. The desktop app should receive the selected email while it is polling the relay.
-9. Select the email body or a supported received attachment and continue through PrivacyGate's normal local **Scan → Review → Protect** workflow.
+9. Continue with the received email body through PrivacyGate's normal local **Scan → Review → Protect** workflow. Attachments are not imported by this Gmail flow yet; use PrivacyGate Upload for files.
 
 ### Timing note
 
