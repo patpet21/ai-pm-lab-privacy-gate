@@ -170,3 +170,37 @@ newsletterForm?.addEventListener('submit', async (event) => {
     submitButton.textContent = 'Send me updates';
   }
 });
+
+async function syncReleaseMetadata() {
+  try {
+    const response = await fetch('release.json', {cache: 'no-store'});
+    if (!response.ok) return;
+    const release = await response.json();
+    const version = String(release.version || '').trim();
+    if (!version) return;
+
+    const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+    const textNodes = [];
+    while (walker.nextNode()) textNodes.push(walker.currentNode);
+    textNodes.forEach(node => {
+      if (node.nodeValue?.includes('0.5.0')) {
+        node.nodeValue = node.nodeValue.replaceAll('0.5.0', version);
+      }
+    });
+
+    document.querySelectorAll('a[href]').forEach(link => {
+      const href = link.getAttribute('href');
+      if (!href || !href.includes('0.5.0')) return;
+      link.setAttribute('href', href.replaceAll('0.5.0', version));
+    });
+
+    const metaDescription = document.querySelector('meta[name="description"]');
+    if (metaDescription?.content?.includes('0.5.0')) {
+      metaDescription.content = metaDescription.content.replaceAll('0.5.0', version);
+    }
+  } catch (_error) {
+    // Keep the static page usable if release metadata is temporarily unavailable.
+  }
+}
+
+syncReleaseMetadata();
