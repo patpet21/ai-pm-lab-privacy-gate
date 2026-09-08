@@ -47,8 +47,8 @@ function buildPrivacyGateCard(e) {
   } else if (!hasMessage) {
     section.addWidget(
       CardService.newTextParagraph().setText(
-        '<b>PrivacyGate is paired.</b><br>' +
-        'Open an email in Gmail. This panel will then let you send that selected message to PrivacyGate.'
+        '<b>Pairing code saved.</b><br>' +
+        'Keep PrivacyGate running while you send. Pairing stores the device channel but does not verify that the desktop app is currently online. Open an email in Gmail to continue.'
       )
     );
     section.addWidget(
@@ -95,7 +95,7 @@ function pairPrivacyGateDevice(e) {
   CacheService.getScriptCache().put('pg:paired:' + hashChannel_(raw), '1', PG_PAIRING_MARKER_TTL_SECONDS);
 
   return CardService.newActionResponseBuilder()
-    .setNotification(CardService.newNotification().setText('PrivacyGate paired.'))
+    .setNotification(CardService.newNotification().setText('Pairing code saved. Keep PrivacyGate open while testing.'))
     .setNavigation(CardService.newNavigation().updateCard(buildPrivacyGateCard(e)))
     .build();
 }
@@ -159,7 +159,7 @@ function sendCurrentMessageToPrivacyGate(e) {
 
     return CardService.newActionResponseBuilder()
       .setNotification(
-        CardService.newNotification().setText('Sent to PrivacyGate. Return to Protect.')
+        CardService.newNotification().setText('Email ready for PrivacyGate for up to 2 minutes. Return to Protect.')
       )
       .build();
   } catch (err) {
