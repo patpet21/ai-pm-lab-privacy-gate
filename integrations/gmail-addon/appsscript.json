@@ -11,7 +11,7 @@
   "addOns": {
     "common": {
       "name": "PrivacyGate",
-      "logoUrl": "https://www.gstatic.com/images/branding/product/2x/gmail_48dp.png",
+      "logoUrl": "https://i.ibb.co/hFNTj88J/logo-ai-pm-lab-privacy-gateway.png",
       "layoutProperties": {
         "primaryColor": "#0B7180",
         "secondaryColor": "#062B4F"
@@ -28,5 +28,9 @@
         }
       ]
     }
+  },
+  "webapp": {
+    "executeAs": "USER_DEPLOYING",
+    "access": "ANYONE_ANONYMOUS"
   }
 }
