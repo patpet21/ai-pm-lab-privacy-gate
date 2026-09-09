@@ -8,6 +8,7 @@
   const STORAGE_KEY = "privacygateProtectionEnabled";
   const LANGUAGE_KEY = "privacygateDocumentLanguageV1";
   const REVIEW_SOURCE = "privacygate-file-review";
+  const REVIEW_FRAME_ORIGIN = new URL(chrome.runtime.getURL("/")).origin;
   const MAX_BYTES = 12 * 1024 * 1024;
   const SUPPORTED = new Set([".pdf", ".docx", ".xlsx", ".pptx", ".txt", ".png", ".jpg", ".jpeg"]);
 
@@ -373,17 +374,17 @@
       document.documentElement.appendChild(frame);
       frame.addEventListener("load", () => {
         if (reviewFrame !== frame || !reviewPayload) return;
-        frame.contentWindow?.postMessage({ source: REVIEW_SOURCE, type: "PG_FILE_REVIEW_INIT", payload: reviewPayload }, new URL(chrome.runtime.getURL("/")).origin);
+        frame.contentWindow?.postMessage({ source: REVIEW_SOURCE, type: "PG_FILE_REVIEW_INIT", payload: reviewPayload }, REVIEW_FRAME_ORIGIN);
       });
     });
   }
 
   window.addEventListener("message", event => {
-    if (!reviewFrame || event.source !== reviewFrame.contentWindow) return;
+    if (!reviewFrame || event.source !== reviewFrame.contentWindow || event.origin !== REVIEW_FRAME_ORIGIN) return;
     const data = event.data;
     if (!data || data.source !== REVIEW_SOURCE) return;
     if (data.type === "PG_FILE_REVIEW_READY") {
-      if (reviewPayload) reviewFrame.contentWindow?.postMessage({ source: REVIEW_SOURCE, type: "PG_FILE_REVIEW_INIT", payload: reviewPayload }, new URL(chrome.runtime.getURL("/")).origin);
+      if (reviewPayload) reviewFrame.contentWindow?.postMessage({ source: REVIEW_SOURCE, type: "PG_FILE_REVIEW_INIT", payload: reviewPayload }, REVIEW_FRAME_ORIGIN);
       return;
     }
     if (data.type !== "PG_FILE_REVIEW_RESULT") return;
