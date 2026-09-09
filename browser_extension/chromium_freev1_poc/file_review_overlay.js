@@ -2,6 +2,12 @@
   "use strict";
 
   const SOURCE = "privacygate-file-review";
+  const ALLOWED_PARENT_ORIGINS = new Set([
+    "https://chatgpt.com",
+    "https://claude.ai",
+    "https://gemini.google.com"
+  ]);
+
   const profiles = [
     ["general_business", "General — Recommended"],
     ["property_management", "Property Management"],
@@ -19,6 +25,7 @@
   const count = document.getElementById("count");
   const selected = document.getElementById("selected");
   let findings = [];
+  let trustedParentOrigin = null;
 
   for (const [value, label] of profiles) {
     const option = document.createElement("option");
@@ -75,7 +82,10 @@
 
       const location = document.createElement("span");
       location.className = "location";
-      location.textContent = String(finding.location || (finding.page_number ? `Page/segment ${finding.page_number}` : ""));
+      location.textContent = String(
+        finding.location ||
+        (finding.page_number ? `Page/segment ${finding.page_number}` : "")
+      );
 
       row.append(box, type, value, location);
       list.appendChild(row);
@@ -84,6 +94,8 @@
   }
 
   function reply(action) {
+    if (!trustedParentOrigin) return;
+
     parent.postMessage({
       source: SOURCE,
       type: "PG_FILE_REVIEW_RESULT",
@@ -91,26 +103,36 @@
       findingIds: checkedIds(),
       profileKey: profile.value,
       language: language.value
-    }, "*");
+    }, trustedParentOrigin);
   }
 
   document.getElementById("all").addEventListener("click", () => {
-    list.querySelectorAll('input[type="checkbox"]').forEach(input => { input.checked = true; });
+    list.querySelectorAll('input[type="checkbox"]').forEach(input => {
+      input.checked = true;
+    });
     updateCounts();
   });
+
   document.getElementById("none").addEventListener("click", () => {
-    list.querySelectorAll('input[type="checkbox"]').forEach(input => { input.checked = false; });
+    list.querySelectorAll('input[type="checkbox"]').forEach(input => {
+      input.checked = false;
+    });
     updateCounts();
   });
+
   document.getElementById("cancel").addEventListener("click", () => reply("cancel"));
   document.getElementById("rescan").addEventListener("click", () => reply("rescan"));
   document.getElementById("protect").addEventListener("click", () => reply("protect"));
 
   window.addEventListener("message", event => {
+    if (event.source !== parent) return;
+    if (!ALLOWED_PARENT_ORIGINS.has(event.origin)) return;
+    if (trustedParentOrigin && event.origin !== trustedParentOrigin) return;
+
     const data = event.data;
     if (!data || data.source !== SOURCE || data.type !== "PG_FILE_REVIEW_INIT") return;
+
+    trustedParentOrigin = event.origin;
     render(data.payload || {});
   });
-
-  parent.postMessage({ source: SOURCE, type: "PG_FILE_REVIEW_READY" }, "*");
 })();
