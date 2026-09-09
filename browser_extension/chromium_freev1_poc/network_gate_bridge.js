@@ -4,6 +4,7 @@
   if (window.top !== window) return;
 
   const SOURCE = "privacygate-freev1";
+  const NETWORK_GATE_ORIGIN = "https://chatgpt.com";
   const ARM_TYPE = "PG_NETWORK_GATE_ARM";
   const ACK_TYPE = "PG_NETWORK_GATE_ARMED";
   const APPLIED_TYPE = "PG_NETWORK_GATE_APPLIED";
@@ -138,7 +139,7 @@
         originalText: message.text,
         protectedText
       },
-      "*"
+      NETWORK_GATE_ORIGIN
     );
   }
 
@@ -172,7 +173,7 @@
   }
 
   window.addEventListener("message", event => {
-    if (event.source !== window) return;
+    if (event.source !== window || event.origin !== NETWORK_GATE_ORIGIN) return;
     const data = event.data;
     if (!data || data.source !== SOURCE) return;
 
