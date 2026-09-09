@@ -406,7 +406,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         "/v1/browser/pair",
         {
           code,
-          client_name: `PrivacyGate Chromium · ${clientId}`
+          client_name: `PrivacyGate Browser · ${clientId}`
         },
         { authenticated: false }
       );
