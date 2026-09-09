@@ -1,0 +1,51 @@
+name: Browser Extension Store Build
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "browser_extension/chromium_freev1_poc/**"
+      - "scripts/build_browser_extension_store.py"
+      - ".github/workflows/build-browser-extension.yml"
+  pull_request:
+    paths:
+      - "browser_extension/chromium_freev1_poc/**"
+      - "scripts/build_browser_extension_store.py"
+      - ".github/workflows/build-browser-extension.yml"
+
+jobs:
+  validate-and-build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Validate builder syntax
+        run: python -m py_compile scripts/build_browser_extension_store.py
+
+      - name: Build deterministic Chrome and Edge packages
+        run: python scripts/build_browser_extension_store.py
+
+      - name: Show package inventory and hashes
+        run: |
+          cat dist/browser-extension/*-inventory.txt
+          cat dist/browser-extension/*.sha256
+
+      - name: Upload Store packages
+        uses: actions/upload-artifact@v4
+        with:
+          name: privacygate-browser-extension-store
+          path: dist/browser-extension/
+          if-no-files-found: error
+          retention-days: 14
