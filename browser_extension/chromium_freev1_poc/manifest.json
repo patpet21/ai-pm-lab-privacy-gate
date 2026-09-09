@@ -66,7 +66,6 @@
         "send_reentry_guard.js",
         "observer_guard.js",
         "network_gate_bridge.js",
-        "legacy_restore_blocker.js",
         "content.js",
         "protection_state_sync.js",
         "assistant_restore_guard.js",
