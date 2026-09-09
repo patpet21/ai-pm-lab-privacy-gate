@@ -4,20 +4,15 @@
   if (window.top !== window) return;
 
   const STORAGE_KEY = "privacygateProtectionEnabled";
-  const PLACEHOLDER_MARKER = "[[PG_";
 
   let analysisBusy = false;
   let reviewOpen = false;
   let approvedSendText = null;
   let approvedSendTimer = null;
   let lastSessionId = null;
-  let restoreScanTimer = null;
-  let restoreErrorShown = false;
   let workingTimer = null;
   let protectionEnabled = true;
   let bridgeConnected = false;
-
-  const restoringNodes = new WeakSet();
 
   const TOKEN_COLORS = {
     PERSON: "#DDE7FF",
@@ -478,92 +473,6 @@
     setTimeout(() => clickWhenReady(0), 40);
   }
 
-  function scheduleRestoreScan(delay = 90) {
-    if (!lastSessionId) return;
-    clearTimeout(restoreScanTimer);
-    restoreScanTimer = setTimeout(scanAssistantResponses, delay);
-  }
-
-  function restoreTextNode(node) {
-    if (
-      !lastSessionId ||
-      !node?.isConnected ||
-      restoringNodes.has(node)
-    ) {
-      return;
-    }
-
-    const protectedText = node.nodeValue || "";
-    if (!protectedText.includes(PLACEHOLDER_MARKER)) return;
-
-    const sessionId = lastSessionId;
-    restoringNodes.add(node);
-
-    chrome.runtime.sendMessage(
-      {
-        type: "PG_RESTORE",
-        text: protectedText,
-        sessionId
-      },
-      response => {
-        restoringNodes.delete(node);
-
-        if (chrome.runtime.lastError || !response?.ok) {
-          if (!restoreErrorShown) {
-            restoreErrorShown = true;
-            notice(
-              "PrivacyGate — response restore unavailable. Protected placeholders remain visible.",
-              "error"
-            );
-          }
-          return;
-        }
-
-        const restoredText = response.data?.restored_text;
-        if (
-          typeof restoredText !== "string" ||
-          restoredText === protectedText ||
-          !node.isConnected ||
-          node.nodeValue !== protectedText
-        ) {
-          return;
-        }
-
-        node.nodeValue = restoredText;
-        node.parentElement?.setAttribute("data-privacygate-restored", "true");
-        restoreErrorShown = false;
-      }
-    );
-  }
-
-  function scanAssistantResponses() {
-    if (!lastSessionId) return;
-
-    const roots = document.querySelectorAll(
-      '[data-message-author-role="assistant"]'
-    );
-
-    for (const root of roots) {
-      const walker = document.createTreeWalker(
-        root,
-        NodeFilter.SHOW_TEXT
-      );
-
-      const candidates = [];
-      let node = walker.nextNode();
-      while (node) {
-        if ((node.nodeValue || "").includes(PLACEHOLDER_MARKER)) {
-          candidates.push(node);
-        }
-        node = walker.nextNode();
-      }
-
-      for (const candidate of candidates) {
-        restoreTextNode(candidate);
-      }
-    }
-  }
-
   function protectAndSend(textSnapshot, selectedIds) {
     if (!protectionEnabled) return;
 
@@ -627,7 +536,6 @@
         }
 
         lastSessionId = response.data?.session_id || lastSessionId;
-        restoreErrorShown = false;
 
         console.log(
           "[PrivacyGate FreeV1] Protected locally:",
@@ -636,7 +544,6 @@
         );
 
         approveAndSend(protectedText);
-        scheduleRestoreScan(150);
       }
     );
   }
@@ -1010,7 +917,6 @@
 
   const pageObserver = new MutationObserver(() => {
     ensureProtectionBar();
-    scheduleRestoreScan();
   });
   pageObserver.observe(document.documentElement, {
     childList: true,
