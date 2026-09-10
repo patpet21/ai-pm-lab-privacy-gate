@@ -251,7 +251,6 @@ def _main_window_init_with_brand(self, *args, **kwargs) -> None:
     apply_mockup_organization_overview_2026(self)
     apply_mockup_global_visual_system_2026(self)
     apply_mockup_navigation_2026(self)
-    apply_mockup_mcp_automation_studio_2026(self)
     apply_mockup_shell_refinement_2026(self)
     apply_mockup_interaction_polish_2026(self)
     apply_mockup_personal_workspace_2026(self)
