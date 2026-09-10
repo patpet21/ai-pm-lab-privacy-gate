@@ -71,7 +71,10 @@ from .account_sidebar_polish import apply_account_sidebar_polish
 from .account_menu_popup_2026 import apply_account_menu_popup_2026
 from .workspace_management_ui import apply_workspace_management_ui
 from .settings_executive_redesign import apply_settings_executive_redesign
-from .settings_service_hub_2026 import apply_settings_service_hub_2026
+from .settings_service_hub_2026 import (
+    apply_approved_settings_mockup_2026,
+    apply_settings_service_hub_2026,
+)
 from .workspace_dropdown_cue import apply_workspace_dropdown_cue
 from .workspace_creation_experience import apply_workspace_creation_experience
 from .workspace_refresh_control import apply_workspace_refresh_control
@@ -100,6 +103,7 @@ from .mockup_restore_suite_2026 import apply_mockup_restore_suite_2026
 from .restore_document_finder_2026 import apply_restore_document_finder_2026
 from .restore_document_finder_mount_fix_2026 import apply_restore_document_finder_mount_fix_2026
 from .restore_safe_visual_polish_2026 import apply_restore_safe_visual_polish_2026
+from .lazy_runtime_compat_2026 import install_lazy_runtime_compat_2026
 
 install_mcp_log_guard()
 install_protect_runtime()
@@ -159,13 +163,41 @@ def apply_lazy_page_layers(main_window, index: int) -> None:
         apply_mockup_automation_product_studio_2026(main_window)
         return
 
+    if index == 4 and getattr(main_window, "cloud_automation_page", None) is not None:
+        apply_mockup_mcp_automation_studio_2026(main_window)
+        return
+
     if index == 5 and getattr(main_window, "settings_page", None) is not None:
+        settings = main_window.settings_page
+
+        # This layer used to mark itself installed before Settings existed. Clear
+        # that stale startup marker so the real workspace panel can be built now.
+        if getattr(settings, "_privacygate_workspace_settings_panel", None) is None:
+            main_window._privacygate_workspace_management_ui = False
+        apply_workspace_management_ui(main_window)
+        apply_workspace_creation_experience(main_window)
+        apply_workspace_refresh_control(main_window)
+        apply_workspace_creation_feedback(main_window)
+
         apply_organization_polish(main_window)
         apply_settings_executive_redesign(main_window)
         apply_settings_service_hub_2026(main_window)
         apply_settings_service_pages_2026_runtime(main_window)
+
+        # Services now exist, so re-run MainWindow's idempotent Settings binding.
+        # This mounts Local Privacy Bridge / Browser Protection into the real
+        # Services page instead of the pre-lazy intermediary layout.
+        configure = getattr(main_window, "_configure_settings_page", None)
+        if callable(configure):
+            configure(settings)
+
         apply_feature_suite_2026(main_window)
         apply_feature_suite_runtime(main_window)
+
+        # The historical hub finalizer was queued because Settings already existed
+        # at startup. In lazy mode finalize it synchronously before the page is
+        # shown so no half-composed Settings frame becomes visible.
+        apply_approved_settings_mockup_2026(main_window)
         return
 
     if index == 6 and getattr(main_window, "contact_page", None) is not None:
@@ -244,6 +276,11 @@ def _main_window_init_with_brand(self, *args, **kwargs) -> None:
     # Post-mockup refinement suite: compact workspace context, reusable guidance,
     # color-coherent review and encrypted local-only manual sensitive rules.
     apply_mockup_protect_refinement_suite_2026(self)
+
+    # Install after every startup presentation wrapper so dynamic pages and future
+    # lazy pages use the final routing/loading chain. This also keeps Protect as the
+    # initial landing page while allowing Personal Overview on explicit click.
+    install_lazy_runtime_compat_2026(self)
 
     # Restore, Library, Automation, Settings and Contact final layers are now
     # applied by apply_lazy_page_layers() when those pages are first constructed.
