@@ -7,6 +7,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 MAIN_WINDOW = ROOT / "src" / "ai_pm_lab_privacy_gate" / "ui" / "main_window.py"
 APP = ROOT / "src" / "ai_pm_lab_privacy_gate" / "app.py"
+MOCKUP_NAVIGATION = (
+    ROOT / "src" / "ai_pm_lab_privacy_gate" / "ui" / "mockup_navigation_2026.py"
+)
 
 LAZY_PAGE_MODULES = {
     "ai_pm_lab_privacy_gate.ui.library_page",
@@ -44,3 +47,15 @@ def test_lazy_page_factory_exists_for_secondary_pages() -> None:
     assert "def _ensure_page(" in source
     for module in LAZY_PAGE_MODULES:
         assert f"from {module} import " in source
+
+
+def test_redesign_navigation_materializes_lazy_pages_on_first_click() -> None:
+    source = MOCKUP_NAVIGATION.read_text(encoding="utf-8")
+    assert '"library_page": 1' in source
+    assert '"restore_page": 2' in source
+    assert '"local_automation_page": 3' in source
+    assert '"cloud_automation_page": 4' in source
+    assert '"settings_page": 5' in source
+    assert 'ensure_page = getattr(self.main_window, "_ensure_page", None)' in source
+    assert "page = ensure_page(lazy_index)" in source
+    assert "controller._open_page = MethodType(open_page, controller)" in source
