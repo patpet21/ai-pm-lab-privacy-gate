@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QUrl, Qt
+from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import QFrame, QGridLayout, QHBoxLayout, QLabel, QPushButton, QVBoxLayout, QWidget
 
 from ai_pm_lab_privacy_gate.domain.plans import PlanCode, all_plans
@@ -11,6 +12,13 @@ NAVY = "#062B4F"
 TEAL = "#0B7F89"
 MUTED = "#61798A"
 WHITE = "#FFFFFF"
+
+
+def _contact_sales() -> None:
+    """Open the PrivacyGate contact address without constructing Automation UI."""
+    QDesktopServices.openUrl(
+        QUrl("mailto:peter@propertydex.xyz?subject=AI%20PM%20LAB%20Privacy%20Gate%20automation")
+    )
 
 
 class PlanAccountPanel(QFrame):
@@ -88,8 +96,10 @@ class PlansPage(QWidget):
         subtitle = QLabel("PrivacyGate stays local-first on every plan. Business and Enterprise add managed controls.")
         subtitle.setAlignment(Qt.AlignmentFlag.AlignCenter)
         subtitle.setStyleSheet(f"color:{MUTED};font-size:10px;")
-        root.addWidget(title)
         root.addWidget(subtitle)
+        root.addWidget(title)
+        root.removeWidget(subtitle)
+        root.insertWidget(2, subtitle)
 
         grid = QGridLayout()
         grid.setHorizontalSpacing(14)
@@ -174,7 +184,11 @@ def install_plan_account_panel(main_window, state: TeamState) -> PlanAccountPane
         return panel
 
     settings_index = main_window.pages.indexOf(settings_page)
-    plans_page = PlansPage(lambda: main_window._show_page(settings_index), main_window.local_automation_page._contact, main_window)
+    plans_page = PlansPage(
+        lambda: main_window._show_page(settings_index),
+        _contact_sales,
+        main_window,
+    )
     plans_index = main_window.pages.addWidget(plans_page)
 
     def open_plans() -> None:
