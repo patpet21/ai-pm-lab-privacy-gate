@@ -58,7 +58,6 @@ from .library_control_center_2026 import (
 )
 from .library_control_center_bridges_2026 import install_library_control_center_bridges_2026
 from .library_control_center_polish_2026 import apply_library_control_center_polish_2026
-from .page_split import apply_apps_mcp_split
 from .runtime_fixes import apply_runtime_fixes
 from ai_pm_lab_privacy_gate.infrastructure.policy.multi_workspace_runtime import install_multi_workspace_client
 from ai_pm_lab_privacy_gate.infrastructure.policy.multi_workspace_actions import install_multi_workspace_actions
@@ -90,7 +89,6 @@ from .mockup_organization_overview_2026 import apply_mockup_organization_overvie
 from .mockup_global_visual_system_2026 import apply_mockup_global_visual_system_2026
 from .mockup_navigation_2026 import apply_mockup_navigation_2026
 from .mockup_mcp_automation_studio_2026 import apply_mockup_mcp_automation_studio_2026
-from .mockup_automation_product_studio_2026 import apply_mockup_automation_product_studio_2026
 from .mockup_shell_refinement_2026 import apply_mockup_shell_refinement_2026
 from .mockup_interaction_polish_2026 import apply_mockup_interaction_polish_2026
 from .mockup_personal_workspace_2026 import apply_mockup_personal_workspace_2026
@@ -160,11 +158,34 @@ def apply_lazy_page_layers(main_window, index: int) -> None:
         return
 
     if index == 3 and getattr(main_window, "local_automation_page", None) is not None:
-        apply_mockup_automation_product_studio_2026(main_window)
+        # Workflows has a Personal-safe privacy-first surface. Historically it was
+        # queued during startup; with lazy pages that marked the layer complete
+        # before the page existed and left the Organization/product preview visible.
+        from . import mockup_ai_workflows_2026 as workflows
+
+        def open_existing_page(page, attribute: str) -> None:
+            window = page.window()
+            sidebar = getattr(window, "_privacygate_redesign_sidebar_controller", None)
+            opener = getattr(sidebar, "_open_page", None) if sidebar is not None else None
+            if callable(opener):
+                opener(attribute)
+                return
+            pages = getattr(window, "pages", None)
+            target = getattr(window, attribute, None)
+            if pages is not None and target is not None:
+                target_index = pages.indexOf(target)
+                if target_index >= 0:
+                    window._show_page(target_index)
+
+        workflows._open_existing_page = open_existing_page
+        workflows.apply_mockup_ai_workflows_2026(main_window)
         return
 
     if index == 4 and getattr(main_window, "cloud_automation_page", None) is not None:
         apply_mockup_mcp_automation_studio_2026(main_window)
+        # This scanner ran before Cloud existed in the old eager startup. Re-run
+        # it after the final MCP/connection composition so Browse actions are live.
+        apply_connected_apps_browse_polish(main_window)
         return
 
     if index == 5 and getattr(main_window, "settings_page", None) is not None:
@@ -211,7 +232,6 @@ def _main_window_init_with_brand(self, *args, **kwargs) -> None:
     apply_brand_icons(self)
     apply_connected_apps_browse_polish(self)
     apply_protect_runtime(self, "source")
-    apply_apps_mcp_split(self)
     apply_business_main_window(self)
     apply_organization_polish(self)
     apply_workspace_sidebar(self)
