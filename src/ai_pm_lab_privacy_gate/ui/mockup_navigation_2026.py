@@ -7,6 +7,16 @@ from PySide6.QtCore import QTimer
 from ai_pm_lab_privacy_gate.ui.mockup_redesign_shell_2026 import _clear_layout, _page_index
 
 
+_LAZY_PAGE_INDEXES = {
+    "library_page": 1,
+    "restore_page": 2,
+    "local_automation_page": 3,
+    "cloud_automation_page": 4,
+    "settings_page": 5,
+    "contact_page": 6,
+}
+
+
 def _open_governance(controller) -> None:
     if getattr(controller.main_window, "governance_page", None) is not None:
         controller._open_page("governance_page")
@@ -23,6 +33,31 @@ def apply_mockup_navigation_2026(main_window) -> None:
     controller = getattr(main_window, "_privacygate_redesign_sidebar_controller", None)
     if controller is None:
         return
+
+    def open_page(self, attribute: str) -> None:
+        """Open an existing page or materialize a startup-lazy page on demand."""
+        index = _page_index(self.main_window, attribute)
+        materialized = False
+
+        if index < 0:
+            lazy_index = _LAZY_PAGE_INDEXES.get(attribute)
+            ensure_page = getattr(self.main_window, "_ensure_page", None)
+            pages = getattr(self.main_window, "pages", None)
+            if lazy_index is not None and callable(ensure_page) and pages is not None:
+                page = ensure_page(lazy_index)
+                index = int(pages.indexOf(page))
+                materialized = index >= 0
+
+        if index < 0:
+            return
+
+        self.main_window._show_page(index)
+        if materialized:
+            # Rebuild once after first materialization so checked-state routing maps
+            # the new concrete widget index without preloading any other lazy page.
+            QTimer.singleShot(0, self.rebuild)
+        else:
+            QTimer.singleShot(0, self._sync_checked_state)
 
     def rebuild(self) -> None:
         _clear_layout(self.nav_layout)
@@ -117,6 +152,7 @@ def apply_mockup_navigation_2026(main_window) -> None:
         if button is not None:
             button.setChecked(True)
 
+    controller._open_page = MethodType(open_page, controller)
     controller.rebuild = MethodType(rebuild, controller)
     controller._sync_checked_state = MethodType(sync_checked, controller)
     controller.rebuild()
