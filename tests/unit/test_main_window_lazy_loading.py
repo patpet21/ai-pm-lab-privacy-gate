@@ -5,11 +5,12 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[2]
-MAIN_WINDOW = ROOT / "src" / "ai_pm_lab_privacy_gate" / "ui" / "main_window.py"
+UI = ROOT / "src" / "ai_pm_lab_privacy_gate" / "ui"
+MAIN_WINDOW = UI / "main_window.py"
 APP = ROOT / "src" / "ai_pm_lab_privacy_gate" / "app.py"
-MOCKUP_NAVIGATION = (
-    ROOT / "src" / "ai_pm_lab_privacy_gate" / "ui" / "mockup_navigation_2026.py"
-)
+MOCKUP_NAVIGATION = UI / "mockup_navigation_2026.py"
+UI_INIT = UI / "__init__.py"
+LAZY_RUNTIME = UI / "lazy_runtime_compat_2026.py"
 
 LAZY_PAGE_MODULES = {
     "ai_pm_lab_privacy_gate.ui.library_page",
@@ -59,3 +60,46 @@ def test_redesign_navigation_materializes_lazy_pages_on_first_click() -> None:
     assert 'ensure_page = getattr(self.main_window, "_ensure_page", None)' in source
     assert "page = ensure_page(lazy_index)" in source
     assert "controller._open_page = MethodType(open_page, controller)" in source
+
+
+def test_lazy_runtime_supports_dynamic_personal_overview_without_stealing_startup() -> None:
+    source = LAZY_RUNTIME.read_text(encoding="utf-8")
+    assert "except IndexError:" in source
+    assert "stack.setCurrentIndex(int(index))" in source
+    assert 'target is personal' in source
+    assert '"_privacygate_startup_ready"' in source
+
+
+def test_lazy_runtime_uses_existing_real_lifetime_loading_controller() -> None:
+    source = LAZY_RUNTIME.read_text(encoding="utf-8")
+    assert 'controller.begin(operation_key' in source
+    assert "QApplication.processEvents()" in source
+    assert "_attach_page_loading(main_window, page)" in source
+    assert "_patch_restore_loading" in source
+    assert "_patch_library_backup_loading" in source
+    assert "_patch_contact_loading" in source
+    assert "QTimer.singleShot(0" in source
+
+
+def test_lazy_settings_are_fully_composed_before_first_display() -> None:
+    source = UI_INIT.read_text(encoding="utf-8")
+    settings_start = source.index('if index == 5 and getattr(main_window, "settings_page", None) is not None:')
+    settings_end = source.index('if index == 6 and getattr(main_window, "contact_page", None) is not None:')
+    block = source[settings_start:settings_end]
+    assert "apply_workspace_management_ui(main_window)" in block
+    assert "apply_settings_service_pages_2026_runtime(main_window)" in block
+    assert "configure(settings)" in block
+    assert "apply_approved_settings_mockup_2026(main_window)" in block
+
+
+def test_protect_empty_state_opens_connected_sources_by_default() -> None:
+    source = LAZY_RUNTIME.read_text(encoding="utf-8")
+    assert 'choose.setText("Choose a source")' in source
+    assert 'picker = getattr(page, "_protect_source_connected", None)' in source
+    assert "picker.click()" in source
+
+
+def test_cloud_mcp_final_layer_is_deferred_with_its_lazy_page() -> None:
+    source = UI_INIT.read_text(encoding="utf-8")
+    assert 'if index == 4 and getattr(main_window, "cloud_automation_page", None) is not None:' in source
+    assert "apply_mockup_mcp_automation_studio_2026(main_window)" in source
