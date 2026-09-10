@@ -96,10 +96,8 @@ class PlansPage(QWidget):
         subtitle = QLabel("PrivacyGate stays local-first on every plan. Business and Enterprise add managed controls.")
         subtitle.setAlignment(Qt.AlignmentFlag.AlignCenter)
         subtitle.setStyleSheet(f"color:{MUTED};font-size:10px;")
-        root.addWidget(subtitle)
         root.addWidget(title)
-        root.removeWidget(subtitle)
-        root.insertWidget(2, subtitle)
+        root.addWidget(subtitle)
 
         grid = QGridLayout()
         grid.setHorizontalSpacing(14)
