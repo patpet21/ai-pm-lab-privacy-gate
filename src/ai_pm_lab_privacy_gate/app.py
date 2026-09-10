@@ -253,7 +253,9 @@ def main() -> int:
         return _packaged_smoke_test()
     if sys.platform == "win32":
         try:
-            ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("AIPMLAB.PrivacyGate.0.1")
+            ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(
+                "AIPMLAB.PrivacyGate.0.1"
+            )
         except Exception:
             pass
     background_start = "--background" in sys.argv
@@ -293,12 +295,6 @@ def main() -> int:
 
     from ai_pm_lab_privacy_gate.infrastructure.local_api.manager import LocalApiManager
     from ai_pm_lab_privacy_gate.ui.main_window import MainWindow
-    from ai_pm_lab_privacy_gate.ui.settings_browser_protection_polish import (
-        apply_browser_protection_product_polish,
-    )
-    from ai_pm_lab_privacy_gate.ui.settings_services_cleanup_2026 import (
-        apply_settings_services_cleanup_2026,
-    )
     from ai_pm_lab_privacy_gate.ui.startup_stability_2026 import (
         install_startup_stability_2026,
     )
@@ -313,18 +309,10 @@ def main() -> int:
         window.service,
         window.library.data_dir,
     )
-    window.local_api_manager = local_api
-    window.settings_page.local_api_manager = local_api
-
-    apply_settings_services_cleanup_2026(window)
-    apply_browser_protection_product_polish(window)
-
-    def apply_local_api_preferences() -> None:
-        local_api.apply_preferences(window.preferences.load())
-        window.settings_page.refresh_local_api_status()
-
-    window.settings_page.local_api_preferences_changed.connect(apply_local_api_preferences)
-    apply_local_api_preferences()
+    # Keep the Local Privacy Bridge startup behavior unchanged, but do not create
+    # SettingsPage merely to attach its manager. MainWindow binds Settings lazily
+    # when the user first opens it.
+    window.set_local_api_manager(local_api)
     app.aboutToQuit.connect(local_api.stop)
 
     if not app_icon.isNull():
