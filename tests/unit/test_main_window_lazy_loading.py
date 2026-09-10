@@ -103,3 +103,41 @@ def test_cloud_mcp_final_layer_is_deferred_with_its_lazy_page() -> None:
     source = UI_INIT.read_text(encoding="utf-8")
     assert 'if index == 4 and getattr(main_window, "cloud_automation_page", None) is not None:' in source
     assert "apply_mockup_mcp_automation_studio_2026(main_window)" in source
+    assert "apply_connected_apps_browse_polish(main_window)" in source
+
+
+def test_personal_apps_are_visible_but_materialized_only_on_first_click() -> None:
+    navigation = MOCKUP_NAVIGATION.read_text(encoding="utf-8")
+    ui_init = UI_INIT.read_text(encoding="utf-8")
+    assert '"Apps", "cloud", lambda: self._open_page("apps_hub_page")' in navigation
+    assert "def _ensure_apps_page(main_window):" in navigation
+    assert 'attribute == "apps_hub_page"' in navigation
+    assert "AppsHubPage(main_window, service)" in navigation
+    assert 'controller.begin(\n            loading_key,\n            "Opening Apps"' in navigation
+    assert "from .page_split import apply_apps_mcp_split" not in ui_init
+    assert "apply_apps_mcp_split(self)" not in ui_init
+
+
+def test_personal_workflows_use_privacy_first_surface_after_lazy_materialization() -> None:
+    source = UI_INIT.read_text(encoding="utf-8")
+    start = source.index('if index == 3 and getattr(main_window, "local_automation_page", None) is not None:')
+    end = source.index('if index == 4 and getattr(main_window, "cloud_automation_page", None) is not None:')
+    block = source[start:end]
+    assert "mockup_ai_workflows_2026 as workflows" in block
+    assert "workflows.apply_mockup_ai_workflows_2026(main_window)" in block
+    assert "mockup_automation_product_studio_2026" not in block
+    assert "workflows._open_existing_page = open_existing_page" in block
+
+
+def test_activity_opens_feature_suite_even_when_settings_are_still_lazy() -> None:
+    source = MOCKUP_NAVIGATION.read_text(encoding="utf-8")
+    assert "def _open_activity(controller) -> None:" in source
+    assert "ensure_page(5)" in source
+    assert "ActivityDialog" in source
+    assert '"Activity", "history", lambda: _open_activity(self)' in source
+
+
+def test_workflow_mockup_is_not_marked_complete_during_startup() -> None:
+    source = MOCKUP_NAVIGATION.read_text(encoding="utf-8")
+    assert "apply_mockup_ai_workflows_2026(main_window)" not in source
+    assert "QTimer.singleShot(0, lambda: apply_mockup_ai_workflows_2026(main_window))" not in source
