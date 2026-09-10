@@ -139,6 +139,40 @@ from .main_window import MainWindow
 _original_main_window_init = MainWindow.__init__
 
 
+def apply_lazy_page_layers(main_window, index: int) -> None:
+    """Apply presentation/runtime layers only after a lazy page actually exists."""
+    if index == 1 and getattr(main_window, "library_page", None) is not None:
+        apply_mockup_library_suite_2026(main_window)
+        apply_library_interaction_runtime_2026(main_window)
+        apply_library_control_center_2026(main_window)
+        apply_library_control_center_polish_2026(main_window)
+        return
+
+    if index == 2 and getattr(main_window, "restore_page", None) is not None:
+        apply_mockup_restore_suite_2026(main_window)
+        apply_restore_document_finder_2026(main_window)
+        apply_restore_document_finder_mount_fix_2026(main_window)
+        apply_restore_safe_visual_polish_2026(main_window)
+        return
+
+    if index == 3 and getattr(main_window, "local_automation_page", None) is not None:
+        apply_mockup_automation_product_studio_2026(main_window)
+        return
+
+    if index == 5 and getattr(main_window, "settings_page", None) is not None:
+        apply_organization_polish(main_window)
+        apply_settings_executive_redesign(main_window)
+        apply_settings_service_hub_2026(main_window)
+        apply_settings_service_pages_2026_runtime(main_window)
+        apply_feature_suite_2026(main_window)
+        apply_feature_suite_runtime(main_window)
+        return
+
+    if index == 6 and getattr(main_window, "contact_page", None) is not None:
+        apply_contact_workflows_polish(main_window)
+        apply_contact_executive_2026(main_window)
+
+
 def _main_window_init_with_brand(self, *args, **kwargs) -> None:
     _original_main_window_init(self, *args, **kwargs)
     apply_brand_palette(self)
@@ -163,23 +197,16 @@ def _main_window_init_with_brand(self, *args, **kwargs) -> None:
     apply_organization_overview_fix(self)
     apply_organization_overview_consistency(self)
     apply_protect_runtime(self, "managed")
-    apply_contact_workflows_polish(self)
-    apply_contact_executive_2026(self)
     apply_popup_visual_polish(self)
     apply_dialog_visual_system(self)
     apply_protect_runtime(self, "layout")
     apply_account_sidebar_polish(self)
     apply_account_menu_popup_2026(self)
     apply_workspace_management_ui(self)
-    apply_settings_executive_redesign(self)
-    apply_settings_service_hub_2026(self)
     apply_workspace_dropdown_cue(self)
     apply_workspace_creation_experience(self)
     apply_workspace_refresh_control(self)
     apply_workspace_creation_feedback(self)
-    apply_settings_service_pages_2026_runtime(self)
-    apply_feature_suite_2026(self)
-    apply_feature_suite_runtime(self)
     apply_governance_hardening_2026(self)
     apply_governance_release_polish_2026(self)
     apply_protect_runtime(self, "visibility")
@@ -218,44 +245,10 @@ def _main_window_init_with_brand(self, *args, **kwargs) -> None:
     # color-coherent review and encrypted local-only manual sensitive rules.
     apply_mockup_protect_refinement_suite_2026(self)
 
-    # Restore follows the same migration rule as Protect: the proven local
-    # DocumentRestoreService/Library mapping/preview/download controllers remain
-    # authoritative, while the 2026 presentation and local text-edit experience
-    # are layered on last.
-    apply_mockup_restore_suite_2026(self)
-
-    # Workspace-aware original-document finder. It searches local Library/source/
-    # workspace metadata and mapping token names, then delegates the chosen ID back
-    # to RestorePage's existing document combo and DocumentRestoreService.
-    apply_restore_document_finder_2026(self)
-
-    # Keep the last visible Restore command bar owned by the proven controls.
-    # The experimental product-polish controller remains disabled because it caused
-    # a Qt mouse-event regression. The safe layer below only decorates existing
-    # controls and Finder items; it does not reparent or reconnect them.
-    apply_restore_document_finder_mount_fix_2026(self)
-    apply_restore_safe_visual_polish_2026(self)
-
-    # Final Library presentation/runtime layer. LibraryRepository and all existing
-    # LibraryPage callbacks stay authoritative; this only scopes the same local data
-    # to Personal vs active Organization and never auto-assigns legacy documents.
-    apply_mockup_library_suite_2026(self)
-
-    # Last Library interaction layer: real connected accounts and provider artwork,
-    # visible workspace-switch loading, and one-click local restore from Library.
-    apply_library_interaction_runtime_2026(self)
-
-    # Document Control Center: Smart Collections, multi-document actions,
-    # metadata-only per-document activity, and Organization policy context.
-    apply_library_control_center_2026(self)
-    apply_library_control_center_polish_2026(self)
-
-    # Product-first Automation Studio: real-product hierarchy, privacy boundary,
-    # guided builder, templates, run history, approvals and a discreet PM-led
-    # AI/automation advisory surface for client discovery.
-    apply_mockup_automation_product_studio_2026(self)
+    # Restore, Library, Automation, Settings and Contact final layers are now
+    # applied by apply_lazy_page_layers() when those pages are first constructed.
 
 
 MainWindow.__init__ = _main_window_init_with_brand
 
-__all__ = ["MainWindow"]
+__all__ = ["MainWindow", "apply_lazy_page_layers"]
