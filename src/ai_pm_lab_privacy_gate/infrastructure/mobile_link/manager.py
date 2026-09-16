@@ -13,8 +13,12 @@ from ai_pm_lab_privacy_gate.infrastructure.security.secret_store import (
     SecretStore,
     platform_secret_store,
 )
+from ai_pm_lab_privacy_gate.infrastructure.storage.protected_library import (
+    ProtectedLibraryRepository,
+)
 
 from .certificate import MobileLinkCertificateStore
+from .library_grants import MobileLibraryGrantRegistry
 from .pairing import MobilePairingRegistry
 from .server import create_mobile_link_server
 
@@ -23,7 +27,7 @@ DEFAULT_MOBILE_LINK_PORT = 8767
 
 @dataclass(frozen=True, slots=True)
 class MobileLinkStatus:
-    state: str = "disabled"  # disabled | online | error
+    state: str = "disabled"
     port: int | None = None
     error: str = ""
 
@@ -65,6 +69,8 @@ class MobileLinkManager:
         self.secrets = secret_store or platform_secret_store(self.data_dir)
         self.pairing = MobilePairingRegistry(self.secrets)
         self.certificates = MobileLinkCertificateStore(self.secrets)
+        self.protected_library = ProtectedLibraryRepository(self.data_dir)
+        self.library_grants = MobileLibraryGrantRegistry(self.secrets)
         self._server_factory = server_factory
         self._lock = threading.RLock()
         self._server: Any | None = None
@@ -76,6 +82,21 @@ class MobileLinkManager:
     def status(self) -> MobileLinkStatus:
         with self._lock:
             return self._status
+
+    def grant_protected_copy(self, *, client_id: str, document_id: str) -> dict[str, object]:
+        # Verify the item exists in the physically separate protected-only store.
+        self.protected_library.get_mcp_document(document_id)
+        client_record = next(
+            (item for item in self.pairing._load() if item["client_id"] == client_id),
+            None,
+        )
+        if client_record is None:
+            raise ValueError("device is not paired")
+        return self.library_grants.grant_protected_copy(
+            client_id=client_id,
+            token_hash=str(client_record["token_hash"]),
+            document_id=document_id,
+        )
 
     def start(self, port: int = DEFAULT_MOBILE_LINK_PORT) -> MobileLinkStatus:
         port = int(port)
@@ -97,6 +118,8 @@ class MobileLinkManager:
             server = self._server_factory(
                 service=self.service,
                 pairing=self.pairing,
+                protected_library=self.protected_library,
+                library_grants=self.library_grants,
                 host="0.0.0.0",
                 port=port,
                 certificate_path=certificate_path,
@@ -136,25 +159,18 @@ class MobileLinkManager:
             self._server = server
             self._thread = thread
             self._temp_dir = temporary
-            self._status = MobileLinkStatus(
-                state="online",
-                port=int(server.server_port),
-            )
+            self._status = MobileLinkStatus(state="online", port=int(server.server_port))
         thread.start()
         return self.status
 
-    def create_pairing_bundle(
-        self,
-        port: int = DEFAULT_MOBILE_LINK_PORT,
-    ) -> MobilePairingBundle:
+    def create_pairing_bundle(self, port: int = DEFAULT_MOBILE_LINK_PORT) -> MobilePairingBundle:
         status = self.start(port)
         if status.state != "online" or status.port is None:
             raise RuntimeError(status.error or "Mobile Link could not start")
         identity = self.certificates.load_or_create()
         challenge = self.pairing.create_challenge()
         endpoints = tuple(
-            f"https://{address}:{status.port}"
-            for address in self._local_ipv4_addresses()
+            f"https://{address}:{status.port}" for address in self._local_ipv4_addresses()
         )
         return MobilePairingBundle(
             endpoints=endpoints,
@@ -167,14 +183,6 @@ class MobileLinkManager:
 
     @staticmethod
     def _local_ipv4_addresses() -> tuple[str, ...]:
-        """Return the IPv4 address Windows would use for normal outbound traffic.
-
-        Hostname enumeration also exposes virtual adapters such as Mobile Hotspot/
-        ICS interfaces (commonly 192.168.137.1 on Windows). Those addresses are not
-        useful to a phone on the user's normal Wi-Fi and can hide the real connection
-        error. Prefer the OS-selected default-route address and use hostname discovery
-        only as a fallback when route selection is unavailable.
-        """
         try:
             with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
                 sock.connect(("192.0.2.1", 9))
@@ -183,7 +191,6 @@ class MobileLinkManager:
                     return (address,)
         except OSError:
             pass
-
         candidates: set[str] = set()
         try:
             _, _, addresses = socket.gethostbyname_ex(socket.gethostname())
@@ -213,11 +220,7 @@ class MobileLinkManager:
                 server.shutdown()
             finally:
                 server.server_close()
-        if (
-            thread is not None
-            and thread.is_alive()
-            and thread is not threading.current_thread()
-        ):
+        if thread is not None and thread.is_alive() and thread is not threading.current_thread():
             thread.join(timeout=2)
         if temporary is not None:
             temporary.cleanup()
