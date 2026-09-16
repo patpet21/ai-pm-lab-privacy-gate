@@ -21,6 +21,7 @@ from ai_pm_lab_privacy_gate.infrastructure.storage.protected_library import (
 from .certificate import MobileLinkCertificateStore
 from .library_grants import MobileLibraryGrantRegistry
 from .pairing import MobilePairingRegistry
+from .remote_relay import DEFAULT_DEVICE_RELAY_URL, RemoteRelayHub, RemoteRelaySnapshot
 from .server import create_mobile_link_server
 
 DEFAULT_MOBILE_LINK_PORT = 8767
@@ -55,7 +56,7 @@ class MobilePairingBundle:
 
 
 class MobileLinkManager:
-    """Own the opt-in TLS bridge used only by explicitly paired mobile devices."""
+    """Own local TLS plus outbound-only Device Trust remote connectivity."""
 
     def __init__(
         self,
@@ -64,6 +65,7 @@ class MobileLinkManager:
         *,
         secret_store: SecretStore | None = None,
         server_factory: Callable[..., Any] = create_mobile_link_server,
+        remote_relay_url: str = DEFAULT_DEVICE_RELAY_URL,
     ) -> None:
         self.service = service
         self.data_dir = Path(data_dir)
@@ -76,6 +78,11 @@ class MobileLinkManager:
         # protected copy still comes from the physically isolated protected store.
         self.library = LibraryRepository(self.data_dir)
         self.library_grants = MobileLibraryGrantRegistry(self.secrets)
+        self.remote_relay_url = str(remote_relay_url).rstrip("/")
+        self.remote_relays = RemoteRelayHub(
+            self.pairing,
+            relay_base_url=self.remote_relay_url,
+        )
         self._server_factory = server_factory
         self._lock = threading.RLock()
         self._server: Any | None = None
@@ -91,6 +98,10 @@ class MobileLinkManager:
         with self._lock:
             return self._status
 
+    @property
+    def remote_status(self) -> RemoteRelaySnapshot:
+        return self.remote_relays.snapshot
+
     def _client_record(self, client_id: str) -> dict[str, object]:
         record = next(
             (item for item in self.pairing._load() if item["client_id"] == client_id),
@@ -99,6 +110,21 @@ class MobileLinkManager:
         if record is None:
             raise ValueError("device is not paired")
         return record
+
+    def approve_pairing_request(self, request_id: str) -> bool:
+        approved = self.pairing.approve_request(request_id)
+        if approved:
+            status = self.start()
+            if status.state == "online" and status.port is not None:
+                self.remote_relays.sync(status.port)
+        return approved
+
+    def remove_trusted_device(self, client_id: str) -> bool:
+        removed = self.pairing.revoke_client(client_id)
+        if removed:
+            self.library_grants.revoke_client(client_id)
+            self.remote_relays.remove_client(client_id)
+        return removed
 
     def grant_protected_copy(self, *, client_id: str, document_id: str) -> dict[str, object]:
         status = self.start()
@@ -140,6 +166,7 @@ class MobileLinkManager:
             raise ValueError("Mobile Link port must be between 1024 and 65535")
         with self._lock:
             if self._status.state == "online" and self._status.port == port:
+                self.remote_relays.sync(port)
                 return self._status
         self.stop()
         temporary: tempfile.TemporaryDirectory[str] | None = None
@@ -157,6 +184,7 @@ class MobileLinkManager:
                 protected_library=self.protected_library,
                 library_repository=self.library,
                 library_grants=self.library_grants,
+                remote_relay_url=self.remote_relay_url,
                 host="0.0.0.0",
                 port=port,
                 certificate_path=certificate_path,
@@ -198,6 +226,7 @@ class MobileLinkManager:
             self._temp_dir = temporary
             self._status = MobileLinkStatus(state="online", port=int(server.server_port))
         thread.start()
+        self.remote_relays.sync(int(server.server_port))
         return self.status
 
     def create_pairing_bundle(self, port: int = DEFAULT_MOBILE_LINK_PORT) -> MobilePairingBundle:
@@ -244,6 +273,7 @@ class MobileLinkManager:
         return tuple(sorted(candidates))
 
     def stop(self) -> None:
+        self.remote_relays.stop()
         with self._lock:
             server = self._server
             thread = self._thread
