@@ -11,15 +11,15 @@ from ai_pm_lab_privacy_gate.infrastructure.security.secret_store import SecretSt
 
 MOBILE_LIBRARY_GRANTS_SECRET = "mobile-library-grants-v1"
 _MAX_GRANTS = 500
+_ALLOWED_MODES = {"protected_copy", "full_offline_session"}
 
 
 class MobileLibraryGrantRegistry:
-    """Persist explicit credential-scoped grants for protected Library items only.
+    """Persist explicit credential-scoped Library transfer grants.
 
-    Pairing never implies Library access. A grant binds one protected document to
-    one paired client credential. The grant contains identifiers and audit metadata
-    only; protected content remains in protected_library.db and restore mappings are
-    never copied into this registry.
+    Pairing never implies Library access. A grant binds one document, one trusted
+    client credential, and one transfer mode. The registry stores identifiers and
+    audit metadata only; document content and restore mappings never live here.
     """
 
     def __init__(self, secret_store: SecretStore) -> None:
@@ -47,13 +47,16 @@ class MobileLibraryGrantRegistry:
             values = (grant_id, client_id, token_hash, document_id)
             if not all(isinstance(value, str) and value for value in values):
                 continue
+            mode = str(item.get("mode") or "protected_copy")
+            if mode not in _ALLOWED_MODES:
+                continue
             grants.append(
                 {
                     "grant_id": grant_id,
                     "client_id": client_id,
                     "token_hash": token_hash,
                     "document_id": document_id,
-                    "mode": "protected_copy",
+                    "mode": mode,
                     "created_at": float(item.get("created_at") or 0.0),
                 }
             )
@@ -68,16 +71,20 @@ class MobileLibraryGrantRegistry:
             json.dumps(grants[-_MAX_GRANTS:], separators=(",", ":"), sort_keys=True),
         )
 
-    def grant_protected_copy(
+    def grant(
         self,
         *,
         client_id: str,
         token_hash: str,
         document_id: str,
+        mode: str,
     ) -> dict[str, object]:
         client_id = str(client_id).strip()
         token_hash = str(token_hash).strip()
         document_id = str(document_id).strip()
+        mode = str(mode).strip()
+        if mode not in _ALLOWED_MODES:
+            raise ValueError("unsupported Library transfer mode")
         if not client_id or not token_hash or not document_id:
             raise ValueError("client_id, token_hash and document_id are required")
         timestamp = time.time()
@@ -88,7 +95,7 @@ class MobileLibraryGrantRegistry:
                 if not (
                     item["client_id"] == client_id
                     and item["document_id"] == document_id
-                    and item["mode"] == "protected_copy"
+                    and item["mode"] == mode
                 )
             ]
             record: dict[str, object] = {
@@ -96,12 +103,40 @@ class MobileLibraryGrantRegistry:
                 "client_id": client_id,
                 "token_hash": token_hash,
                 "document_id": document_id,
-                "mode": "protected_copy",
+                "mode": mode,
                 "created_at": timestamp,
             }
             grants.append(record)
             self._save(grants)
             return dict(record)
+
+    def grant_protected_copy(
+        self,
+        *,
+        client_id: str,
+        token_hash: str,
+        document_id: str,
+    ) -> dict[str, object]:
+        return self.grant(
+            client_id=client_id,
+            token_hash=token_hash,
+            document_id=document_id,
+            mode="protected_copy",
+        )
+
+    def grant_full_offline_session(
+        self,
+        *,
+        client_id: str,
+        token_hash: str,
+        document_id: str,
+    ) -> dict[str, object]:
+        return self.grant(
+            client_id=client_id,
+            token_hash=token_hash,
+            document_id=document_id,
+            mode="full_offline_session",
+        )
 
     @staticmethod
     def _digest(token: str) -> str:
