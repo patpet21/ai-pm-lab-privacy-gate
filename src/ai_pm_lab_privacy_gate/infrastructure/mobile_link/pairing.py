@@ -13,9 +13,12 @@ from ai_pm_lab_privacy_gate.infrastructure.security.secret_store import SecretSt
 
 MOBILE_LINK_CLIENTS_SECRET = "mobile-link-clients-v1"
 _PAIRING_TTL_SECONDS = 300
+_PAIRING_APPROVAL_TTL_SECONDS = 300
+_PAIRING_RESULT_TTL_SECONDS = 120
 _PAIRING_MAX_ATTEMPTS = 5
 _MAX_CLIENTS = 12
 _CLIENT_ID = re.compile(r"^[A-Za-z0-9._-]{8,128}$")
+_REQUEST_ID = re.compile(r"^[A-Za-z0-9_-]{24,128}$")
 
 
 @dataclass(frozen=True, slots=True)
@@ -25,7 +28,7 @@ class MobilePairingChallenge:
 
 
 class MobilePairingRegistry:
-    """Issue one-time pairing codes and persist only hashes of mobile bearer tokens."""
+    """Create pairing requests, require Desktop approval, and store only token hashes."""
 
     def __init__(self, secret_store: SecretStore) -> None:
         self.secret_store = secret_store
@@ -33,6 +36,7 @@ class MobilePairingRegistry:
         self._challenge_code: str | None = None
         self._challenge_expires_at = 0.0
         self._challenge_attempts = 0
+        self._pending: dict[str, dict[str, object]] = {}
 
     @staticmethod
     def _token_hash(token: str) -> str:
@@ -77,6 +81,15 @@ class MobilePairingRegistry:
             json.dumps(records[-_MAX_CLIENTS:], separators=(",", ":"), sort_keys=True),
         )
 
+    def _cleanup_pending(self, now: float) -> None:
+        expired = [
+            request_id
+            for request_id, item in self._pending.items()
+            if float(item.get("expires_at") or 0.0) <= now
+        ]
+        for request_id in expired:
+            self._pending.pop(request_id, None)
+
     def create_challenge(self, *, now: float | None = None) -> MobilePairingChallenge:
         timestamp = time.time() if now is None else float(now)
         code = f"{secrets.randbelow(100_000_000):08d}"
@@ -84,9 +97,10 @@ class MobilePairingRegistry:
             self._challenge_code = code
             self._challenge_expires_at = timestamp + _PAIRING_TTL_SECONDS
             self._challenge_attempts = 0
+            self._cleanup_pending(timestamp)
         return MobilePairingChallenge(code=code, expires_at=self._challenge_expires_at)
 
-    def pair(
+    def request_pairing(
         self,
         client_id: str,
         code: str,
@@ -99,6 +113,7 @@ class MobilePairingRegistry:
             raise ValueError("client_id is invalid")
         timestamp = time.time() if now is None else float(now)
         with self._lock:
+            self._cleanup_pending(timestamp)
             expected = self._challenge_code
             if expected is None or timestamp > self._challenge_expires_at:
                 self._challenge_code = None
@@ -110,21 +125,100 @@ class MobilePairingRegistry:
             if not hmac.compare_digest(str(code).strip(), expected):
                 raise ValueError("pairing code is invalid")
 
+            # A valid temporary bundle can request access, but cannot obtain a token
+            # until a human approves the request on Desktop.
+            self._challenge_code = None
+            self._challenge_expires_at = 0.0
+            self._challenge_attempts = 0
+            for request_id, item in list(self._pending.items()):
+                if item.get("client_id") == normalized_id:
+                    self._pending.pop(request_id, None)
+            request_id = secrets.token_urlsafe(24)
+            self._pending[request_id] = {
+                "request_id": request_id,
+                "client_id": normalized_id,
+                "client_name": str(client_name or "Mobile device")[:80],
+                "requested_at": timestamp,
+                "expires_at": timestamp + _PAIRING_APPROVAL_TTL_SECONDS,
+                "status": "pending",
+                "mobile_token": None,
+            }
+            return request_id
+
+    def approve_request(self, request_id: str, *, now: float | None = None) -> bool:
+        normalized = str(request_id).strip()
+        if not _REQUEST_ID.fullmatch(normalized):
+            return False
+        timestamp = time.time() if now is None else float(now)
+        with self._lock:
+            self._cleanup_pending(timestamp)
+            item = self._pending.get(normalized)
+            if item is None or item.get("status") != "pending":
+                return False
             token = secrets.token_urlsafe(32)
-            records = [item for item in self._load() if item["client_id"] != normalized_id]
+            records = [
+                record
+                for record in self._load()
+                if record["client_id"] != item["client_id"]
+            ]
             records.append(
                 {
-                    "client_id": normalized_id,
-                    "client_name": str(client_name or "Mobile device")[:80],
+                    "client_id": item["client_id"],
+                    "client_name": item["client_name"],
                     "token_hash": self._token_hash(token),
                     "paired_at": timestamp,
                 }
             )
             self._save(records)
-            self._challenge_code = None
-            self._challenge_expires_at = 0.0
-            self._challenge_attempts = 0
-            return token
+            item["status"] = "approved"
+            item["mobile_token"] = token
+            item["expires_at"] = timestamp + _PAIRING_RESULT_TTL_SECONDS
+            return True
+
+    def deny_request(self, request_id: str, *, now: float | None = None) -> bool:
+        normalized = str(request_id).strip()
+        if not _REQUEST_ID.fullmatch(normalized):
+            return False
+        timestamp = time.time() if now is None else float(now)
+        with self._lock:
+            self._cleanup_pending(timestamp)
+            item = self._pending.get(normalized)
+            if item is None or item.get("status") != "pending":
+                return False
+            item["status"] = "denied"
+            item["mobile_token"] = None
+            item["expires_at"] = timestamp + _PAIRING_RESULT_TTL_SECONDS
+            return True
+
+    def consume_pairing_result(
+        self,
+        request_id: str,
+        *,
+        now: float | None = None,
+    ) -> dict[str, object]:
+        normalized = str(request_id).strip()
+        if not _REQUEST_ID.fullmatch(normalized):
+            raise ValueError("pairing request id is invalid")
+        timestamp = time.time() if now is None else float(now)
+        with self._lock:
+            self._cleanup_pending(timestamp)
+            item = self._pending.get(normalized)
+            if item is None:
+                return {"status": "expired"}
+            status = str(item.get("status") or "expired")
+            if status == "pending":
+                return {"status": "pending"}
+            if status == "denied":
+                self._pending.pop(normalized, None)
+                return {"status": "denied"}
+            if status == "approved":
+                token = item.get("mobile_token")
+                self._pending.pop(normalized, None)
+                if not isinstance(token, str) or not token:
+                    return {"status": "expired"}
+                return {"status": "approved", "mobile_token": token}
+            self._pending.pop(normalized, None)
+            return {"status": "expired"}
 
     def validate(self, token: str | None) -> bool:
         if not token:
@@ -154,4 +248,23 @@ class MobilePairingRegistry:
             return [
                 {key: item[key] for key in ("client_id", "client_name", "paired_at")}
                 for item in self._load()
+            ]
+
+    def list_pending_requests(self, *, now: float | None = None) -> list[dict[str, object]]:
+        timestamp = time.time() if now is None else float(now)
+        with self._lock:
+            self._cleanup_pending(timestamp)
+            return [
+                {
+                    key: item[key]
+                    for key in (
+                        "request_id",
+                        "client_id",
+                        "client_name",
+                        "requested_at",
+                        "expires_at",
+                    )
+                }
+                for item in self._pending.values()
+                if item.get("status") == "pending"
             ]
