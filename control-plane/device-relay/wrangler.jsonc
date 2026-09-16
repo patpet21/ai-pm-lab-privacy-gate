@@ -1,0 +1,17 @@
+{
+  "$schema": "../node_modules/wrangler/config-schema.json",
+  "name": "privacy-gate-device-relay",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-08-01",
+  "routes": [
+    { "pattern": "relay.propertydex.xyz", "custom_domain": true }
+  ],
+  "durable_objects": {
+    "bindings": [
+      { "name": "DEVICE_RELAY", "class_name": "DeviceRelay" }
+    ]
+  },
+  "migrations": [
+    { "tag": "v1", "new_sqlite_classes": ["DeviceRelay"] }
+  ]
+}
