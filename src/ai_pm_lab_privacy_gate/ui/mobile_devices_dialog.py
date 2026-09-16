@@ -9,6 +9,8 @@ from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import (
     QApplication,
     QDialog,
+    QFrame,
+    QGridLayout,
     QHBoxLayout,
     QLabel,
     QListWidget,
@@ -16,7 +18,9 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QPlainTextEdit,
     QPushButton,
+    QSizePolicy,
     QVBoxLayout,
+    QWidget,
 )
 
 from ai_pm_lab_privacy_gate.infrastructure.mobile_link.manager import MobileLinkManager
@@ -39,158 +43,400 @@ class MobileDevicesDialog(QDialog):
         super().__init__(parent)
         self.manager = manager
         self._expires_at = 0.0
+
         self.setWindowTitle("Mobile Devices — PrivacyGate Device Trust")
-        self.resize(820, 900)
-        self.setStyleSheet(
-            """
-            QLabel#sectionTitle {
-                font-size: 15px;
-                font-weight: 700;
-                color: #16243a;
-                margin-top: 6px;
-            }
-            QLabel#helperText {
-                color: #667085;
-                font-size: 12px;
-            }
-            QLabel#selectionSummary {
-                color: #174c55;
-                background: #ecf8f7;
-                border: 1px solid #b9e4e0;
-                border-radius: 8px;
-                padding: 8px 10px;
-            }
-            QListWidget#pendingList, QListWidget#pairedList {
-                background: #ffffff;
-                border: 1px solid #d8e1eb;
-                border-radius: 10px;
-                padding: 4px;
-                outline: 0;
-            }
-            QListWidget#pendingList::item, QListWidget#pairedList::item {
-                color: #172033;
-                background: #ffffff;
-                border: 1px solid transparent;
-                border-radius: 7px;
-                padding: 10px 12px;
-                margin: 2px;
-            }
-            QListWidget#pendingList::item:hover, QListWidget#pairedList::item:hover {
-                background: #f3f8fb;
-            }
-            QListWidget#pendingList::item:selected, QListWidget#pairedList::item:selected {
-                color: #0b3340;
-                background: #dff5f3;
-                border: 1px solid #15999b;
-            }
-            QPushButton:disabled {
-                color: #98a2b3;
-                background: #eef2f6;
-                border-color: #d7dee7;
-            }
-            """
+        self.resize(1080, 790)
+        self.setMinimumSize(980, 720)
+        self.setStyleSheet(self._stylesheet())
+
+        root = QVBoxLayout(self)
+        root.setContentsMargins(20, 18, 20, 18)
+        root.setSpacing(14)
+
+        root.addWidget(self._build_header())
+
+        body = QHBoxLayout()
+        body.setSpacing(14)
+        body.addWidget(self._build_pairing_card(), 6)
+
+        right = QVBoxLayout()
+        right.setSpacing(14)
+        right.addWidget(self._build_pending_card(), 3)
+        right.addWidget(self._build_trusted_card(), 2)
+        body.addLayout(right, 5)
+        root.addLayout(body, 1)
+
+        self.timer = QTimer(self)
+        self.timer.timeout.connect(self._refresh)
+        self.timer.start(1000)
+        self._refresh()
+
+    @staticmethod
+    def _stylesheet() -> str:
+        return """
+        QDialog {
+            background: #f4f7fb;
+            color: #142033;
+        }
+        QFrame#headerCard, QFrame#panelCard {
+            background: #ffffff;
+            border: 1px solid #dfe6ee;
+            border-radius: 16px;
+        }
+        QFrame#softCard {
+            background: #f8fafc;
+            border: 1px solid #e4e9ef;
+            border-radius: 12px;
+        }
+        QLabel {
+            color: #142033;
+            font-size: 13px;
+        }
+        QLabel#pageTitle {
+            font-size: 21px;
+            font-weight: 700;
+            color: #111827;
+        }
+        QLabel#pageSubtitle, QLabel#mutedText {
+            color: #667085;
+            font-size: 12px;
+        }
+        QLabel#sectionTitle {
+            font-size: 16px;
+            font-weight: 700;
+            color: #152238;
+        }
+        QLabel#stepNumber {
+            min-width: 26px;
+            max-width: 26px;
+            min-height: 26px;
+            max-height: 26px;
+            border-radius: 13px;
+            background: #e8f7f6;
+            color: #087e84;
+            font-weight: 700;
+        }
+        QLabel#selectionTitle {
+            font-weight: 700;
+            color: #123f46;
+        }
+        QLabel#selectionValue {
+            color: #344054;
+        }
+        QLabel#emptyState {
+            color: #7a8699;
+            background: #f8fafc;
+            border: 1px dashed #ccd5df;
+            border-radius: 10px;
+            padding: 18px;
+        }
+        QPushButton {
+            min-height: 38px;
+            border-radius: 9px;
+            padding: 0 14px;
+            font-weight: 600;
+            color: #1f2937;
+            background: #ffffff;
+            border: 1px solid #d7dee7;
+        }
+        QPushButton:hover {
+            background: #f8fafc;
+            border-color: #bfc9d5;
+        }
+        QPushButton:disabled {
+            color: #98a2b3;
+            background: #edf1f5;
+            border-color: #e0e5eb;
+        }
+        QPushButton#primaryButton {
+            color: #ffffff;
+            background: #118d95;
+            border: 1px solid #118d95;
+        }
+        QPushButton#primaryButton:hover {
+            background: #0c7d84;
+        }
+        QPushButton#dangerButton {
+            color: #b42318;
+            background: #fff8f7;
+            border: 1px solid #f0c7c3;
+        }
+        QPushButton#dangerButton:hover {
+            background: #fff0ee;
+        }
+        QPushButton#linkButton {
+            color: #2563eb;
+            background: transparent;
+            border: none;
+            text-align: left;
+            padding: 0 2px;
+            min-height: 28px;
+        }
+        QListWidget {
+            background: #fbfcfe;
+            border: 1px solid #dce3eb;
+            border-radius: 10px;
+            padding: 5px;
+            outline: none;
+        }
+        QListWidget::item {
+            color: #1d2939;
+            background: transparent;
+            border-radius: 8px;
+            padding: 9px 10px;
+            margin: 2px;
+        }
+        QListWidget::item:hover {
+            background: #eef7f8;
+        }
+        QListWidget::item:selected {
+            color: #073b42;
+            background: #d9f2f1;
+            border: 1px solid #32a7a9;
+        }
+        QPlainTextEdit {
+            color: #233044;
+            background: #f8fafc;
+            border: 1px solid #dce3eb;
+            border-radius: 10px;
+            padding: 8px;
+            font-family: Consolas, "Courier New", monospace;
+            font-size: 11px;
+        }
+        """
+
+    @staticmethod
+    def _card(object_name: str = "panelCard") -> QFrame:
+        card = QFrame()
+        card.setObjectName(object_name)
+        return card
+
+    @staticmethod
+    def _step(number: str, text: str) -> QWidget:
+        container = QWidget()
+        row = QHBoxLayout(container)
+        row.setContentsMargins(0, 0, 0, 0)
+        row.setSpacing(9)
+        badge = QLabel(number)
+        badge.setObjectName("stepNumber")
+        badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        label = QLabel(text)
+        label.setObjectName("mutedText")
+        label.setWordWrap(True)
+        row.addWidget(badge, 0, Qt.AlignmentFlag.AlignTop)
+        row.addWidget(label, 1)
+        return container
+
+    def _build_header(self) -> QFrame:
+        card = self._card("headerCard")
+        layout = QHBoxLayout(card)
+        layout.setContentsMargins(18, 14, 18, 14)
+        layout.setSpacing(14)
+
+        text = QVBoxLayout()
+        text.setSpacing(3)
+        title = QLabel("Device Trust")
+        title.setObjectName("pageTitle")
+        subtitle = QLabel(
+            "Pair trusted mobile devices with this Desktop. Pairing never grants automatic access "
+            "to your Library or restore mappings."
         )
+        subtitle.setObjectName("pageSubtitle")
+        subtitle.setWordWrap(True)
+        text.addWidget(title)
+        text.addWidget(subtitle)
+        layout.addLayout(text, 1)
 
-        layout = QVBoxLayout(self)
-        layout.setSpacing(10)
+        self.status_badge = QLabel("Offline")
+        self.status_badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.status_badge.setMinimumWidth(118)
+        self.status_badge.setMinimumHeight(34)
+        layout.addWidget(self.status_badge, 0, Qt.AlignmentFlag.AlignVCenter)
+        return card
 
-        info = QLabel(
-            "Pair only devices you own or trust, on your private local network. "
-            "Creating pairing data starts the encrypted Desktop analysis service. "
-            "A mobile device can request pairing, but Desktop approval is required "
-            "before any credential is released. Library and restore mappings are not shared."
-        )
-        info.setWordWrap(True)
-        layout.addWidget(info)
+    def _build_pairing_card(self) -> QFrame:
+        card = self._card()
+        layout = QVBoxLayout(card)
+        layout.setContentsMargins(18, 16, 18, 16)
+        layout.setSpacing(11)
 
-        self.status = QLabel()
-        layout.addWidget(self.status)
+        title = QLabel("Pair a mobile device")
+        title.setObjectName("sectionTitle")
+        layout.addWidget(title)
 
-        row = QHBoxLayout()
-        pair = QPushButton("Create pairing data")
-        pair.clicked.connect(self._pair)
-        row.addWidget(pair)
+        steps = QHBoxLayout()
+        steps.setSpacing(12)
+        steps.addWidget(self._step("1", "Create fresh pairing data"), 1)
+        steps.addWidget(self._step("2", "Scan with PrivacyGate Mobile"), 1)
+        steps.addWidget(self._step("3", "Approve the request on Desktop"), 1)
+        layout.addLayout(steps)
+
+        actions = QHBoxLayout()
+        actions.setSpacing(8)
+        self.create_button = QPushButton("Create pairing QR")
+        self.create_button.setObjectName("primaryButton")
+        self.create_button.clicked.connect(self._pair)
+        actions.addWidget(self.create_button, 2)
+
         start = QPushButton("Start service")
         start.clicked.connect(self._start)
-        row.addWidget(start)
+        actions.addWidget(start, 1)
+
         stop = QPushButton("Stop service")
         stop.clicked.connect(self._stop)
-        row.addWidget(stop)
-        layout.addLayout(row)
+        actions.addWidget(stop, 1)
+        layout.addLayout(actions)
 
-        qr_title = QLabel("Pair a mobile device")
-        qr_title.setObjectName("sectionTitle")
-        layout.addWidget(qr_title)
-        qr_help = QLabel(
-            "On PrivacyGate Mobile, open Settings → Desktop Connection and scan this temporary QR code."
-        )
-        qr_help.setObjectName("helperText")
-        qr_help.setWordWrap(True)
-        layout.addWidget(qr_help)
+        qr_card = self._card("softCard")
+        qr_layout = QVBoxLayout(qr_card)
+        qr_layout.setContentsMargins(14, 14, 14, 12)
+        qr_layout.setSpacing(6)
 
-        self.qr = QLabel("Create pairing data to show a temporary QR code.")
+        self.qr = QLabel("Create pairing data to generate a temporary QR code.")
         self.qr.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.qr.setMinimumHeight(360)
         self.qr.setWordWrap(True)
-        layout.addWidget(self.qr)
+        self.qr.setMinimumHeight(400)
+        self.qr.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        qr_layout.addWidget(self.qr, 1)
+
+        hint = QLabel("On Mobile: Settings → Desktop Connection → Scan pairing QR")
+        hint.setObjectName("mutedText")
+        hint.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        qr_layout.addWidget(hint)
+        layout.addWidget(qr_card, 1)
+
+        self.advanced_button = QPushButton("Show advanced pairing data")
+        self.advanced_button.setObjectName("linkButton")
+        self.advanced_button.setCheckable(True)
+        self.advanced_button.toggled.connect(self._toggle_advanced)
+        layout.addWidget(self.advanced_button)
+
+        self.advanced_panel = self._card("softCard")
+        advanced = QVBoxLayout(self.advanced_panel)
+        advanced.setContentsMargins(10, 10, 10, 10)
+        advanced.setSpacing(7)
+
+        advanced_note = QLabel(
+            "Fallback only. This JSON contains temporary pairing material and should not be shared."
+        )
+        advanced_note.setObjectName("mutedText")
+        advanced_note.setWordWrap(True)
+        advanced.addWidget(advanced_note)
 
         self.bundle = QPlainTextEdit()
         self.bundle.setReadOnly(True)
-        self.bundle.setMaximumHeight(92)
-        self.bundle.setPlaceholderText(
-            "Temporary pairing JSON appears here. On Mobile: Settings → Desktop Connection."
-        )
-        layout.addWidget(self.bundle)
-        copy = QPushButton("Copy temporary pairing data")
+        self.bundle.setMaximumHeight(105)
+        self.bundle.setPlaceholderText("Pairing JSON will appear here.")
+        advanced.addWidget(self.bundle)
+
+        copy = QPushButton("Copy temporary JSON")
         copy.clicked.connect(self._copy)
-        layout.addWidget(copy)
+        advanced.addWidget(copy)
+        self.advanced_panel.setVisible(False)
+        layout.addWidget(self.advanced_panel)
 
-        pending_title = QLabel("Pending pairing approvals")
-        pending_title.setObjectName("sectionTitle")
-        layout.addWidget(pending_title)
+        return card
 
-        self.pending_help = QLabel(
-            "When a device requests access, select it below, then approve or deny the request."
+    def _build_pending_card(self) -> QFrame:
+        card = self._card()
+        layout = QVBoxLayout(card)
+        layout.setContentsMargins(18, 16, 18, 16)
+        layout.setSpacing(10)
+
+        title_row = QHBoxLayout()
+        title = QLabel("Approval requests")
+        title.setObjectName("sectionTitle")
+        title_row.addWidget(title)
+        title_row.addStretch(1)
+        self.pending_count = QLabel("0 pending")
+        self.pending_count.setObjectName("mutedText")
+        title_row.addWidget(self.pending_count)
+        layout.addLayout(title_row)
+
+        helper = QLabel(
+            "New requests are selected automatically. Confirm the device details before approving."
         )
-        self.pending_help.setObjectName("helperText")
-        self.pending_help.setWordWrap(True)
-        layout.addWidget(self.pending_help)
+        helper.setObjectName("mutedText")
+        helper.setWordWrap(True)
+        layout.addWidget(helper)
+
+        self.pending_empty = QLabel("No devices are waiting for approval.")
+        self.pending_empty.setObjectName("emptyState")
+        self.pending_empty.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(self.pending_empty)
 
         self.pending = QListWidget()
-        self.pending.setObjectName("pendingList")
-        self.pending.setMinimumHeight(118)
+        self.pending.setMaximumHeight(125)
         self.pending.currentItemChanged.connect(self._pending_selection_changed)
         layout.addWidget(self.pending)
 
-        self.pending_selection = QLabel("No pending device selected.")
-        self.pending_selection.setObjectName("selectionSummary")
-        self.pending_selection.setWordWrap(True)
-        layout.addWidget(self.pending_selection)
+        self.selection_card = self._card("softCard")
+        selected = QGridLayout(self.selection_card)
+        selected.setContentsMargins(12, 10, 12, 10)
+        selected.setHorizontalSpacing(10)
+        selected.setVerticalSpacing(4)
 
-        pending_row = QHBoxLayout()
+        selection_title = QLabel("Selected device")
+        selection_title.setObjectName("selectionTitle")
+        selected.addWidget(selection_title, 0, 0, 1, 2)
+        selected.addWidget(QLabel("Name"), 1, 0)
+        self.selected_name = QLabel("—")
+        self.selected_name.setObjectName("selectionValue")
+        selected.addWidget(self.selected_name, 1, 1)
+        selected.addWidget(QLabel("Device ID"), 2, 0)
+        self.selected_id = QLabel("—")
+        self.selected_id.setObjectName("selectionValue")
+        self.selected_id.setWordWrap(True)
+        selected.addWidget(self.selected_id, 2, 1)
+        layout.addWidget(self.selection_card)
+
+        buttons = QHBoxLayout()
+        buttons.setSpacing(8)
         self.approve_button = QPushButton("Approve device")
+        self.approve_button.setObjectName("primaryButton")
         self.approve_button.setEnabled(False)
         self.approve_button.clicked.connect(self._approve)
-        pending_row.addWidget(self.approve_button)
+        buttons.addWidget(self.approve_button, 1)
+
         self.deny_button = QPushButton("Deny request")
+        self.deny_button.setObjectName("dangerButton")
         self.deny_button.setEnabled(False)
         self.deny_button.clicked.connect(self._deny)
-        pending_row.addWidget(self.deny_button)
-        layout.addLayout(pending_row)
+        buttons.addWidget(self.deny_button, 1)
+        layout.addLayout(buttons)
+        layout.addStretch(1)
+        return card
 
-        paired_title = QLabel("Paired devices")
-        paired_title.setObjectName("sectionTitle")
-        layout.addWidget(paired_title)
-        paired_help = QLabel(
-            "These devices have credentials for future authenticated requests. This is not an online-status list."
+    def _build_trusted_card(self) -> QFrame:
+        card = self._card()
+        layout = QVBoxLayout(card)
+        layout.setContentsMargins(18, 16, 18, 16)
+        layout.setSpacing(9)
+
+        title_row = QHBoxLayout()
+        title = QLabel("Trusted devices")
+        title.setObjectName("sectionTitle")
+        title_row.addWidget(title)
+        title_row.addStretch(1)
+        self.device_count = QLabel("0 paired")
+        self.device_count.setObjectName("mutedText")
+        title_row.addWidget(self.device_count)
+        layout.addLayout(title_row)
+
+        helper = QLabel(
+            "Revocation blocks future authenticated requests. It does not erase data already saved on a device."
         )
-        paired_help.setObjectName("helperText")
-        paired_help.setWordWrap(True)
-        layout.addWidget(paired_help)
+        helper.setObjectName("mutedText")
+        helper.setWordWrap(True)
+        layout.addWidget(helper)
+
+        self.devices_empty = QLabel("No paired mobile devices yet.")
+        self.devices_empty.setObjectName("emptyState")
+        self.devices_empty.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(self.devices_empty)
 
         self.devices = QListWidget()
-        self.devices.setObjectName("pairedList")
-        self.devices.setMinimumHeight(95)
+        self.devices.setMaximumHeight(110)
         self.devices.currentItemChanged.connect(self._paired_selection_changed)
         layout.addWidget(self.devices)
 
@@ -198,11 +444,13 @@ class MobileDevicesDialog(QDialog):
         self.revoke_button.setEnabled(False)
         self.revoke_button.clicked.connect(self._revoke)
         layout.addWidget(self.revoke_button)
+        return card
 
-        self.timer = QTimer(self)
-        self.timer.timeout.connect(self._refresh)
-        self.timer.start(1000)
-        self._refresh()
+    def _toggle_advanced(self, checked: bool) -> None:
+        self.advanced_panel.setVisible(checked)
+        self.advanced_button.setText(
+            "Hide advanced pairing data" if checked else "Show advanced pairing data"
+        )
 
     def _start(self) -> None:
         self.manager.start()
@@ -235,9 +483,6 @@ class MobileDevicesDialog(QDialog):
             import qrcode
             from qrcode.constants import ERROR_CORRECT_L
 
-            # Keep every QR module on an exact integer pixel grid. The pairing
-            # bundle contains the pinned TLS certificate and is intentionally
-            # dense, so non-integer downscaling can make it hard to scan.
             code = qrcode.QRCode(
                 version=None,
                 error_correction=ERROR_CORRECT_L,
@@ -252,17 +497,18 @@ class MobileDevicesDialog(QDialog):
             pixmap = QPixmap()
             if not pixmap.loadFromData(output.getvalue(), "PNG"):
                 raise RuntimeError("QR image could not be loaded")
+
+            # Keep the dense QR on its original integer pixel grid so phone
+            # cameras do not lose module edges through resampling.
             self.qr.setPixmap(pixmap)
-            self.qr.setMinimumHeight(max(360, pixmap.height() + 12))
+            self.qr.setMinimumHeight(max(400, pixmap.height() + 8))
             self.qr.setToolTip(
-                "Scan only with PrivacyGate Mobile. This QR expires automatically. "
-                "Keep the whole white border visible in the phone camera."
+                "Scan only with PrivacyGate Mobile. Keep the full white border visible."
             )
         except Exception:
             self.qr.clear()
             self.qr.setText(
-                "QR generation is unavailable in this environment. "
-                "The temporary JSON below remains usable for manual pairing."
+                "QR generation is unavailable. Open advanced pairing data to use the JSON fallback."
             )
 
     def _copy(self) -> None:
@@ -273,13 +519,16 @@ class MobileDevicesDialog(QDialog):
         has_selection = current is not None
         self.approve_button.setEnabled(has_selection)
         self.deny_button.setEnabled(has_selection)
+        self.selection_card.setVisible(has_selection)
         if current is None:
-            self.pending_selection.setText("No pending device selected.")
+            self.selected_name.setText("—")
+            self.selected_id.setText("—")
             return
-        name = str(current.data(Qt.ItemDataRole.UserRole + 1) or "Mobile device")
-        client_id = str(current.data(Qt.ItemDataRole.UserRole + 2) or "")
-        self.pending_selection.setText(
-            f"Selected for approval: {name}\nDevice ID: {client_id}"
+        self.selected_name.setText(
+            str(current.data(Qt.ItemDataRole.UserRole + 1) or "Mobile device")
+        )
+        self.selected_id.setText(
+            str(current.data(Qt.ItemDataRole.UserRole + 2) or "—")
         )
 
     def _paired_selection_changed(self, current, _previous=None) -> None:
@@ -287,15 +536,29 @@ class MobileDevicesDialog(QDialog):
 
     def _refresh(self) -> None:
         state = self.manager.status
-        self.status.setText(f"Service: {state.state} | Port: {state.port or '—'}")
-        if state.state == "error":
-            self.status.setText(
-                "Service error. Check port availability and local security settings."
+        if state.state == "online":
+            self.status_badge.setText(f"●  Online · {state.port or '—'}")
+            self.status_badge.setStyleSheet(
+                "color:#067647;background:#ecfdf3;border:1px solid #abefc6;"
+                "border-radius:17px;padding:5px 12px;font-weight:700;"
             )
+        elif state.state == "error":
+            self.status_badge.setText("●  Service error")
+            self.status_badge.setStyleSheet(
+                "color:#b42318;background:#fff1f0;border:1px solid #f7c7c3;"
+                "border-radius:17px;padding:5px 12px;font-weight:700;"
+            )
+        else:
+            self.status_badge.setText("●  Offline")
+            self.status_badge.setStyleSheet(
+                "color:#667085;background:#f2f4f7;border:1px solid #e4e7ec;"
+                "border-radius:17px;padding:5px 12px;font-weight:700;"
+            )
+
         if self._expires_at and time.time() >= self._expires_at:
             self.bundle.clear()
             self.qr.clear()
-            self.qr.setText("Pairing data expired. Create fresh pairing data to try again.")
+            self.qr.setText("Pairing data expired. Create a fresh QR to pair a device.")
 
         selected_pending = self.pending.currentItem()
         selected_request_id = (
@@ -303,16 +566,16 @@ class MobileDevicesDialog(QDialog):
             if selected_pending
             else None
         )
+
+        pending_records = self.manager.pairing.list_pending_requests()
         self.pending.blockSignals(True)
         self.pending.clear()
         restored_pending = None
-        for record in self.manager.pairing.list_pending_requests():
+        for record in pending_records:
             name = str(record["client_name"])
             client_id = str(record["client_id"])
             request_id = str(record["request_id"])
-            item = QListWidgetItem(
-                f"{name}\n{client_id}"
-            )
+            item = QListWidgetItem(f"{name}\n{client_id}")
             item.setData(Qt.ItemDataRole.UserRole, request_id)
             item.setData(Qt.ItemDataRole.UserRole + 1, name)
             item.setData(Qt.ItemDataRole.UserRole + 2, client_id)
@@ -324,18 +587,25 @@ class MobileDevicesDialog(QDialog):
         if restored_pending is not None:
             self.pending.setCurrentItem(restored_pending)
         elif self.pending.count() > 0:
-            # A newly arrived request should be actionable immediately without
-            # making the user guess that the row must first be selected.
             self.pending.setCurrentRow(0)
         self.pending.blockSignals(False)
+
+        self.pending_count.setText(f"{len(pending_records)} pending")
+        self.pending.setVisible(bool(pending_records))
+        self.pending_empty.setVisible(not pending_records)
         self._pending_selection_changed(self.pending.currentItem())
 
-        selected = self.devices.currentItem()
-        selected_id = selected.data(Qt.ItemDataRole.UserRole) if selected else None
+        selected_device = self.devices.currentItem()
+        selected_id = (
+            selected_device.data(Qt.ItemDataRole.UserRole)
+            if selected_device
+            else None
+        )
+        device_records = self.manager.pairing.list_clients()
         self.devices.blockSignals(True)
         self.devices.clear()
         restored_device = None
-        for record in self.manager.pairing.list_clients():
+        for record in device_records:
             item = QListWidgetItem(f"{record['client_name']}\n{record['client_id']}")
             item.setData(Qt.ItemDataRole.UserRole, record["client_id"])
             self.devices.addItem(item)
@@ -344,6 +614,10 @@ class MobileDevicesDialog(QDialog):
         if restored_device is not None:
             self.devices.setCurrentItem(restored_device)
         self.devices.blockSignals(False)
+
+        self.device_count.setText(f"{len(device_records)} paired")
+        self.devices.setVisible(bool(device_records))
+        self.devices_empty.setVisible(not device_records)
         self._paired_selection_changed(self.devices.currentItem())
 
     def _approve(self) -> None:
@@ -356,8 +630,9 @@ class MobileDevicesDialog(QDialog):
         answer = QMessageBox.question(
             self,
             "Approve device",
-            f"Allow this device to pair with PrivacyGate Desktop?\n\n{name}\n{client_id}\n\n"
-            "Approval releases a device credential for future authenticated requests. "
+            f"Allow this device to pair with PrivacyGate Desktop?\n\n"
+            f"Device: {name}\nDevice ID: {client_id}\n\n"
+            "Approval releases a credential for future authenticated requests. "
             "You can revoke it later.",
         )
         if answer != QMessageBox.StandardButton.Yes:
