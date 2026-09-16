@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hashlib
+import hmac
 import json
 import secrets
 import threading
@@ -12,10 +14,10 @@ _MAX_GRANTS = 500
 
 
 class MobileLibraryGrantRegistry:
-    """Persist explicit per-device grants for protected Library items only.
+    """Persist explicit credential-scoped grants for protected Library items only.
 
-    Pairing never implies Library access.  A grant binds one protected document to
-    one already-paired client.  The grant contains identifiers and audit metadata
+    Pairing never implies Library access. A grant binds one protected document to
+    one paired client credential. The grant contains identifiers and audit metadata
     only; protected content remains in protected_library.db and restore mappings are
     never copied into this registry.
     """
@@ -40,13 +42,16 @@ class MobileLibraryGrantRegistry:
                 continue
             grant_id = item.get("grant_id")
             client_id = item.get("client_id")
+            token_hash = item.get("token_hash")
             document_id = item.get("document_id")
-            if not all(isinstance(value, str) and value for value in (grant_id, client_id, document_id)):
+            values = (grant_id, client_id, token_hash, document_id)
+            if not all(isinstance(value, str) and value for value in values):
                 continue
             grants.append(
                 {
                     "grant_id": grant_id,
                     "client_id": client_id,
+                    "token_hash": token_hash,
                     "document_id": document_id,
                     "mode": "protected_copy",
                     "created_at": float(item.get("created_at") or 0.0),
@@ -63,11 +68,18 @@ class MobileLibraryGrantRegistry:
             json.dumps(grants[-_MAX_GRANTS:], separators=(",", ":"), sort_keys=True),
         )
 
-    def grant_protected_copy(self, *, client_id: str, document_id: str) -> dict[str, object]:
+    def grant_protected_copy(
+        self,
+        *,
+        client_id: str,
+        token_hash: str,
+        document_id: str,
+    ) -> dict[str, object]:
         client_id = str(client_id).strip()
+        token_hash = str(token_hash).strip()
         document_id = str(document_id).strip()
-        if not client_id or not document_id:
-            raise ValueError("client_id and document_id are required")
+        if not client_id or not token_hash or not document_id:
+            raise ValueError("client_id, token_hash and document_id are required")
         timestamp = time.time()
         with self._lock:
             grants = [
@@ -82,6 +94,7 @@ class MobileLibraryGrantRegistry:
             record: dict[str, object] = {
                 "grant_id": secrets.token_urlsafe(18),
                 "client_id": client_id,
+                "token_hash": token_hash,
                 "document_id": document_id,
                 "mode": "protected_copy",
                 "created_at": timestamp,
@@ -90,17 +103,32 @@ class MobileLibraryGrantRegistry:
             self._save(grants)
             return dict(record)
 
-    def list_for_client(self, client_id: str) -> list[dict[str, object]]:
-        normalized = str(client_id).strip()
-        with self._lock:
-            return [dict(item) for item in self._load() if item["client_id"] == normalized]
+    @staticmethod
+    def _digest(token: str) -> str:
+        return hashlib.sha256(token.encode("utf-8")).hexdigest()
 
-    def get_for_client(self, client_id: str, grant_id: str) -> dict[str, object] | None:
-        normalized_client = str(client_id).strip()
+    def list_for_token(self, token: str | None) -> list[dict[str, object]]:
+        if not token:
+            return []
+        digest = self._digest(token)
+        with self._lock:
+            return [
+                dict(item)
+                for item in self._load()
+                if hmac.compare_digest(digest, str(item["token_hash"]))
+            ]
+
+    def get_for_token(self, token: str | None, grant_id: str) -> dict[str, object] | None:
+        if not token:
+            return None
+        digest = self._digest(token)
         normalized_grant = str(grant_id).strip()
         with self._lock:
             for item in self._load():
-                if item["client_id"] == normalized_client and item["grant_id"] == normalized_grant:
+                if (
+                    item["grant_id"] == normalized_grant
+                    and hmac.compare_digest(digest, str(item["token_hash"]))
+                ):
                     return dict(item)
         return None
 
