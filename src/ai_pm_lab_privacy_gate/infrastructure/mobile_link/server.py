@@ -36,12 +36,14 @@ class MobileLinkHttpServer(ThreadingHTTPServer):
         protected_library: ProtectedLibraryRepository,
         library_repository: LibraryRepository,
         library_grants: MobileLibraryGrantRegistry,
+        remote_relay_url: str,
     ) -> None:
         self.privacy_service = service
         self.pairing = pairing
         self.protected_library = protected_library
         self.library_repository = library_repository
         self.library_grants = library_grants
+        self.remote_relay_url = str(remote_relay_url).rstrip("/")
         self.detection_pack_sha256 = str(build_detection_pack()["sha256"])
         super().__init__(server_address, MobileLinkRequestHandler)
 
@@ -74,6 +76,20 @@ class MobileLinkRequestHandler(BaseHTTPRequestHandler):
 
     def _authorized(self) -> bool:
         return self.server.pairing.validate(self._bearer_token())
+
+    def _remote_relay_payload(self) -> dict[str, object] | None:
+        remote = self.server.pairing.ensure_remote_for_token(self._bearer_token())
+        if remote is None:
+            return None
+        return {
+            "version": 1,
+            "url": self.server.remote_relay_url,
+            "room_id": remote["relay_room_id"],
+            "relay_token": remote["relay_token"],
+            "remote_secret": remote["remote_secret"],
+            "cipher": "AES-256-GCM",
+            "content_storage": False,
+        }
 
     def _read_payload(self) -> dict[str, Any]:
         content_type = self.headers.get("Content-Type", "").split(";", 1)[0].strip().lower()
@@ -188,10 +204,9 @@ class MobileLinkRequestHandler(BaseHTTPRequestHandler):
             if not mappings:
                 self._send_json(410, {"error": "restore_mapping_unavailable"})
                 return
-            # The mapping crosses the local network only inside the pinned TLS
-            # channel for this authenticated grant. Mobile immediately persists it
-            # in its separate AES-256-GCM device Vault; it is never stored in the
-            # Mobile Library document itself.
+            # This payload may travel either through pinned local TLS or through
+            # the outer Device Trust AES-256-GCM tunnel. Mobile immediately stores
+            # mappings in its separate device Vault, never in the Library document.
             payload["restore_mappings"] = [
                 {
                     "token": item.token,
@@ -209,6 +224,7 @@ class MobileLinkRequestHandler(BaseHTTPRequestHandler):
         parsed = urlparse(self.path)
         if parsed.path == "/v1/mobile/status":
             current = self.server.pairing.client_for_token(self._bearer_token())
+            remote = self._remote_relay_payload() if current is not None else None
             self._send_json(
                 200,
                 {
@@ -225,6 +241,8 @@ class MobileLinkRequestHandler(BaseHTTPRequestHandler):
                     "selective_library_transfer": True,
                     "full_offline_session": True,
                     "automatic_library_sync": False,
+                    "remote_device_trust": remote is not None,
+                    "remote_relay": remote or {},
                 },
             )
             return
@@ -242,6 +260,19 @@ class MobileLinkRequestHandler(BaseHTTPRequestHandler):
             token = result.get("mobile_token")
             if isinstance(token, str) and token:
                 payload.update({"paired": True, "mobile_token": token, "token_type": "Bearer"})
+                room_id = result.get("relay_room_id")
+                relay_token = result.get("relay_token")
+                remote_secret = result.get("remote_secret")
+                if all(isinstance(value, str) and value for value in (room_id, relay_token, remote_secret)):
+                    payload["remote_relay"] = {
+                        "version": 1,
+                        "url": self.server.remote_relay_url,
+                        "room_id": room_id,
+                        "relay_token": relay_token,
+                        "remote_secret": remote_secret,
+                        "cipher": "AES-256-GCM",
+                        "content_storage": False,
+                    }
             else:
                 payload["paired"] = False
             self._send_json(200, payload)
@@ -393,6 +424,7 @@ def create_mobile_link_server(
     protected_library: ProtectedLibraryRepository,
     library_repository: LibraryRepository,
     library_grants: MobileLibraryGrantRegistry,
+    remote_relay_url: str,
     host: str,
     port: int,
     certificate_path: str | Path,
@@ -405,6 +437,7 @@ def create_mobile_link_server(
         protected_library=protected_library,
         library_repository=library_repository,
         library_grants=library_grants,
+        remote_relay_url=remote_relay_url,
     )
     context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
     context.minimum_version = ssl.TLSVersion.TLSv1_2
