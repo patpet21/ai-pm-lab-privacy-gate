@@ -13,6 +13,7 @@ from ai_pm_lab_privacy_gate.infrastructure.security.secret_store import (
     SecretStore,
     platform_secret_store,
 )
+from ai_pm_lab_privacy_gate.infrastructure.storage.library_repository import LibraryRepository
 from ai_pm_lab_privacy_gate.infrastructure.storage.protected_library import (
     ProtectedLibraryRepository,
 )
@@ -69,10 +70,11 @@ class MobileLinkManager:
         self.secrets = secret_store or platform_secret_store(self.data_dir)
         self.pairing = MobilePairingRegistry(self.secrets)
         self.certificates = MobileLinkCertificateStore(self.secrets)
-        # LibraryRepository keeps the physically isolated protected-only copy
-        # under Data/Protected. Mobile Link must read that exact store rather
-        # than creating a second empty Data/protected_library.db beside it.
         self.protected_library = ProtectedLibraryRepository(self.data_dir / "Protected")
+        # Full offline sessions need restore mappings from the normal local Library.
+        # They are read only after an explicit per-device, per-document grant. The
+        # protected copy still comes from the physically isolated protected store.
+        self.library = LibraryRepository(self.data_dir)
         self.library_grants = MobileLibraryGrantRegistry(self.secrets)
         self._server_factory = server_factory
         self._lock = threading.RLock()
@@ -81,10 +83,6 @@ class MobileLinkManager:
         self._status = MobileLinkStatus()
         self._temp_dir: tempfile.TemporaryDirectory[str] | None = None
 
-        # Pairing is persistent while the local TLS listener is process-scoped.
-        # If this Desktop already has trusted devices, resume the bridge when
-        # Device Trust is initialized so Mobile does not remain "paired" while
-        # the Desktop is silently unreachable after an app restart.
         if self.pairing.list_clients():
             self.start()
 
@@ -93,23 +91,44 @@ class MobileLinkManager:
         with self._lock:
             return self._status
 
-    def grant_protected_copy(self, *, client_id: str, document_id: str) -> dict[str, object]:
-        # A protected-copy grant is useful only while the authenticated local
-        # bridge is reachable. Bring the service online before publishing the
-        # grant so Mobile can refresh immediately after the Desktop action.
-        status = self.start()
-        if status.state != "online" or status.port is None:
-            raise RuntimeError(status.error or "Mobile Link could not start")
-
-        # Verify the item exists in the physically separate protected-only store.
-        self.protected_library.get_mcp_document(document_id)
-        client_record = next(
+    def _client_record(self, client_id: str) -> dict[str, object]:
+        record = next(
             (item for item in self.pairing._load() if item["client_id"] == client_id),
             None,
         )
-        if client_record is None:
+        if record is None:
             raise ValueError("device is not paired")
+        return record
+
+    def grant_protected_copy(self, *, client_id: str, document_id: str) -> dict[str, object]:
+        status = self.start()
+        if status.state != "online" or status.port is None:
+            raise RuntimeError(status.error or "Mobile Link could not start")
+        self.protected_library.get_mcp_document(document_id)
+        client_record = self._client_record(client_id)
         return self.library_grants.grant_protected_copy(
+            client_id=client_id,
+            token_hash=str(client_record["token_hash"]),
+            document_id=document_id,
+        )
+
+    def grant_full_offline_session(
+        self,
+        *,
+        client_id: str,
+        document_id: str,
+    ) -> dict[str, object]:
+        status = self.start()
+        if status.state != "online" or status.port is None:
+            raise RuntimeError(status.error or "Mobile Link could not start")
+        self.protected_library.get_mcp_document(document_id)
+        source = self.library.get(document_id)
+        if source.deleted_at is not None or not source.has_mapping:
+            raise ValueError("this Library item has no Restore mapping")
+        if not self.library.get_mappings(document_id):
+            raise ValueError("this Library item has no usable Restore mapping")
+        client_record = self._client_record(client_id)
+        return self.library_grants.grant_full_offline_session(
             client_id=client_id,
             token_hash=str(client_record["token_hash"]),
             document_id=document_id,
@@ -136,6 +155,7 @@ class MobileLinkManager:
                 service=self.service,
                 pairing=self.pairing,
                 protected_library=self.protected_library,
+                library_repository=self.library,
                 library_grants=self.library_grants,
                 host="0.0.0.0",
                 port=port,
