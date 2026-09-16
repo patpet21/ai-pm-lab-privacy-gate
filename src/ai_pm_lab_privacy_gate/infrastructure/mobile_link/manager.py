@@ -69,7 +69,10 @@ class MobileLinkManager:
         self.secrets = secret_store or platform_secret_store(self.data_dir)
         self.pairing = MobilePairingRegistry(self.secrets)
         self.certificates = MobileLinkCertificateStore(self.secrets)
-        self.protected_library = ProtectedLibraryRepository(self.data_dir)
+        # LibraryRepository keeps the physically isolated protected-only copy
+        # under Data/Protected. Mobile Link must read that exact store rather
+        # than creating a second empty Data/protected_library.db beside it.
+        self.protected_library = ProtectedLibraryRepository(self.data_dir / "Protected")
         self.library_grants = MobileLibraryGrantRegistry(self.secrets)
         self._server_factory = server_factory
         self._lock = threading.RLock()
