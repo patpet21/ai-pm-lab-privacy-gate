@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import io
 import json
 import time
 
 from PySide6.QtCore import QTimer, Qt
+from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import (
     QApplication, QDialog, QHBoxLayout, QLabel, QListWidget,
     QListWidgetItem, QMessageBox, QPlainTextEdit, QPushButton, QVBoxLayout,
@@ -30,7 +32,7 @@ class MobileDevicesDialog(QDialog):
         self.manager = manager
         self._expires_at = 0.0
         self.setWindowTitle("Mobile Devices — PrivacyGate Device Trust")
-        self.resize(740, 720)
+        self.resize(760, 860)
         layout = QVBoxLayout(self)
         info = QLabel(
             "Pair only devices you own or trust, on your private local network. "
@@ -57,8 +59,15 @@ class MobileDevicesDialog(QDialog):
         row.addWidget(stop)
         layout.addLayout(row)
 
+        self.qr = QLabel("Create pairing data to show a temporary QR code.")
+        self.qr.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.qr.setMinimumHeight(230)
+        self.qr.setWordWrap(True)
+        layout.addWidget(self.qr)
+
         self.bundle = QPlainTextEdit()
         self.bundle.setReadOnly(True)
+        self.bundle.setMaximumHeight(180)
         self.bundle.setPlaceholderText(
             "Temporary pairing JSON appears here. On Mobile: Settings → Desktop Connection."
         )
@@ -99,13 +108,17 @@ class MobileDevicesDialog(QDialog):
     def _stop(self) -> None:
         self.manager.stop()
         self.bundle.clear()
+        self.qr.clear()
+        self.qr.setText("Service stopped. Create fresh pairing data before pairing again.")
         self._refresh()
 
     def _pair(self) -> None:
         try:
             bundle = self.manager.create_pairing_bundle()
             self._expires_at = bundle.expires_at
-            self.bundle.setPlainText(json.dumps(bundle.as_dict(), indent=2))
+            payload = bundle.as_dict()
+            self.bundle.setPlainText(json.dumps(payload, indent=2))
+            self._render_qr(json.dumps(payload, separators=(",", ":"), ensure_ascii=True))
         except Exception:
             QMessageBox.warning(
                 self,
@@ -113,6 +126,41 @@ class MobileDevicesDialog(QDialog):
                 "Could not start pairing. Check the service status and whether port 8767 is already in use.",
             )
         self._refresh()
+
+    def _render_qr(self, payload: str) -> None:
+        try:
+            import qrcode
+            from qrcode.constants import ERROR_CORRECT_L
+
+            code = qrcode.QRCode(
+                version=None,
+                error_correction=ERROR_CORRECT_L,
+                box_size=6,
+                border=3,
+            )
+            code.add_data(payload)
+            code.make(fit=True)
+            image = code.make_image(fill_color="black", back_color="white")
+            output = io.BytesIO()
+            image.save(output, format="PNG")
+            pixmap = QPixmap()
+            if not pixmap.loadFromData(output.getvalue(), "PNG"):
+                raise RuntimeError("QR image could not be loaded")
+            self.qr.setPixmap(
+                pixmap.scaled(
+                    290,
+                    290,
+                    Qt.AspectRatioMode.KeepAspectRatio,
+                    Qt.TransformationMode.FastTransformation,
+                )
+            )
+            self.qr.setToolTip("Scan only with PrivacyGate Mobile. This QR expires automatically.")
+        except Exception:
+            self.qr.clear()
+            self.qr.setText(
+                "QR generation is unavailable in this environment. "
+                "The temporary JSON below remains usable for manual pairing."
+            )
 
     def _copy(self) -> None:
         if self.bundle.toPlainText() and time.time() < self._expires_at:
@@ -125,8 +173,10 @@ class MobileDevicesDialog(QDialog):
             self.status.setText(
                 "Service error. Check port availability and local security settings."
             )
-        if time.time() >= self._expires_at:
+        if self._expires_at and time.time() >= self._expires_at:
             self.bundle.clear()
+            self.qr.clear()
+            self.qr.setText("Pairing data expired. Create fresh pairing data to try again.")
 
         selected_pending = self.pending.currentItem()
         selected_request_id = (
