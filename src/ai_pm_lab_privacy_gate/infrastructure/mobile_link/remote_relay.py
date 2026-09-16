@@ -242,7 +242,11 @@ class _DeviceRelayConnector:
 
     def _serve(self, socket: ClientConnection) -> None:
         while not self.stop_event.is_set():
-            message = socket.recv(timeout=45)
+            try:
+                message = socket.recv(timeout=45)
+            except TimeoutError:
+                socket.send(json.dumps({"type": "ping"}, separators=(",", ":")))
+                continue
             if not isinstance(message, str):
                 continue
             try:
