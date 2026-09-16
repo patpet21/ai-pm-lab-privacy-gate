@@ -20,6 +20,10 @@ class MobileLibraryGrantRegistry:
     Pairing never implies Library access. A grant binds one document, one trusted
     client credential, and one transfer mode. The registry stores identifiers and
     audit metadata only; document content and restore mappings never live here.
+
+    There is at most one effective grant per client/document pair. A Full offline
+    session is an upgrade of Protected copy and supersedes it, preventing duplicate
+    entries and accidental downgrade of a restorable mobile copy.
     """
 
     def __init__(self, secret_store: SecretStore) -> None:
@@ -36,7 +40,10 @@ class MobileLibraryGrantRegistry:
             return []
         if not isinstance(parsed, list):
             return []
-        grants: list[dict[str, object]] = []
+
+        # Collapse any grants created by earlier builds. Prefer Full offline
+        # session over Protected copy for the same client/document pair.
+        effective: dict[tuple[str, str], dict[str, object]] = {}
         for item in parsed:
             if not isinstance(item, dict):
                 continue
@@ -50,17 +57,24 @@ class MobileLibraryGrantRegistry:
             mode = str(item.get("mode") or "protected_copy")
             if mode not in _ALLOWED_MODES:
                 continue
-            grants.append(
-                {
-                    "grant_id": grant_id,
-                    "client_id": client_id,
-                    "token_hash": token_hash,
-                    "document_id": document_id,
-                    "mode": mode,
-                    "created_at": float(item.get("created_at") or 0.0),
-                }
-            )
-        return grants[-_MAX_GRANTS:]
+            record: dict[str, object] = {
+                "grant_id": grant_id,
+                "client_id": client_id,
+                "token_hash": token_hash,
+                "document_id": document_id,
+                "mode": mode,
+                "created_at": float(item.get("created_at") or 0.0),
+            }
+            key = (client_id, document_id)
+            current = effective.get(key)
+            if current is not None and current["mode"] == "full_offline_session" and mode != "full_offline_session":
+                continue
+            # Reinsert so the resulting list follows the most recently selected
+            # effective grant rather than the first historical occurrence.
+            effective.pop(key, None)
+            effective[key] = record
+
+        return list(effective.values())[-_MAX_GRANTS:]
 
     def _save(self, grants: list[dict[str, object]]) -> None:
         if not grants:
@@ -87,15 +101,36 @@ class MobileLibraryGrantRegistry:
             raise ValueError("unsupported Library transfer mode")
         if not client_id or not token_hash or not document_id:
             raise ValueError("client_id, token_hash and document_id are required")
+
         timestamp = time.time()
         with self._lock:
+            grants = self._load()
+            current = next(
+                (
+                    item
+                    for item in grants
+                    if item["client_id"] == client_id
+                    and item["document_id"] == document_id
+                ),
+                None,
+            )
+            if (
+                mode == "protected_copy"
+                and current is not None
+                and current.get("mode") == "full_offline_session"
+            ):
+                raise ValueError(
+                    "Full offline session is already authorized for this device"
+                )
+
+            # Re-authorizing replaces the old grant. Full offline therefore
+            # upgrades Protected copy rather than creating a second Mobile item.
             grants = [
                 item
-                for item in self._load()
+                for item in grants
                 if not (
                     item["client_id"] == client_id
                     and item["document_id"] == document_id
-                    and item["mode"] == mode
                 )
             ]
             record: dict[str, object] = {
@@ -161,13 +196,23 @@ class MobileLibraryGrantRegistry:
             return [
                 {
                     key: item[key]
-                    for key in ("grant_id", "client_id", "document_id", "mode", "created_at")
+                    for key in (
+                        "grant_id",
+                        "client_id",
+                        "document_id",
+                        "mode",
+                        "created_at",
+                    )
                 }
                 for item in self._load()
                 if item["client_id"] == normalized
             ]
 
-    def get_for_token(self, token: str | None, grant_id: str) -> dict[str, object] | None:
+    def get_for_token(
+        self,
+        token: str | None,
+        grant_id: str,
+    ) -> dict[str, object] | None:
         if not token:
             return None
         digest = self._digest(token)
