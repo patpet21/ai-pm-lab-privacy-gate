@@ -26,6 +26,98 @@ from PySide6.QtWidgets import (
 from ai_pm_lab_privacy_gate.infrastructure.mobile_link.manager import MobileLinkManager
 
 
+class AdvancedPairingDataDialog(QDialog):
+    def __init__(self, payload: str, parent=None) -> None:
+        super().__init__(parent)
+        self.setWindowTitle("Advanced pairing data")
+        self.resize(700, 470)
+        self.setMinimumSize(620, 400)
+        self.setStyleSheet(
+            """
+            QDialog { background: #f4f7fb; }
+            QFrame#card {
+                background: white;
+                border: 1px solid #dfe6ee;
+                border-radius: 14px;
+            }
+            QLabel#title {
+                color: #111827;
+                font-size: 18px;
+                font-weight: 700;
+            }
+            QLabel#muted { color: #667085; }
+            QPlainTextEdit {
+                color: #233044;
+                background: #f8fafc;
+                border: 1px solid #dce3eb;
+                border-radius: 10px;
+                padding: 10px;
+                font-family: Consolas, "Courier New", monospace;
+                font-size: 11px;
+            }
+            QPushButton {
+                min-height: 38px;
+                border-radius: 9px;
+                padding: 0 14px;
+                font-weight: 600;
+                color: #1f2937;
+                background: #ffffff;
+                border: 1px solid #d7dee7;
+            }
+            QPushButton#primary {
+                color: white;
+                background: #118d95;
+                border-color: #118d95;
+            }
+            """
+        )
+
+        root = QVBoxLayout(self)
+        root.setContentsMargins(18, 18, 18, 18)
+
+        card = QFrame()
+        card.setObjectName("card")
+        layout = QVBoxLayout(card)
+        layout.setContentsMargins(18, 16, 18, 16)
+        layout.setSpacing(10)
+
+        title = QLabel("Temporary pairing JSON")
+        title.setObjectName("title")
+        layout.addWidget(title)
+
+        note = QLabel(
+            "Fallback only. This data contains temporary pairing material. "
+            "Do not share it publicly; use the QR code whenever possible."
+        )
+        note.setObjectName("muted")
+        note.setWordWrap(True)
+        layout.addWidget(note)
+
+        self.text = QPlainTextEdit()
+        self.text.setReadOnly(True)
+        self.text.setPlainText(payload or "Create fresh pairing data first.")
+        layout.addWidget(self.text, 1)
+
+        buttons = QHBoxLayout()
+        buttons.addStretch(1)
+
+        copy = QPushButton("Copy JSON")
+        copy.setObjectName("primary")
+        copy.setEnabled(bool(payload))
+        copy.clicked.connect(self._copy)
+        buttons.addWidget(copy)
+
+        close = QPushButton("Close")
+        close.clicked.connect(self.accept)
+        buttons.addWidget(close)
+        layout.addLayout(buttons)
+
+        root.addWidget(card)
+
+    def _copy(self) -> None:
+        QApplication.clipboard().setText(self.text.toPlainText())
+
+
 def open_mobile_devices(main_window) -> None:
     manager = getattr(main_window, "_mobile_link_manager", None)
     if manager is None:
@@ -39,14 +131,17 @@ def open_mobile_devices(main_window) -> None:
 
 
 class MobileDevicesDialog(QDialog):
+    QR_TARGET_PX = 420
+
     def __init__(self, manager: MobileLinkManager, parent=None) -> None:
         super().__init__(parent)
         self.manager = manager
         self._expires_at = 0.0
+        self._pairing_payload = ""
 
         self.setWindowTitle("Mobile Devices — PrivacyGate Device Trust")
-        self.resize(1080, 790)
-        self.setMinimumSize(980, 720)
+        self.resize(1120, 840)
+        self.setMinimumSize(1000, 760)
         self.setStyleSheet(self._stylesheet())
 
         root = QVBoxLayout(self)
@@ -164,13 +259,9 @@ class MobileDevicesDialog(QDialog):
         QPushButton#dangerButton:hover {
             background: #fff0ee;
         }
-        QPushButton#linkButton {
-            color: #2563eb;
-            background: transparent;
-            border: none;
-            text-align: left;
-            padding: 0 2px;
-            min-height: 28px;
+        QPushButton#secondaryAction {
+            color: #344054;
+            background: #f8fafc;
         }
         QListWidget {
             background: #fbfcfe;
@@ -194,15 +285,6 @@ class MobileDevicesDialog(QDialog):
             background: #d9f2f1;
             border: 1px solid #32a7a9;
         }
-        QPlainTextEdit {
-            color: #233044;
-            background: #f8fafc;
-            border: 1px solid #dce3eb;
-            border-radius: 10px;
-            padding: 8px;
-            font-family: Consolas, "Courier New", monospace;
-            font-size: 11px;
-        }
         """
 
     @staticmethod
@@ -216,13 +298,16 @@ class MobileDevicesDialog(QDialog):
         container = QWidget()
         row = QHBoxLayout(container)
         row.setContentsMargins(0, 0, 0, 0)
-        row.setSpacing(9)
+        row.setSpacing(8)
+
         badge = QLabel(number)
         badge.setObjectName("stepNumber")
         badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
         label = QLabel(text)
         label.setObjectName("mutedText")
         label.setWordWrap(True)
+
         row.addWidget(badge, 0, Qt.AlignmentFlag.AlignTop)
         row.addWidget(label, 1)
         return container
@@ -235,14 +320,17 @@ class MobileDevicesDialog(QDialog):
 
         text = QVBoxLayout()
         text.setSpacing(3)
+
         title = QLabel("Device Trust")
         title.setObjectName("pageTitle")
+
         subtitle = QLabel(
             "Pair trusted mobile devices with this Desktop. Pairing never grants automatic access "
             "to your Library or restore mappings."
         )
         subtitle.setObjectName("pageSubtitle")
         subtitle.setWordWrap(True)
+
         text.addWidget(title)
         text.addWidget(subtitle)
         layout.addLayout(text, 1)
@@ -258,14 +346,14 @@ class MobileDevicesDialog(QDialog):
         card = self._card()
         layout = QVBoxLayout(card)
         layout.setContentsMargins(18, 16, 18, 16)
-        layout.setSpacing(11)
+        layout.setSpacing(10)
 
         title = QLabel("Pair a mobile device")
         title.setObjectName("sectionTitle")
         layout.addWidget(title)
 
         steps = QHBoxLayout()
-        steps.setSpacing(12)
+        steps.setSpacing(10)
         steps.addWidget(self._step("1", "Create fresh pairing data"), 1)
         steps.addWidget(self._step("2", "Scan with PrivacyGate Mobile"), 1)
         steps.addWidget(self._step("3", "Approve the request on Desktop"), 1)
@@ -273,6 +361,7 @@ class MobileDevicesDialog(QDialog):
 
         actions = QHBoxLayout()
         actions.setSpacing(8)
+
         self.create_button = QPushButton("Create pairing QR")
         self.create_button.setObjectName("primaryButton")
         self.create_button.clicked.connect(self._pair)
@@ -290,50 +379,28 @@ class MobileDevicesDialog(QDialog):
         qr_card = self._card("softCard")
         qr_layout = QVBoxLayout(qr_card)
         qr_layout.setContentsMargins(14, 14, 14, 12)
-        qr_layout.setSpacing(6)
+        qr_layout.setSpacing(8)
 
         self.qr = QLabel("Create pairing data to generate a temporary QR code.")
         self.qr.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.qr.setWordWrap(True)
-        self.qr.setMinimumHeight(400)
-        self.qr.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
-        qr_layout.addWidget(self.qr, 1)
+        self.qr.setFixedHeight(440)
+        self.qr.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        qr_layout.addWidget(self.qr)
 
-        hint = QLabel("On Mobile: Settings → Desktop Connection → Scan pairing QR")
-        hint.setObjectName("mutedText")
-        hint.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        qr_layout.addWidget(hint)
+        self.qr_hint = QLabel(
+            "On Mobile: Settings → Desktop Connection → Scan pairing QR"
+        )
+        self.qr_hint.setObjectName("mutedText")
+        self.qr_hint.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.qr_hint.setWordWrap(True)
+        qr_layout.addWidget(self.qr_hint)
         layout.addWidget(qr_card, 1)
 
-        self.advanced_button = QPushButton("Show advanced pairing data")
-        self.advanced_button.setObjectName("linkButton")
-        self.advanced_button.setCheckable(True)
-        self.advanced_button.toggled.connect(self._toggle_advanced)
-        layout.addWidget(self.advanced_button)
-
-        self.advanced_panel = self._card("softCard")
-        advanced = QVBoxLayout(self.advanced_panel)
-        advanced.setContentsMargins(10, 10, 10, 10)
-        advanced.setSpacing(7)
-
-        advanced_note = QLabel(
-            "Fallback only. This JSON contains temporary pairing material and should not be shared."
-        )
-        advanced_note.setObjectName("mutedText")
-        advanced_note.setWordWrap(True)
-        advanced.addWidget(advanced_note)
-
-        self.bundle = QPlainTextEdit()
-        self.bundle.setReadOnly(True)
-        self.bundle.setMaximumHeight(105)
-        self.bundle.setPlaceholderText("Pairing JSON will appear here.")
-        advanced.addWidget(self.bundle)
-
-        copy = QPushButton("Copy temporary JSON")
-        copy.clicked.connect(self._copy)
-        advanced.addWidget(copy)
-        self.advanced_panel.setVisible(False)
-        layout.addWidget(self.advanced_panel)
+        advanced = QPushButton("Advanced pairing data…")
+        advanced.setObjectName("secondaryAction")
+        advanced.clicked.connect(self._show_advanced)
+        layout.addWidget(advanced)
 
         return card
 
@@ -348,6 +415,7 @@ class MobileDevicesDialog(QDialog):
         title.setObjectName("sectionTitle")
         title_row.addWidget(title)
         title_row.addStretch(1)
+
         self.pending_count = QLabel("0 pending")
         self.pending_count.setObjectName("mutedText")
         title_row.addWidget(self.pending_count)
@@ -380,9 +448,11 @@ class MobileDevicesDialog(QDialog):
         selection_title.setObjectName("selectionTitle")
         selected.addWidget(selection_title, 0, 0, 1, 2)
         selected.addWidget(QLabel("Name"), 1, 0)
+
         self.selected_name = QLabel("—")
         self.selected_name.setObjectName("selectionValue")
         selected.addWidget(self.selected_name, 1, 1)
+
         selected.addWidget(QLabel("Device ID"), 2, 0)
         self.selected_id = QLabel("—")
         self.selected_id.setObjectName("selectionValue")
@@ -392,6 +462,7 @@ class MobileDevicesDialog(QDialog):
 
         buttons = QHBoxLayout()
         buttons.setSpacing(8)
+
         self.approve_button = QPushButton("Approve device")
         self.approve_button.setObjectName("primaryButton")
         self.approve_button.setEnabled(False)
@@ -418,6 +489,7 @@ class MobileDevicesDialog(QDialog):
         title.setObjectName("sectionTitle")
         title_row.addWidget(title)
         title_row.addStretch(1)
+
         self.device_count = QLabel("0 paired")
         self.device_count.setObjectName("mutedText")
         title_row.addWidget(self.device_count)
@@ -436,21 +508,19 @@ class MobileDevicesDialog(QDialog):
         layout.addWidget(self.devices_empty)
 
         self.devices = QListWidget()
-        self.devices.setMaximumHeight(110)
+        self.devices.setMaximumHeight(118)
         self.devices.currentItemChanged.connect(self._paired_selection_changed)
         layout.addWidget(self.devices)
 
         self.revoke_button = QPushButton("Revoke selected device")
+        self.revoke_button.setObjectName("dangerButton")
         self.revoke_button.setEnabled(False)
         self.revoke_button.clicked.connect(self._revoke)
         layout.addWidget(self.revoke_button)
         return card
 
-    def _toggle_advanced(self, checked: bool) -> None:
-        self.advanced_panel.setVisible(checked)
-        self.advanced_button.setText(
-            "Hide advanced pairing data" if checked else "Show advanced pairing data"
-        )
+    def _show_advanced(self) -> None:
+        AdvancedPairingDataDialog(self._pairing_payload, self).exec()
 
     def _start(self) -> None:
         self.manager.start()
@@ -458,7 +528,8 @@ class MobileDevicesDialog(QDialog):
 
     def _stop(self) -> None:
         self.manager.stop()
-        self.bundle.clear()
+        self._expires_at = 0.0
+        self._pairing_payload = ""
         self.qr.clear()
         self.qr.setText("Service stopped. Create fresh pairing data before pairing again.")
         self._refresh()
@@ -468,8 +539,13 @@ class MobileDevicesDialog(QDialog):
             bundle = self.manager.create_pairing_bundle()
             self._expires_at = bundle.expires_at
             payload = bundle.as_dict()
-            self.bundle.setPlainText(json.dumps(payload, indent=2))
-            self._render_qr(json.dumps(payload, separators=(",", ":"), ensure_ascii=True))
+            self._pairing_payload = json.dumps(payload, indent=2)
+            compact_payload = json.dumps(
+                payload,
+                separators=(",", ":"),
+                ensure_ascii=True,
+            )
+            self._render_qr(compact_payload)
         except Exception:
             QMessageBox.warning(
                 self,
@@ -483,47 +559,49 @@ class MobileDevicesDialog(QDialog):
             import qrcode
             from qrcode.constants import ERROR_CORRECT_L
 
+            # First fit the QR using a 1-pixel module, then choose the largest
+            # whole-number module size that fits the visual target. This keeps
+            # module edges sharp without ever clipping the QR inside its card.
             code = qrcode.QRCode(
                 version=None,
                 error_correction=ERROR_CORRECT_L,
-                box_size=4,
+                box_size=1,
                 border=4,
             )
             code.add_data(payload)
             code.make(fit=True)
+
+            total_modules = code.modules_count + (code.border * 2)
+            box_size = max(2, min(4, self.QR_TARGET_PX // total_modules))
+            code.box_size = box_size
+
             image = code.make_image(fill_color="black", back_color="white")
             output = io.BytesIO()
             image.save(output, format="PNG")
+
             pixmap = QPixmap()
             if not pixmap.loadFromData(output.getvalue(), "PNG"):
                 raise RuntimeError("QR image could not be loaded")
 
-            # Keep the dense QR on its original integer pixel grid so phone
-            # cameras do not lose module edges through resampling.
             self.qr.setPixmap(pixmap)
-            self.qr.setMinimumHeight(max(400, pixmap.height() + 8))
-            self.qr.setToolTip(
-                "Scan only with PrivacyGate Mobile. Keep the full white border visible."
-            )
+            self.qr.setToolTip("")
         except Exception:
             self.qr.clear()
             self.qr.setText(
-                "QR generation is unavailable. Open advanced pairing data to use the JSON fallback."
+                "QR generation is unavailable. Use Advanced pairing data for the JSON fallback."
             )
-
-    def _copy(self) -> None:
-        if self.bundle.toPlainText() and time.time() < self._expires_at:
-            QApplication.clipboard().setText(self.bundle.toPlainText())
 
     def _pending_selection_changed(self, current, _previous=None) -> None:
         has_selection = current is not None
         self.approve_button.setEnabled(has_selection)
         self.deny_button.setEnabled(has_selection)
         self.selection_card.setVisible(has_selection)
+
         if current is None:
             self.selected_name.setText("—")
             self.selected_id.setText("—")
             return
+
         self.selected_name.setText(
             str(current.data(Qt.ItemDataRole.UserRole + 1) or "Mobile device")
         )
@@ -556,7 +634,8 @@ class MobileDevicesDialog(QDialog):
             )
 
         if self._expires_at and time.time() >= self._expires_at:
-            self.bundle.clear()
+            self._expires_at = 0.0
+            self._pairing_payload = ""
             self.qr.clear()
             self.qr.setText("Pairing data expired. Create a fresh QR to pair a device.")
 
@@ -571,6 +650,7 @@ class MobileDevicesDialog(QDialog):
         self.pending.blockSignals(True)
         self.pending.clear()
         restored_pending = None
+
         for record in pending_records:
             name = str(record["client_name"])
             client_id = str(record["client_id"])
@@ -579,7 +659,6 @@ class MobileDevicesDialog(QDialog):
             item.setData(Qt.ItemDataRole.UserRole, request_id)
             item.setData(Qt.ItemDataRole.UserRole + 1, name)
             item.setData(Qt.ItemDataRole.UserRole + 2, client_id)
-            item.setToolTip(f"Pairing request: {request_id}")
             self.pending.addItem(item)
             if request_id == selected_request_id:
                 restored_pending = item
@@ -601,16 +680,19 @@ class MobileDevicesDialog(QDialog):
             if selected_device
             else None
         )
+
         device_records = self.manager.pairing.list_clients()
         self.devices.blockSignals(True)
         self.devices.clear()
         restored_device = None
+
         for record in device_records:
             item = QListWidgetItem(f"{record['client_name']}\n{record['client_id']}")
             item.setData(Qt.ItemDataRole.UserRole, record["client_id"])
             self.devices.addItem(item)
             if record["client_id"] == selected_id:
                 restored_device = item
+
         if restored_device is not None:
             self.devices.setCurrentItem(restored_device)
         self.devices.blockSignals(False)
@@ -624,9 +706,11 @@ class MobileDevicesDialog(QDialog):
         item = self.pending.currentItem()
         if item is None:
             return
+
         request_id = str(item.data(Qt.ItemDataRole.UserRole))
         name = str(item.data(Qt.ItemDataRole.UserRole + 1))
         client_id = str(item.data(Qt.ItemDataRole.UserRole + 2))
+
         answer = QMessageBox.question(
             self,
             "Approve device",
@@ -637,6 +721,7 @@ class MobileDevicesDialog(QDialog):
         )
         if answer != QMessageBox.StandardButton.Yes:
             return
+
         if not self.manager.pairing.approve_request(request_id):
             QMessageBox.warning(
                 self,
@@ -649,6 +734,7 @@ class MobileDevicesDialog(QDialog):
         item = self.pending.currentItem()
         if item is None:
             return
+
         request_id = str(item.data(Qt.ItemDataRole.UserRole))
         if not self.manager.pairing.deny_request(request_id):
             QMessageBox.warning(
@@ -662,11 +748,13 @@ class MobileDevicesDialog(QDialog):
         item = self.devices.currentItem()
         if item is None:
             return
+
         if QMessageBox.question(
             self,
             "Revoke device",
             "Block future requests from this device? Previously downloaded data is not deleted.",
         ) != QMessageBox.StandardButton.Yes:
             return
+
         self.manager.pairing.revoke_client(item.data(Qt.ItemDataRole.UserRole))
         self._refresh()
