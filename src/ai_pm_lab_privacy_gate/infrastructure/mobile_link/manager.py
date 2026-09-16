@@ -81,6 +81,13 @@ class MobileLinkManager:
         self._status = MobileLinkStatus()
         self._temp_dir: tempfile.TemporaryDirectory[str] | None = None
 
+        # Pairing is persistent while the local TLS listener is process-scoped.
+        # If this Desktop already has trusted devices, resume the bridge when
+        # Device Trust is initialized so Mobile does not remain "paired" while
+        # the Desktop is silently unreachable after an app restart.
+        if self.pairing.list_clients():
+            self.start()
+
     @property
     def status(self) -> MobileLinkStatus:
         with self._lock:
