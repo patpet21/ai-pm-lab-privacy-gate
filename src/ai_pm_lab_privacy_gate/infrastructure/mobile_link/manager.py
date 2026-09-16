@@ -167,26 +167,36 @@ class MobileLinkManager:
 
     @staticmethod
     def _local_ipv4_addresses() -> tuple[str, ...]:
+        """Return the IPv4 address Windows would use for normal outbound traffic.
+
+        Hostname enumeration also exposes virtual adapters such as Mobile Hotspot/
+        ICS interfaces (commonly 192.168.137.1 on Windows). Those addresses are not
+        useful to a phone on the user's normal Wi-Fi and can hide the real connection
+        error. Prefer the OS-selected default-route address and use hostname discovery
+        only as a fallback when route selection is unavailable.
+        """
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
+                sock.connect(("192.0.2.1", 9))
+                address = sock.getsockname()[0]
+                if address and not address.startswith("127.") and address != "0.0.0.0":
+                    return (address,)
+        except OSError:
+            pass
+
         candidates: set[str] = set()
         try:
             _, _, addresses = socket.gethostbyname_ex(socket.gethostname())
             candidates.update(
                 address
                 for address in addresses
-                if address and not address.startswith("127.")
+                if address
+                and not address.startswith("127.")
+                and not address.startswith("169.254.")
+                and address != "0.0.0.0"
             )
         except OSError:
             pass
-        try:
-            with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
-                sock.connect(("192.0.2.1", 9))
-                address = sock.getsockname()[0]
-                if address and not address.startswith("127."):
-                    candidates.add(address)
-        except OSError:
-            pass
-        if not candidates:
-            candidates.add("127.0.0.1")
         return tuple(sorted(candidates))
 
     def stop(self) -> None:
