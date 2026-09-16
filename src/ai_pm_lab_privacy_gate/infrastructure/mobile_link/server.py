@@ -12,20 +12,33 @@ from ai_pm_lab_privacy_gate.application.privacy_service import PrivacyGateServic
 from ai_pm_lab_privacy_gate.domain.detection_pack import build_detection_pack
 from ai_pm_lab_privacy_gate.domain.profiles import PrivacyProfile, entities_for_scope, get_profile, get_scope
 from ai_pm_lab_privacy_gate.infrastructure.pii.languages import normalize_document_language
+from ai_pm_lab_privacy_gate.infrastructure.storage.protected_library import ProtectedLibraryRepository
 
+from .library_grants import MobileLibraryGrantRegistry
 from .pairing import MobilePairingRegistry
 
 MAX_REQUEST_BYTES = 1_000_000
 MAX_TEXT_CHARS = 250_000
 _CLIENT_ID = re.compile(r"^[A-Za-z0-9._-]{8,128}$")
+_GRANT_PATH = re.compile(r"^/v1/mobile/library/grants/([A-Za-z0-9_-]{12,128})$")
 
 
 class MobileLinkHttpServer(ThreadingHTTPServer):
     daemon_threads = True
 
-    def __init__(self, server_address: tuple[str, int], *, service: PrivacyGateService, pairing: MobilePairingRegistry) -> None:
+    def __init__(
+        self,
+        server_address: tuple[str, int],
+        *,
+        service: PrivacyGateService,
+        pairing: MobilePairingRegistry,
+        protected_library: ProtectedLibraryRepository,
+        library_grants: MobileLibraryGrantRegistry,
+    ) -> None:
         self.privacy_service = service
         self.pairing = pairing
+        self.protected_library = protected_library
+        self.library_grants = library_grants
         self.detection_pack_sha256 = str(build_detection_pack()["sha256"])
         super().__init__(server_address, MobileLinkRequestHandler)
 
@@ -77,6 +90,56 @@ class MobileLinkRequestHandler(BaseHTTPRequestHandler):
             raise ValueError("json object required")
         return payload
 
+    @staticmethod
+    def _document_payload(document, *, grant_id: str, include_content: bool) -> dict[str, object]:
+        payload: dict[str, object] = {
+            "grant_id": grant_id,
+            "mode": "protected_copy",
+            "document_id": document.document_id,
+            "title": document.title,
+            "profile_key": document.profile_key,
+            "findings_count": document.findings_count,
+            "entity_types": list(document.entity_types),
+            "labels": list(document.labels),
+            "updated_at": document.updated_at.isoformat(),
+            "favorite": document.favorite,
+            "source_kind": document.source_kind,
+            "has_mapping": False,
+        }
+        if include_content:
+            payload["protected_text"] = document.protected_text
+        return payload
+
+    def _library_grants(self) -> None:
+        if not self._authorized():
+            self._send_json(401, {"error": "mobile_pairing_required"})
+            return
+        grants = []
+        for grant in self.server.library_grants.list_for_token(self._bearer_token()):
+            try:
+                document = self.server.protected_library.get_mcp_document(str(grant["document_id"]))
+            except KeyError:
+                continue
+            grants.append(
+                self._document_payload(document, grant_id=str(grant["grant_id"]), include_content=False)
+            )
+        self._send_json(200, {"grants": grants, "automatic_sync": False})
+
+    def _library_grant(self, grant_id: str) -> None:
+        if not self._authorized():
+            self._send_json(401, {"error": "mobile_pairing_required"})
+            return
+        grant = self.server.library_grants.get_for_token(self._bearer_token(), grant_id)
+        if grant is None:
+            self._send_json(404, {"error": "library_grant_not_found"})
+            return
+        try:
+            document = self.server.protected_library.get_mcp_document(str(grant["document_id"]))
+        except KeyError:
+            self._send_json(410, {"error": "library_item_unavailable"})
+            return
+        self._send_json(200, self._document_payload(document, grant_id=grant_id, include_content=True))
+
     def do_GET(self) -> None:  # noqa: N802
         if self._reject_browser_transport():
             return
@@ -93,6 +156,7 @@ class MobileLinkRequestHandler(BaseHTTPRequestHandler):
                     "detection_pack_sha256": self.server.detection_pack_sha256,
                     "returns_original_values": False,
                     "returns_restore_mappings": False,
+                    "selective_library_transfer": True,
                 },
             )
             return
@@ -109,16 +173,17 @@ class MobileLinkRequestHandler(BaseHTTPRequestHandler):
             }
             token = result.get("mobile_token")
             if isinstance(token, str) and token:
-                payload.update(
-                    {
-                        "paired": True,
-                        "mobile_token": token,
-                        "token_type": "Bearer",
-                    }
-                )
+                payload.update({"paired": True, "mobile_token": token, "token_type": "Bearer"})
             else:
                 payload["paired"] = False
             self._send_json(200, payload)
+            return
+        if parsed.path == "/v1/mobile/library/grants":
+            self._library_grants()
+            return
+        match = _GRANT_PATH.fullmatch(parsed.path)
+        if match:
+            self._library_grant(match.group(1))
             return
         self._send_json(404, {"error": "not_found"})
 
@@ -153,9 +218,7 @@ class MobileLinkRequestHandler(BaseHTTPRequestHandler):
         if client_name is not None and not isinstance(client_name, str):
             raise ValueError("client_name must be a string")
         request_id = self.server.pairing.request_pairing(
-            client_id,
-            code.strip(),
-            client_name=str(client_name or "Mobile device"),
+            client_id, code.strip(), client_name=str(client_name or "Mobile device")
         )
         return {
             "paired": False,
@@ -171,7 +234,6 @@ class MobileLinkRequestHandler(BaseHTTPRequestHandler):
             raise ValueError("text must be a non-empty string")
         if len(text) > MAX_TEXT_CHARS:
             raise ValueError(f"text exceeds the {MAX_TEXT_CHARS} character limit")
-
         profile_key = payload.get("profile_key")
         scope_key = payload.get("scope_key")
         language = payload.get("language", "en")
@@ -182,7 +244,6 @@ class MobileLinkRequestHandler(BaseHTTPRequestHandler):
             raise ValueError("scope_key is required")
         if not isinstance(threshold, (int, float)) or not 0.0 <= float(threshold) <= 1.0:
             raise ValueError("confidence_threshold must be between 0 and 1")
-
         base_profile = get_profile(profile_key)
         get_scope(scope_key)
         selected_profile = PrivacyProfile(
@@ -214,12 +275,20 @@ def create_mobile_link_server(
     *,
     service: PrivacyGateService,
     pairing: MobilePairingRegistry,
+    protected_library: ProtectedLibraryRepository,
+    library_grants: MobileLibraryGrantRegistry,
     host: str,
     port: int,
     certificate_path: str | Path,
     private_key_path: str | Path,
 ) -> MobileLinkHttpServer:
-    server = MobileLinkHttpServer((host, int(port)), service=service, pairing=pairing)
+    server = MobileLinkHttpServer(
+        (host, int(port)),
+        service=service,
+        pairing=pairing,
+        protected_library=protected_library,
+        library_grants=library_grants,
+    )
     context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
     context.minimum_version = ssl.TLSVersion.TLSv1_2
     context.load_cert_chain(certfile=str(certificate_path), keyfile=str(private_key_path))
