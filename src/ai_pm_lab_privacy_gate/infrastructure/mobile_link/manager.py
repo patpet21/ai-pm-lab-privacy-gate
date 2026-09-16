@@ -87,6 +87,13 @@ class MobileLinkManager:
             return self._status
 
     def grant_protected_copy(self, *, client_id: str, document_id: str) -> dict[str, object]:
+        # A protected-copy grant is useful only while the authenticated local
+        # bridge is reachable. Bring the service online before publishing the
+        # grant so Mobile can refresh immediately after the Desktop action.
+        status = self.start()
+        if status.state != "online" or status.port is None:
+            raise RuntimeError(status.error or "Mobile Link could not start")
+
         # Verify the item exists in the physically separate protected-only store.
         self.protected_library.get_mcp_document(document_id)
         client_record = next(
