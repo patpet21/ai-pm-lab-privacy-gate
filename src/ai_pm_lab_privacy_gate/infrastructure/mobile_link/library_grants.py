@@ -118,6 +118,20 @@ class MobileLibraryGrantRegistry:
                 if hmac.compare_digest(digest, str(item["token_hash"]))
             ]
 
+    def list_for_client(self, client_id: str) -> list[dict[str, object]]:
+        normalized = str(client_id).strip()
+        if not normalized:
+            return []
+        with self._lock:
+            return [
+                {
+                    key: item[key]
+                    for key in ("grant_id", "client_id", "document_id", "mode", "created_at")
+                }
+                for item in self._load()
+                if item["client_id"] == normalized
+            ]
+
     def get_for_token(self, token: str | None, grant_id: str) -> dict[str, object] | None:
         if not token:
             return None
