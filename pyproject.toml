@@ -26,6 +26,8 @@ dependencies = [
   "tokenizers>=0.23.1,<0.24",
   "mcp>=2,<3",
   "PyJWT[crypto]>=2.10,<3",
+  "cryptography>=45,<47",
+  "websockets>=15,<16",
   "httpx>=0.28,<1",
   "truststore>=0.10,<1",
   "winrt-runtime>=3.2.1,<4; sys_platform == 'win32'",
