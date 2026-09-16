@@ -12,6 +12,7 @@ from PySide6.QtWidgets import (
     QFrame,
     QGridLayout,
     QHBoxLayout,
+    QInputDialog,
     QLabel,
     QListWidget,
     QListWidgetItem,
@@ -211,8 +212,8 @@ class MobileDevicesDialog(QDialog):
         title = QLabel("Device Trust")
         title.setObjectName("pageTitle")
         subtitle = QLabel(
-            "Pair trusted mobile devices with this Desktop. Pairing never grants automatic access "
-            "to your Library or restore mappings."
+            "Pair trusted mobile devices with this Desktop. Rename or remove them any time. "
+            "Pairing never grants automatic access to your Library or restore mappings."
         )
         subtitle.setObjectName("pageSubtitle")
         subtitle.setWordWrap(True)
@@ -359,7 +360,7 @@ class MobileDevicesDialog(QDialog):
         layout.addLayout(title_row)
 
         helper = QLabel(
-            "Pairing authenticates a device only. Library access remains item-by-item and requires an explicit Protected copy grant."
+            "Select a device once, then rename, remove or make protected copies available to that device."
         )
         helper.setObjectName("mutedText")
         helper.setWordWrap(True)
@@ -370,7 +371,7 @@ class MobileDevicesDialog(QDialog):
         self.devices_empty.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(self.devices_empty)
         self.devices = QListWidget()
-        self.devices.setMaximumHeight(118)
+        self.devices.setMaximumHeight(150)
         self.devices.currentItemChanged.connect(self._paired_selection_changed)
         layout.addWidget(self.devices)
 
@@ -380,18 +381,76 @@ class MobileDevicesDialog(QDialog):
         self.share_button.clicked.connect(self._share_protected_copy)
         layout.addWidget(self.share_button)
 
-        self.revoke_button = QPushButton("Revoke selected device")
-        self.revoke_button.setObjectName("dangerButton")
-        self.revoke_button.setEnabled(False)
-        self.revoke_button.clicked.connect(self._revoke)
-        layout.addWidget(self.revoke_button)
+        manage = QHBoxLayout()
+        manage.setSpacing(8)
+        self.rename_button = QPushButton("Rename device…")
+        self.rename_button.setObjectName("secondaryAction")
+        self.rename_button.setEnabled(False)
+        self.rename_button.clicked.connect(self._rename_selected_device)
+        manage.addWidget(self.rename_button, 1)
+
+        self.remove_button = QPushButton("Remove device")
+        self.remove_button.setObjectName("dangerButton")
+        self.remove_button.setEnabled(False)
+        self.remove_button.clicked.connect(self._remove_selected_device)
+        manage.addWidget(self.remove_button, 1)
+        layout.addLayout(manage)
         return card
 
     def _show_advanced(self) -> None:
         AdvancedPairingDataDialog(self._pairing_payload, self).exec()
 
     def _share_protected_copy(self) -> None:
-        ProtectedCopyDialog(self.manager, self).exec()
+        current = self.devices.currentItem()
+        client_id = str(current.data(Qt.ItemDataRole.UserRole)) if current is not None else None
+        ProtectedCopyDialog(
+            self.manager,
+            self,
+            preselected_client_id=client_id,
+        ).exec()
+        self._refresh()
+
+    def _rename_selected_device(self) -> None:
+        item = self.devices.currentItem()
+        if item is None:
+            return
+        client_id = str(item.data(Qt.ItemDataRole.UserRole))
+        current_name = str(item.data(Qt.ItemDataRole.UserRole + 1) or "Mobile device")
+        new_name, accepted = QInputDialog.getText(
+            self,
+            "Rename trusted device",
+            "Device name:",
+            text=current_name,
+        )
+        if not accepted:
+            return
+        try:
+            changed = self.manager.pairing.rename_client(client_id, new_name)
+        except ValueError as error:
+            QMessageBox.warning(self, "Invalid device name", str(error))
+            return
+        if not changed:
+            QMessageBox.warning(self, "Device unavailable", "This trusted device no longer exists.")
+            return
+        self._refresh()
+
+    def _remove_selected_device(self) -> None:
+        item = self.devices.currentItem()
+        if item is None:
+            return
+        client_id = str(item.data(Qt.ItemDataRole.UserRole))
+        client_name = str(item.data(Qt.ItemDataRole.UserRole + 1) or "Mobile device")
+        if QMessageBox.question(
+            self,
+            "Remove trusted device",
+            f"Remove {client_name} from this Desktop?\n\n"
+            "Its credential will be revoked and its Protected-copy grants will be removed. "
+            "Copies already saved on the mobile device are not erased.",
+        ) != QMessageBox.StandardButton.Yes:
+            return
+        if self.manager.pairing.revoke_client(client_id):
+            self.manager.library_grants.revoke_client(client_id)
+        self._refresh()
 
     def _start(self) -> None:
         self.manager.start()
@@ -456,7 +515,8 @@ class MobileDevicesDialog(QDialog):
 
     def _paired_selection_changed(self, current, _previous=None) -> None:
         enabled = current is not None
-        self.revoke_button.setEnabled(enabled)
+        self.rename_button.setEnabled(enabled)
+        self.remove_button.setEnabled(enabled)
         self.share_button.setEnabled(enabled)
 
     def _refresh(self) -> None:
@@ -520,10 +580,13 @@ class MobileDevicesDialog(QDialog):
         self.devices.clear()
         restored_device = None
         for record in device_records:
-            item = QListWidgetItem(f"{record['client_name']}\n{record['client_id']}")
-            item.setData(Qt.ItemDataRole.UserRole, record["client_id"])
+            name = str(record["client_name"])
+            client_id = str(record["client_id"])
+            item = QListWidgetItem(f"{name}\n{client_id}")
+            item.setData(Qt.ItemDataRole.UserRole, client_id)
+            item.setData(Qt.ItemDataRole.UserRole + 1, name)
             self.devices.addItem(item)
-            if record["client_id"] == selected_id:
+            if client_id == selected_id:
                 restored_device = item
         if restored_device is not None:
             self.devices.setCurrentItem(restored_device)
@@ -562,19 +625,4 @@ class MobileDevicesDialog(QDialog):
             return
         if not self.manager.pairing.deny_request(str(item.data(Qt.ItemDataRole.UserRole))):
             QMessageBox.warning(self, "Request unavailable", "This pairing request expired or is no longer pending.")
-        self._refresh()
-
-    def _revoke(self) -> None:
-        item = self.devices.currentItem()
-        if item is None:
-            return
-        if QMessageBox.question(
-            self,
-            "Revoke device",
-            "Block future requests from this device? Previously downloaded data is not deleted.",
-        ) != QMessageBox.StandardButton.Yes:
-            return
-        client_id = str(item.data(Qt.ItemDataRole.UserRole))
-        if self.manager.pairing.revoke_client(client_id):
-            self.manager.library_grants.revoke_client(client_id)
         self._refresh()
