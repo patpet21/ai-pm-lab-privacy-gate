@@ -32,7 +32,7 @@ class MobileDevicesDialog(QDialog):
         self.manager = manager
         self._expires_at = 0.0
         self.setWindowTitle("Mobile Devices — PrivacyGate Device Trust")
-        self.resize(760, 860)
+        self.resize(820, 980)
         layout = QVBoxLayout(self)
         info = QLabel(
             "Pair only devices you own or trust, on your private local network. "
@@ -61,13 +61,13 @@ class MobileDevicesDialog(QDialog):
 
         self.qr = QLabel("Create pairing data to show a temporary QR code.")
         self.qr.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.qr.setMinimumHeight(230)
+        self.qr.setMinimumHeight(560)
         self.qr.setWordWrap(True)
         layout.addWidget(self.qr)
 
         self.bundle = QPlainTextEdit()
         self.bundle.setReadOnly(True)
-        self.bundle.setMaximumHeight(180)
+        self.bundle.setMaximumHeight(140)
         self.bundle.setPlaceholderText(
             "Temporary pairing JSON appears here. On Mobile: Settings → Desktop Connection."
         )
@@ -132,11 +132,15 @@ class MobileDevicesDialog(QDialog):
             import qrcode
             from qrcode.constants import ERROR_CORRECT_L
 
+            # Keep every QR module on an exact integer pixel grid. The pairing
+            # bundle contains the pinned TLS certificate and is intentionally
+            # dense; shrinking a large QR to 290 px made it difficult for phone
+            # cameras to resolve the modules from a monitor.
             code = qrcode.QRCode(
                 version=None,
                 error_correction=ERROR_CORRECT_L,
-                box_size=6,
-                border=3,
+                box_size=4,
+                border=4,
             )
             code.add_data(payload)
             code.make(fit=True)
@@ -146,15 +150,13 @@ class MobileDevicesDialog(QDialog):
             pixmap = QPixmap()
             if not pixmap.loadFromData(output.getvalue(), "PNG"):
                 raise RuntimeError("QR image could not be loaded")
-            self.qr.setPixmap(
-                pixmap.scaled(
-                    290,
-                    290,
-                    Qt.AspectRatioMode.KeepAspectRatio,
-                    Qt.TransformationMode.FastTransformation,
-                )
+            # Do not rescale: non-integer downscaling blurs dense QR modules.
+            self.qr.setPixmap(pixmap)
+            self.qr.setMinimumHeight(max(560, pixmap.height() + 12))
+            self.qr.setToolTip(
+                "Scan only with PrivacyGate Mobile. This QR expires automatically. "
+                "Keep the whole white border visible in the phone camera."
             )
-            self.qr.setToolTip("Scan only with PrivacyGate Mobile. This QR expires automatically.")
         except Exception:
             self.qr.clear()
             self.qr.setText(
