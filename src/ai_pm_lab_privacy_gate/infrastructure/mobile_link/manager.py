@@ -73,9 +73,6 @@ class MobileLinkManager:
         self.pairing = MobilePairingRegistry(self.secrets)
         self.certificates = MobileLinkCertificateStore(self.secrets)
         self.protected_library = ProtectedLibraryRepository(self.data_dir / "Protected")
-        # Full offline sessions need restore mappings from the normal local Library.
-        # They are read only after an explicit per-device, per-document grant. The
-        # protected copy still comes from the physically isolated protected store.
         self.library = LibraryRepository(self.data_dir)
         self.library_grants = MobileLibraryGrantRegistry(self.secrets)
         self.remote_relay_url = str(remote_relay_url).rstrip("/")
@@ -96,7 +93,10 @@ class MobileLinkManager:
     @property
     def status(self) -> MobileLinkStatus:
         with self._lock:
-            return self._status
+            snapshot = self._status
+        if snapshot.state == "online" and snapshot.port is not None:
+            self.remote_relays.sync(snapshot.port)
+        return snapshot
 
     @property
     def remote_status(self) -> RemoteRelaySnapshot:
@@ -166,8 +166,9 @@ class MobileLinkManager:
             raise ValueError("Mobile Link port must be between 1024 and 65535")
         with self._lock:
             if self._status.state == "online" and self._status.port == port:
+                snapshot = self._status
                 self.remote_relays.sync(port)
-                return self._status
+                return snapshot
         self.stop()
         temporary: tempfile.TemporaryDirectory[str] | None = None
         try:
@@ -227,7 +228,8 @@ class MobileLinkManager:
             self._status = MobileLinkStatus(state="online", port=int(server.server_port))
         thread.start()
         self.remote_relays.sync(int(server.server_port))
-        return self.status
+        with self._lock:
+            return self._status
 
     def create_pairing_bundle(self, port: int = DEFAULT_MOBILE_LINK_PORT) -> MobilePairingBundle:
         status = self.start(port)
