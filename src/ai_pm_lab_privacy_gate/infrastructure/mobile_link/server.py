@@ -12,6 +12,7 @@ from ai_pm_lab_privacy_gate.application.privacy_service import PrivacyGateServic
 from ai_pm_lab_privacy_gate.domain.detection_pack import build_detection_pack
 from ai_pm_lab_privacy_gate.domain.profiles import PrivacyProfile, entities_for_scope, get_profile, get_scope
 from ai_pm_lab_privacy_gate.infrastructure.pii.languages import normalize_document_language
+from ai_pm_lab_privacy_gate.infrastructure.storage.library_repository import LibraryRepository
 from ai_pm_lab_privacy_gate.infrastructure.storage.protected_library import ProtectedLibraryRepository
 
 from .library_grants import MobileLibraryGrantRegistry
@@ -33,11 +34,13 @@ class MobileLinkHttpServer(ThreadingHTTPServer):
         service: PrivacyGateService,
         pairing: MobilePairingRegistry,
         protected_library: ProtectedLibraryRepository,
+        library_repository: LibraryRepository,
         library_grants: MobileLibraryGrantRegistry,
     ) -> None:
         self.privacy_service = service
         self.pairing = pairing
         self.protected_library = protected_library
+        self.library_repository = library_repository
         self.library_grants = library_grants
         self.detection_pack_sha256 = str(build_detection_pack()["sha256"])
         super().__init__(server_address, MobileLinkRequestHandler)
@@ -91,10 +94,17 @@ class MobileLinkRequestHandler(BaseHTTPRequestHandler):
         return payload
 
     @staticmethod
-    def _document_payload(document, *, grant_id: str, include_content: bool) -> dict[str, object]:
+    def _document_payload(
+        document,
+        *,
+        grant_id: str,
+        mode: str,
+        include_content: bool,
+    ) -> dict[str, object]:
+        has_mapping = mode == "full_offline_session"
         payload: dict[str, object] = {
             "grant_id": grant_id,
-            "mode": "protected_copy",
+            "mode": mode,
             "document_id": document.document_id,
             "title": document.title,
             "profile_key": document.profile_key,
@@ -104,11 +114,18 @@ class MobileLinkRequestHandler(BaseHTTPRequestHandler):
             "updated_at": document.updated_at.isoformat(),
             "favorite": document.favorite,
             "source_kind": document.source_kind,
-            "has_mapping": False,
+            "has_mapping": has_mapping,
         }
         if include_content:
             payload["protected_text"] = document.protected_text
         return payload
+
+    def _full_session_available(self, document_id: str) -> bool:
+        try:
+            source = self.server.library_repository.get(document_id)
+        except KeyError:
+            return False
+        return bool(source.deleted_at is None and source.has_mapping)
 
     def _library_grants(self) -> None:
         if not self._authorized():
@@ -116,14 +133,30 @@ class MobileLinkRequestHandler(BaseHTTPRequestHandler):
             return
         grants = []
         for grant in self.server.library_grants.list_for_token(self._bearer_token()):
+            document_id = str(grant["document_id"])
+            mode = str(grant.get("mode") or "protected_copy")
             try:
-                document = self.server.protected_library.get_mcp_document(str(grant["document_id"]))
+                document = self.server.protected_library.get_mcp_document(document_id)
             except KeyError:
                 continue
+            if mode == "full_offline_session" and not self._full_session_available(document_id):
+                continue
             grants.append(
-                self._document_payload(document, grant_id=str(grant["grant_id"]), include_content=False)
+                self._document_payload(
+                    document,
+                    grant_id=str(grant["grant_id"]),
+                    mode=mode,
+                    include_content=False,
+                )
             )
-        self._send_json(200, {"grants": grants, "automatic_sync": False})
+        self._send_json(
+            200,
+            {
+                "grants": grants,
+                "automatic_sync": False,
+                "full_offline_session": True,
+            },
+        )
 
     def _library_grant(self, grant_id: str) -> None:
         if not self._authorized():
@@ -133,12 +166,42 @@ class MobileLinkRequestHandler(BaseHTTPRequestHandler):
         if grant is None:
             self._send_json(404, {"error": "library_grant_not_found"})
             return
+        document_id = str(grant["document_id"])
+        mode = str(grant.get("mode") or "protected_copy")
         try:
-            document = self.server.protected_library.get_mcp_document(str(grant["document_id"]))
+            document = self.server.protected_library.get_mcp_document(document_id)
         except KeyError:
             self._send_json(410, {"error": "library_item_unavailable"})
             return
-        self._send_json(200, self._document_payload(document, grant_id=grant_id, include_content=True))
+
+        payload = self._document_payload(
+            document,
+            grant_id=grant_id,
+            mode=mode,
+            include_content=True,
+        )
+        if mode == "full_offline_session":
+            if not self._full_session_available(document_id):
+                self._send_json(410, {"error": "restore_mapping_unavailable"})
+                return
+            mappings = self.server.library_repository.get_mappings(document_id)
+            if not mappings:
+                self._send_json(410, {"error": "restore_mapping_unavailable"})
+                return
+            # The mapping crosses the local network only inside the pinned TLS
+            # channel for this authenticated grant. Mobile immediately persists it
+            # in its separate AES-256-GCM device Vault; it is never stored in the
+            # Mobile Library document itself.
+            payload["restore_mappings"] = [
+                {
+                    "token": item.token,
+                    "entity_type": item.entity_type,
+                    "original_text": item.original_text,
+                }
+                for item in mappings
+            ]
+            payload["mapping_storage"] = "mobile_device_vault_aes_256_gcm"
+        self._send_json(200, payload)
 
     def do_GET(self) -> None:  # noqa: N802
         if self._reject_browser_transport():
@@ -160,6 +223,8 @@ class MobileLinkRequestHandler(BaseHTTPRequestHandler):
                     "returns_original_values": False,
                     "returns_restore_mappings": False,
                     "selective_library_transfer": True,
+                    "full_offline_session": True,
+                    "automatic_library_sync": False,
                 },
             )
             return
@@ -326,6 +391,7 @@ def create_mobile_link_server(
     service: PrivacyGateService,
     pairing: MobilePairingRegistry,
     protected_library: ProtectedLibraryRepository,
+    library_repository: LibraryRepository,
     library_grants: MobileLibraryGrantRegistry,
     host: str,
     port: int,
@@ -337,6 +403,7 @@ def create_mobile_link_server(
         service=service,
         pairing=pairing,
         protected_library=protected_library,
+        library_repository=library_repository,
         library_grants=library_grants,
     )
     context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
