@@ -145,6 +145,7 @@ class MobileLinkRequestHandler(BaseHTTPRequestHandler):
             return
         parsed = urlparse(self.path)
         if parsed.path == "/v1/mobile/status":
+            current = self.server.pairing.client_for_token(self._bearer_token())
             self._send_json(
                 200,
                 {
@@ -152,7 +153,9 @@ class MobileLinkRequestHandler(BaseHTTPRequestHandler):
                     "service": "privacy-gate-mobile-link",
                     "api_version": "v1",
                     "transport": "tls",
-                    "paired": self._authorized(),
+                    "paired": current is not None,
+                    "client_id": current["client_id"] if current else "",
+                    "client_name": current["client_name"] if current else "",
                     "detection_pack_sha256": self.server.detection_pack_sha256,
                     "returns_original_values": False,
                     "returns_restore_mappings": False,
@@ -186,6 +189,53 @@ class MobileLinkRequestHandler(BaseHTTPRequestHandler):
             self._library_grant(match.group(1))
             return
         self._send_json(404, {"error": "not_found"})
+
+    def do_PATCH(self) -> None:  # noqa: N802
+        if self._reject_browser_transport():
+            return
+        if urlparse(self.path).path != "/v1/mobile/device":
+            self._send_json(404, {"error": "not_found"})
+            return
+        if not self._authorized():
+            self._send_json(401, {"error": "mobile_pairing_required"})
+            return
+        try:
+            payload = self._read_payload()
+            client_name = payload.get("client_name")
+            if not isinstance(client_name, str):
+                raise ValueError("client_name must be a string")
+            record = self.server.pairing.rename_for_token(self._bearer_token(), client_name)
+            if record is None:
+                self._send_json(401, {"error": "mobile_pairing_required"})
+                return
+        except ValueError as error:
+            self._send_json(400, {"error": "invalid_request", "message": str(error)})
+            return
+        self._send_json(
+            200,
+            {
+                "renamed": True,
+                "client_id": str(record["client_id"]),
+                "client_name": str(record["client_name"]),
+            },
+        )
+
+    def do_DELETE(self) -> None:  # noqa: N802
+        if self._reject_browser_transport():
+            return
+        if urlparse(self.path).path != "/v1/mobile/device":
+            self._send_json(404, {"error": "not_found"})
+            return
+        token = self._bearer_token()
+        record = self.server.pairing.client_for_token(token)
+        if record is None:
+            self._send_json(401, {"error": "mobile_pairing_required"})
+            return
+        client_id = str(record["client_id"])
+        removed = self.server.pairing.revoke_client(client_id)
+        if removed:
+            self.server.library_grants.revoke_client(client_id)
+        self._send_json(200, {"removed": bool(removed), "client_id": client_id})
 
     def do_POST(self) -> None:  # noqa: N802
         if self._reject_browser_transport():
