@@ -19,6 +19,7 @@ _PAIRING_MAX_ATTEMPTS = 5
 _MAX_CLIENTS = 12
 _CLIENT_ID = re.compile(r"^[A-Za-z0-9._-]{8,128}$")
 _REQUEST_ID = re.compile(r"^[A-Za-z0-9_-]{24,128}$")
+_REMOTE_VALUE = re.compile(r"^[A-Za-z0-9_-]{20,256}$")
 
 
 @dataclass(frozen=True, slots=True)
@@ -28,7 +29,14 @@ class MobilePairingChallenge:
 
 
 class MobilePairingRegistry:
-    """Create pairing requests, require Desktop approval, and store only token hashes."""
+    """Own trusted mobile credentials and per-device remote E2E material.
+
+    The normal Mobile bearer credential is persisted only as a hash. Remote relay
+    room credentials and the independent E2E secret are stored inside SecretStore,
+    protected by the current-user OS secret boundary. They are never exposed by
+    list_clients() and never leave Desktop except through an authenticated local
+    pairing/status response or inside the already-established E2E channel.
+    """
 
     def __init__(self, secret_store: SecretStore) -> None:
         self.secret_store = secret_store
@@ -51,6 +59,21 @@ class MobilePairingRegistry:
             raise ValueError("device name cannot exceed 80 characters")
         return name
 
+    @staticmethod
+    def _new_remote_material() -> dict[str, str]:
+        return {
+            "relay_room_id": secrets.token_urlsafe(24),
+            "relay_token": secrets.token_urlsafe(32),
+            "remote_secret": secrets.token_urlsafe(32),
+        }
+
+    @staticmethod
+    def _valid_remote_material(item: dict[str, object]) -> bool:
+        return all(
+            isinstance(item.get(key), str) and _REMOTE_VALUE.fullmatch(str(item[key]))
+            for key in ("relay_room_id", "relay_token", "remote_secret")
+        )
+
     def _load(self) -> list[dict[str, object]]:
         raw = self.secret_store.get(MOBILE_LINK_CLIENTS_SECRET)
         if not raw:
@@ -71,14 +94,21 @@ class MobilePairingRegistry:
                 continue
             if not isinstance(token_hash, str) or not token_hash:
                 continue
-            records.append(
-                {
-                    "client_id": client_id,
-                    "client_name": str(item.get("client_name") or "Mobile device")[:80],
-                    "token_hash": token_hash,
-                    "paired_at": float(item.get("paired_at") or 0.0),
-                }
-            )
+            record: dict[str, object] = {
+                "client_id": client_id,
+                "client_name": str(item.get("client_name") or "Mobile device")[:80],
+                "token_hash": token_hash,
+                "paired_at": float(item.get("paired_at") or 0.0),
+            }
+            if self._valid_remote_material(item):
+                record.update(
+                    {
+                        "relay_room_id": str(item["relay_room_id"]),
+                        "relay_token": str(item["relay_token"]),
+                        "remote_secret": str(item["remote_secret"]),
+                    }
+                )
+            records.append(record)
         return records[-_MAX_CLIENTS:]
 
     def _save(self, records: list[dict[str, object]]) -> None:
@@ -164,6 +194,7 @@ class MobilePairingRegistry:
             if item is None or item.get("status") != "pending":
                 return False
             token = secrets.token_urlsafe(32)
+            remote = self._new_remote_material()
             records = [
                 record
                 for record in self._load()
@@ -175,11 +206,13 @@ class MobilePairingRegistry:
                     "client_name": item["client_name"],
                     "token_hash": self._token_hash(token),
                     "paired_at": timestamp,
+                    **remote,
                 }
             )
             self._save(records)
             item["status"] = "approved"
             item["mobile_token"] = token
+            item.update(remote)
             item["expires_at"] = timestamp + _PAIRING_RESULT_TTL_SECONDS
             return True
 
@@ -224,7 +257,16 @@ class MobilePairingRegistry:
                 self._pending.pop(normalized, None)
                 if not isinstance(token, str) or not token:
                     return {"status": "expired"}
-                return {"status": "approved", "mobile_token": token}
+                result: dict[str, object] = {"status": "approved", "mobile_token": token}
+                if self._valid_remote_material(item):
+                    result.update(
+                        {
+                            "relay_room_id": str(item["relay_room_id"]),
+                            "relay_token": str(item["relay_token"]),
+                            "remote_secret": str(item["remote_secret"]),
+                        }
+                    )
+                return result
             self._pending.pop(normalized, None)
             return {"status": "expired"}
 
@@ -241,6 +283,56 @@ class MobilePairingRegistry:
                     return {
                         key: item[key]
                         for key in ("client_id", "client_name", "paired_at")
+                    }
+        return None
+
+    def ensure_remote_for_client(self, client_id: str) -> dict[str, str] | None:
+        normalized = str(client_id).strip()
+        if not _CLIENT_ID.fullmatch(normalized):
+            return None
+        with self._lock:
+            records = self._load()
+            for item in records:
+                if item["client_id"] != normalized:
+                    continue
+                if not self._valid_remote_material(item):
+                    item.update(self._new_remote_material())
+                    self._save(records)
+                return {
+                    "relay_room_id": str(item["relay_room_id"]),
+                    "relay_token": str(item["relay_token"]),
+                    "remote_secret": str(item["remote_secret"]),
+                }
+        return None
+
+    def ensure_remote_for_token(self, token: str | None) -> dict[str, str] | None:
+        if not token:
+            return None
+        digest = self._token_hash(token)
+        with self._lock:
+            records = self._load()
+            for item in records:
+                if not hmac.compare_digest(digest, str(item["token_hash"])):
+                    continue
+                if not self._valid_remote_material(item):
+                    item.update(self._new_remote_material())
+                    self._save(records)
+                return {
+                    "relay_room_id": str(item["relay_room_id"]),
+                    "relay_token": str(item["relay_token"]),
+                    "remote_secret": str(item["remote_secret"]),
+                }
+        return None
+
+    def remote_for_client(self, client_id: str) -> dict[str, str] | None:
+        normalized = str(client_id).strip()
+        with self._lock:
+            for item in self._load():
+                if item["client_id"] == normalized and self._valid_remote_material(item):
+                    return {
+                        "relay_room_id": str(item["relay_room_id"]),
+                        "relay_token": str(item["relay_token"]),
+                        "remote_secret": str(item["remote_secret"]),
                     }
         return None
 
@@ -294,10 +386,15 @@ class MobilePairingRegistry:
         return client_id if self.revoke_client(client_id) else None
 
     def list_clients(self) -> list[dict[str, object]]:
-        """Public device metadata only; never expose credential hashes to UI."""
+        """Public device metadata only; never expose credential or E2E secrets."""
         with self._lock:
             return [
-                {key: item[key] for key in ("client_id", "client_name", "paired_at")}
+                {
+                    "client_id": item["client_id"],
+                    "client_name": item["client_name"],
+                    "paired_at": item["paired_at"],
+                    "remote_ready": self._valid_remote_material(item),
+                }
                 for item in self._load()
             ]
 
