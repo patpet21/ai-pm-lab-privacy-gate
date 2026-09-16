@@ -147,3 +147,11 @@ class MobilePairingRegistry:
                 return False
             self._save(retained)
             return True
+
+    def list_clients(self) -> list[dict[str, object]]:
+        """Public device metadata only; never expose credential hashes to UI."""
+        with self._lock:
+            return [
+                {key: item[key] for key in ("client_id", "client_name", "paired_at")}
+                for item in self._load()
+            ]

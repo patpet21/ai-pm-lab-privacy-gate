@@ -25,6 +25,11 @@ def _open_governance(controller) -> None:
         controller._open_page("settings_page")
 
 
+def _open_mobile_devices(controller) -> None:
+    from ai_pm_lab_privacy_gate.ui.mobile_devices_dialog import open_mobile_devices
+    open_mobile_devices(controller.main_window)
+
+
 def _ensure_apps_page(main_window):
     """Materialize Apps on demand without forcing Cloud/MCP into startup."""
     existing = getattr(main_window, "apps_hub_page", None)
@@ -203,6 +208,7 @@ def apply_mockup_navigation_2026(main_window) -> None:
             page_attribute="local_automation_page",
         )
         self._nav_button("Activity", "history", lambda: _open_activity(self))
+        self._nav_button("Mobile Devices", "protect", lambda: _open_mobile_devices(self))
         self._nav_button(
             "Governance",
             "protect",
