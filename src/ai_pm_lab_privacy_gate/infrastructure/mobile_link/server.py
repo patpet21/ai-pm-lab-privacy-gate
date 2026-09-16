@@ -6,6 +6,7 @@ import ssl
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
+from urllib.parse import parse_qs, urlparse
 
 from ai_pm_lab_privacy_gate.application.privacy_service import PrivacyGateService
 from ai_pm_lab_privacy_gate.domain.detection_pack import build_detection_pack
@@ -79,22 +80,47 @@ class MobileLinkRequestHandler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:  # noqa: N802
         if self._reject_browser_transport():
             return
-        if self.path != "/v1/mobile/status":
-            self._send_json(404, {"error": "not_found"})
+        parsed = urlparse(self.path)
+        if parsed.path == "/v1/mobile/status":
+            self._send_json(
+                200,
+                {
+                    "status": "ready",
+                    "service": "privacy-gate-mobile-link",
+                    "api_version": "v1",
+                    "transport": "tls",
+                    "paired": self._authorized(),
+                    "detection_pack_sha256": self.server.detection_pack_sha256,
+                    "returns_original_values": False,
+                    "returns_restore_mappings": False,
+                },
+            )
             return
-        self._send_json(
-            200,
-            {
-                "status": "ready",
-                "service": "privacy-gate-mobile-link",
-                "api_version": "v1",
-                "transport": "tls",
-                "paired": self._authorized(),
+        if parsed.path == "/v1/mobile/pair/status":
+            request_id = parse_qs(parsed.query).get("request_id", [""])[0]
+            try:
+                result = self.server.pairing.consume_pairing_result(request_id)
+            except ValueError as error:
+                self._send_json(400, {"error": "invalid_request", "message": str(error)})
+                return
+            payload: dict[str, object] = {
+                "pairing_status": result["status"],
                 "detection_pack_sha256": self.server.detection_pack_sha256,
-                "returns_original_values": False,
-                "returns_restore_mappings": False,
-            },
-        )
+            }
+            token = result.get("mobile_token")
+            if isinstance(token, str) and token:
+                payload.update(
+                    {
+                        "paired": True,
+                        "mobile_token": token,
+                        "token_type": "Bearer",
+                    }
+                )
+            else:
+                payload["paired"] = False
+            self._send_json(200, payload)
+            return
+        self._send_json(404, {"error": "not_found"})
 
     def do_POST(self) -> None:  # noqa: N802
         if self._reject_browser_transport():
@@ -126,11 +152,16 @@ class MobileLinkRequestHandler(BaseHTTPRequestHandler):
             raise ValueError("client_id is invalid")
         if client_name is not None and not isinstance(client_name, str):
             raise ValueError("client_name must be a string")
-        token = self.server.pairing.pair(client_id, code.strip(), client_name=str(client_name or "Mobile device"))
+        request_id = self.server.pairing.request_pairing(
+            client_id,
+            code.strip(),
+            client_name=str(client_name or "Mobile device"),
+        )
         return {
-            "paired": True,
-            "mobile_token": token,
-            "token_type": "Bearer",
+            "paired": False,
+            "approval_required": True,
+            "pairing_status": "pending",
+            "pairing_request_id": request_id,
             "detection_pack_sha256": self.server.detection_pack_sha256,
         }
 
