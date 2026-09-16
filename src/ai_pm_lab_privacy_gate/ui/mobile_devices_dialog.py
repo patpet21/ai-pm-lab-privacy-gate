@@ -30,18 +30,21 @@ class MobileDevicesDialog(QDialog):
         self.manager = manager
         self._expires_at = 0.0
         self.setWindowTitle("Mobile Devices — PrivacyGate Device Trust")
-        self.resize(700, 600)
+        self.resize(740, 720)
         layout = QVBoxLayout(self)
         info = QLabel(
             "Pair only devices you own or trust, on your private local network. "
             "Creating pairing data starts the encrypted Desktop analysis service. "
-            "Anyone holding the temporary data can pair: deliver it privately. "
-            "Library and restore mappings are not shared by this service."
+            "The temporary data lets a device request pairing, but Desktop approval is now required "
+            "before any bearer credential is released. Library and restore mappings are not shared "
+            "by this service."
         )
         info.setWordWrap(True)
         layout.addWidget(info)
+
         self.status = QLabel()
         layout.addWidget(self.status)
+
         row = QHBoxLayout()
         pair = QPushButton("Create pairing data")
         pair.clicked.connect(self._pair)
@@ -53,19 +56,37 @@ class MobileDevicesDialog(QDialog):
         stop.clicked.connect(self._stop)
         row.addWidget(stop)
         layout.addLayout(row)
+
         self.bundle = QPlainTextEdit()
         self.bundle.setReadOnly(True)
-        self.bundle.setPlaceholderText("Temporary pairing JSON appears here. On Mobile: Settings → Desktop Connection.")
+        self.bundle.setPlaceholderText(
+            "Temporary pairing JSON appears here. On Mobile: Settings → Desktop Connection."
+        )
         layout.addWidget(self.bundle)
         copy = QPushButton("Copy temporary pairing data")
         copy.clicked.connect(self._copy)
         layout.addWidget(copy)
+
+        layout.addWidget(QLabel("Pending pairing approvals"))
+        self.pending = QListWidget()
+        self.pending.setMinimumHeight(110)
+        layout.addWidget(self.pending)
+        pending_row = QHBoxLayout()
+        approve = QPushButton("Approve selected request")
+        approve.clicked.connect(self._approve)
+        pending_row.addWidget(approve)
+        deny = QPushButton("Deny selected request")
+        deny.clicked.connect(self._deny)
+        pending_row.addWidget(deny)
+        layout.addLayout(pending_row)
+
         layout.addWidget(QLabel("Paired devices (not an online-status list)"))
         self.devices = QListWidget()
         layout.addWidget(self.devices)
         revoke = QPushButton("Revoke selected device")
         revoke.clicked.connect(self._revoke)
         layout.addWidget(revoke)
+
         self.timer = QTimer(self)
         self.timer.timeout.connect(self._refresh)
         self.timer.start(1000)
@@ -86,7 +107,11 @@ class MobileDevicesDialog(QDialog):
             self._expires_at = bundle.expires_at
             self.bundle.setPlainText(json.dumps(bundle.as_dict(), indent=2))
         except Exception:
-            QMessageBox.warning(self, "Pairing unavailable", "Could not start pairing. Check the service status and whether port 8767 is already in use.")
+            QMessageBox.warning(
+                self,
+                "Pairing unavailable",
+                "Could not start pairing. Check the service status and whether port 8767 is already in use.",
+            )
         self._refresh()
 
     def _copy(self) -> None:
@@ -97,9 +122,33 @@ class MobileDevicesDialog(QDialog):
         state = self.manager.status
         self.status.setText(f"Service: {state.state} | Port: {state.port or '—'}")
         if state.state == "error":
-            self.status.setText("Service error. Check port availability and local security settings.")
+            self.status.setText(
+                "Service error. Check port availability and local security settings."
+            )
         if time.time() >= self._expires_at:
             self.bundle.clear()
+
+        selected_pending = self.pending.currentItem()
+        selected_request_id = (
+            selected_pending.data(Qt.ItemDataRole.UserRole)
+            if selected_pending
+            else None
+        )
+        self.pending.clear()
+        for record in self.manager.pairing.list_pending_requests():
+            name = str(record["client_name"])
+            client_id = str(record["client_id"])
+            request_id = str(record["request_id"])
+            item = QListWidgetItem(
+                f"{name} — {client_id} — request {request_id[:10]}…"
+            )
+            item.setData(Qt.ItemDataRole.UserRole, request_id)
+            item.setData(Qt.ItemDataRole.UserRole + 1, name)
+            item.setData(Qt.ItemDataRole.UserRole + 2, client_id)
+            self.pending.addItem(item)
+            if request_id == selected_request_id:
+                self.pending.setCurrentItem(item)
+
         selected = self.devices.currentItem()
         selected_id = selected.data(Qt.ItemDataRole.UserRole) if selected else None
         self.devices.clear()
@@ -110,11 +159,52 @@ class MobileDevicesDialog(QDialog):
             if record["client_id"] == selected_id:
                 self.devices.setCurrentItem(item)
 
+    def _approve(self) -> None:
+        item = self.pending.currentItem()
+        if item is None:
+            return
+        request_id = str(item.data(Qt.ItemDataRole.UserRole))
+        name = str(item.data(Qt.ItemDataRole.UserRole + 1))
+        client_id = str(item.data(Qt.ItemDataRole.UserRole + 2))
+        answer = QMessageBox.question(
+            self,
+            "Approve device",
+            f"Allow this device to pair with PrivacyGate Desktop?\n\n{name}\n{client_id}\n\n"
+            "Approval releases a device credential for future authenticated requests. "
+            "You can revoke it later.",
+        )
+        if answer != QMessageBox.StandardButton.Yes:
+            return
+        if not self.manager.pairing.approve_request(request_id):
+            QMessageBox.warning(
+                self,
+                "Request unavailable",
+                "This pairing request expired or is no longer pending.",
+            )
+        self._refresh()
+
+    def _deny(self) -> None:
+        item = self.pending.currentItem()
+        if item is None:
+            return
+        request_id = str(item.data(Qt.ItemDataRole.UserRole))
+        if not self.manager.pairing.deny_request(request_id):
+            QMessageBox.warning(
+                self,
+                "Request unavailable",
+                "This pairing request expired or is no longer pending.",
+            )
+        self._refresh()
+
     def _revoke(self) -> None:
         item = self.devices.currentItem()
         if item is None:
             return
-        if QMessageBox.question(self, "Revoke device", "Block future requests from this device? Previously downloaded data is not deleted.") != QMessageBox.StandardButton.Yes:
+        if QMessageBox.question(
+            self,
+            "Revoke device",
+            "Block future requests from this device? Previously downloaded data is not deleted.",
+        ) != QMessageBox.StandardButton.Yes:
             return
         self.manager.pairing.revoke_client(item.data(Qt.ItemDataRole.UserRole))
         self._refresh()
