@@ -42,6 +42,15 @@ class MobilePairingRegistry:
     def _token_hash(token: str) -> str:
         return hashlib.sha256(token.encode("utf-8")).hexdigest()
 
+    @staticmethod
+    def _client_name(value: object) -> str:
+        name = str(value or "").strip()
+        if not name:
+            raise ValueError("device name cannot be empty")
+        if len(name) > 80:
+            raise ValueError("device name cannot exceed 80 characters")
+        return name
+
     def _load(self) -> list[dict[str, object]]:
         raw = self.secret_store.get(MOBILE_LINK_CLIENTS_SECRET)
         if not raw:
@@ -111,6 +120,7 @@ class MobilePairingRegistry:
         normalized_id = str(client_id).strip()
         if not _CLIENT_ID.fullmatch(normalized_id):
             raise ValueError("client_id is invalid")
+        normalized_name = self._client_name(client_name or "Mobile device")
         timestamp = time.time() if now is None else float(now)
         with self._lock:
             self._cleanup_pending(timestamp)
@@ -125,8 +135,6 @@ class MobilePairingRegistry:
             if not hmac.compare_digest(str(code).strip(), expected):
                 raise ValueError("pairing code is invalid")
 
-            # A valid temporary bundle can request access, but cannot obtain a token
-            # until a human approves the request on Desktop.
             self._challenge_code = None
             self._challenge_expires_at = 0.0
             self._challenge_attempts = 0
@@ -137,7 +145,7 @@ class MobilePairingRegistry:
             self._pending[request_id] = {
                 "request_id": request_id,
                 "client_id": normalized_id,
-                "client_name": str(client_name or "Mobile device")[:80],
+                "client_name": normalized_name,
                 "requested_at": timestamp,
                 "expires_at": timestamp + _PAIRING_APPROVAL_TTL_SECONDS,
                 "status": "pending",
@@ -221,16 +229,52 @@ class MobilePairingRegistry:
             return {"status": "expired"}
 
     def validate(self, token: str | None) -> bool:
+        return self.client_for_token(token) is not None
+
+    def client_for_token(self, token: str | None) -> dict[str, object] | None:
         if not token:
-            return False
+            return None
         digest = self._token_hash(token)
         with self._lock:
+            for item in self._load():
+                if hmac.compare_digest(digest, str(item["token_hash"])):
+                    return {
+                        key: item[key]
+                        for key in ("client_id", "client_name", "paired_at")
+                    }
+        return None
+
+    def rename_client(self, client_id: str, client_name: str) -> bool:
+        normalized_id = str(client_id).strip()
+        normalized_name = self._client_name(client_name)
+        with self._lock:
             records = self._load()
-        return any(
-            isinstance(item.get("token_hash"), str)
-            and hmac.compare_digest(digest, str(item["token_hash"]))
-            for item in records
-        )
+            changed = False
+            for item in records:
+                if item["client_id"] == normalized_id:
+                    item["client_name"] = normalized_name
+                    changed = True
+                    break
+            if changed:
+                self._save(records)
+            return changed
+
+    def rename_for_token(self, token: str | None, client_name: str) -> dict[str, object] | None:
+        if not token:
+            return None
+        digest = self._token_hash(token)
+        normalized_name = self._client_name(client_name)
+        with self._lock:
+            records = self._load()
+            for item in records:
+                if hmac.compare_digest(digest, str(item["token_hash"])):
+                    item["client_name"] = normalized_name
+                    self._save(records)
+                    return {
+                        key: item[key]
+                        for key in ("client_id", "client_name", "paired_at")
+                    }
+        return None
 
     def revoke_client(self, client_id: str) -> bool:
         normalized_id = str(client_id).strip()
@@ -241,6 +285,13 @@ class MobilePairingRegistry:
                 return False
             self._save(retained)
             return True
+
+    def revoke_for_token(self, token: str | None) -> str | None:
+        record = self.client_for_token(token)
+        if record is None:
+            return None
+        client_id = str(record["client_id"])
+        return client_id if self.revoke_client(client_id) else None
 
     def list_clients(self) -> list[dict[str, object]]:
         """Public device metadata only; never expose credential hashes to UI."""
