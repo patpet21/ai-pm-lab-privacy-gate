@@ -30,6 +30,7 @@ from ai_pm_lab_privacy_gate.infrastructure.connectors.gmail_addon_accounts impor
 from ai_pm_lab_privacy_gate.infrastructure.connectors.gmail_addon_transport import GmailAddonTransport
 from .gmail_addon_import import _data_dir, open_gmail_addon_import
 from .resources import resource_path
+from .public_links import GMAIL_MARKETPLACE_URL
 
 
 PAGE_BG = '#F5F9FC'
@@ -55,16 +56,17 @@ def release_settings():
         endpoint = validate_endpoint(data.get('endpoint', ''))
 
         install_url = ''
-        p = urlsplit(data.get('marketplace_url', ''))
+        configured_marketplace_url = data.get('marketplace_url', '') or GMAIL_MARKETPLACE_URL
+        p = urlsplit(configured_marketplace_url)
         published = (
             data.get('status') == 'published'
             and data.get('consent_verified') is True
             and p.scheme == 'https'
-            and p.netloc == 'workspace.google.com'
+            and p.netloc in {'workspace.google.com', 'gsuite.google.com'}
             and p.path.startswith('/marketplace/app/')
         )
         if published:
-            install_url = data.get('marketplace_url', '')
+            install_url = configured_marketplace_url
 
         return install_url, endpoint
     except (OSError, ValueError, KeyError, TypeError):
@@ -337,6 +339,16 @@ class GmailAccountsDialog(QDialog):
         help_button.setStyleSheet(_button_style(False))
         help_button.clicked.connect(lambda: show_gmail_help(self))
         top_actions.addWidget(help_button)
+
+        marketplace_url, _ = release_settings()
+        marketplace = QPushButton('Get Gmail add-on')
+        marketplace.setStyleSheet(_button_style(False))
+        marketplace.setEnabled(bool(marketplace_url))
+        if marketplace_url:
+            marketplace.clicked.connect(
+                lambda: QDesktopServices.openUrl(QUrl(marketplace_url))
+            )
+        top_actions.addWidget(marketplace)
         top_actions.addStretch(1)
         root.addLayout(top_actions)
 
