@@ -1,6 +1,6 @@
 {
-  "status": "awaiting_publication",
-  "consent_verified": false,
-  "marketplace_url": "",
+  "status": "published",
+  "consent_verified": true,
+  "marketplace_url": "https://gsuite.google.com/marketplace/app/foo/817932149819",
   "endpoint": "https://script.google.com/macros/s/AKfycbzW0i4s_LvNQwPAueVCgpuuV-Yz0Wx64Dz58qG7KsrQ6cpPMzhxnUrEOBynccffTgH-rg/exec"
 }
