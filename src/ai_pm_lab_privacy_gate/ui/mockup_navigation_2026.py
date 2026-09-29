@@ -87,6 +87,24 @@ def _ensure_apps_page(main_window):
             QTimer.singleShot(0, lambda: controller.end(loading_key))
 
 
+def _ensure_integration_links_page(main_window):
+    """Materialize the public add-ons/extensions page on first use."""
+    existing = getattr(main_window, "integration_links_page", None)
+    pages = getattr(main_window, "pages", None)
+    if existing is not None and pages is not None and pages.indexOf(existing) >= 0:
+        return existing
+    if pages is None:
+        return None
+
+    from ai_pm_lab_privacy_gate.ui.integration_links_page import IntegrationLinksPage
+
+    page = IntegrationLinksPage(main_window)
+    index = pages.addWidget(page)
+    main_window.integration_links_page = page
+    main_window.integration_links_page_index = index
+    return page
+
+
 def _open_activity(controller) -> None:
     """Open Activity directly even when Settings/FeatureSuite are still lazy."""
     main_window = controller.main_window
@@ -136,6 +154,13 @@ def apply_mockup_navigation_2026(main_window) -> None:
         if index < 0 and attribute == "apps_hub_page":
             pages = getattr(self.main_window, "pages", None)
             page = _ensure_apps_page(self.main_window)
+            if page is not None and pages is not None:
+                index = int(pages.indexOf(page))
+                materialized = index >= 0
+
+        if index < 0 and attribute == "integration_links_page":
+            pages = getattr(self.main_window, "pages", None)
+            page = _ensure_integration_links_page(self.main_window)
             if page is not None and pages is not None:
                 index = int(pages.indexOf(page))
                 materialized = index >= 0
@@ -198,6 +223,10 @@ def apply_mockup_navigation_2026(main_window) -> None:
         self._nav_button(
             "Apps", "cloud", lambda: self._open_page("apps_hub_page"),
             page_attribute="apps_hub_page",
+        )
+        self._nav_button(
+            "Add-ons & Extensions", "external", lambda: self._open_page("integration_links_page"),
+            page_attribute="integration_links_page",
         )
         self._nav_button(
             "MCP & AI Direct", "workflow", lambda: self._open_page("cloud_automation_page"),
