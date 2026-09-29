@@ -1,12 +1,21 @@
 from __future__ import annotations
 
 # Public PrivacyGate distribution links.
-#
-# Gmail is live. Edge and Chrome are intentionally left empty until their
-# public store URLs are confirmed; the UI is already prepared and will enable
-# those buttons as soon as the links are added here.
-GMAIL_MARKETPLACE_URL = "https://gsuite.google.com/marketplace/app/foo/817932149819"
-EDGE_EXTENSION_URL = ""
+# Keep these centralized so Store/extension URLs can be updated without touching
+# the navigation and connection flows that consume them.
+GMAIL_MARKETPLACE_URL = (
+    "https://workspace.google.com/marketplace/app/privacygate/817932149819?flow_type=2"
+)
+EDGE_EXTENSION_URL = (
+    "https://microsoftedge.microsoft.com/addons/detail/"
+    "privacygate-browser-prote/lbdkbiflhmlalbcblmglmccmmajnhfbd"
+)
+MICROSOFT_STORE_URL = (
+    "https://apps.microsoft.com/detail/9nmpzcvjllz3?hl=it-IT&gl=US&ocid=pdpshare"
+)
+
+# Chrome is intentionally empty until the public Chrome Web Store listing is live.
+# Brave uses the Chrome Web Store listing as well.
 CHROME_EXTENSION_URL = ""
 
 PRIVACYGATE_WEBSITE_URL = "https://privacygate.propertydex.xyz"
