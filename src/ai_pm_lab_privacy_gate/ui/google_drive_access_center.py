@@ -426,7 +426,7 @@ def open_google_drive_access_center(apps_page) -> None:
     chooser_icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
     chooser_icon.setPixmap(icon("cloud", color=BLUE, size=18).pixmap(18, 18))
     chooser_header.addWidget(chooser_icon)
-    chooser_text = QLabel("Choose your Google Drive access mode")
+    chooser_text = QLabel("Choose files from Google Drive")
     chooser_text.setStyleSheet(f"color:{NAVY};font-size:12px;font-weight:900;")
     chooser_header.addWidget(chooser_text)
     chooser_header.addStretch(1)
@@ -461,7 +461,7 @@ def open_google_drive_access_center(apps_page) -> None:
     selected_titles.addWidget(selected_desc)
     selected_top.addLayout(selected_titles, 1)
 
-    recommended = QLabel("RECOMMENDED")
+    recommended = QLabel("DRIVE.FILE")
     recommended.setStyleSheet(
         "background:#E6F4EA;color:#137333;border:1px solid #CEEAD6;"
         "border-radius:8px;padding:5px 8px;font-size:8px;font-weight:900;"
@@ -584,6 +584,10 @@ def open_google_drive_access_center(apps_page) -> None:
     full_actions.addStretch(1)
     full_box.addLayout(full_actions)
     body_box.addWidget(full)
+    # Production OAuth uses drive.file only. Keep the legacy Full Drive widgets
+    # constructed for backward compatibility with stored local state, but do not
+    # expose the restricted drive.readonly path in the public PrivacyGate UI.
+    full.hide()
 
     root.addWidget(body, 1)
 

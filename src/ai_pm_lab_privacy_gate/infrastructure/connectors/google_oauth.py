@@ -19,11 +19,11 @@ from .google_tls import google_ssl_context
 
 AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
 TOKEN_URL = "https://oauth2.googleapis.com/token"
+DEFAULT_GOOGLE_DESKTOP_CLIENT_ID = (
+    "1072973463893-ur5674ii2n1m5jab4tsa1mguaggijfpk.apps.googleusercontent.com"
+)
 DRIVE_SCOPES = (
-    "openid",
-    "email",
-    "profile",
-    "https://www.googleapis.com/auth/drive.readonly",
+    "https://www.googleapis.com/auth/drive.file",
 )
 GMAIL_SCOPES = (
     "openid",
@@ -39,7 +39,17 @@ class GoogleOAuthError(RuntimeError):
 
 
 def configured_client_id() -> str:
-    return os.environ.get("PRIVACY_GATE_GOOGLE_CLIENT_ID", "").strip()
+    """Return the production Desktop OAuth client, allowing a local override.
+
+    The OAuth client ID is public application metadata. PrivacyGate uses PKCE
+    with a loopback redirect, so production builds do not need to embed the
+    OAuth client secret. Developers can still override the client ID locally
+    with PRIVACY_GATE_GOOGLE_CLIENT_ID when testing another Google project.
+    """
+    return (
+        os.environ.get("PRIVACY_GATE_GOOGLE_CLIENT_ID", "").strip()
+        or DEFAULT_GOOGLE_DESKTOP_CLIENT_ID
+    )
 
 
 def configured_client_secret() -> str:

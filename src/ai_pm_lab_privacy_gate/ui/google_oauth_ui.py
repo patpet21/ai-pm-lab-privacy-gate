@@ -42,7 +42,7 @@ def _google_connection_notice(parent, provider: str, title: str) -> bool:
     root.setSpacing(13)
 
     top = QHBoxLayout()
-    badge = QLabel("BETA · GOOGLE VERIFICATION IN PROGRESS")
+    badge = QLabel("GOOGLE DRIVE · SELECTED FILE ACCESS")
     badge.setStyleSheet(
         "background:#FFF6DF;color:#8B641C;border:1px solid #E8CE8A;"
         "border-radius:9px;padding:6px 9px;font-size:9px;font-weight:900;"
@@ -56,8 +56,8 @@ def _google_connection_notice(parent, provider: str, title: str) -> bool:
     root.addWidget(heading)
 
     intro = QLabel(
-        "PrivacyGate is currently completing Google's OAuth verification process. "
-        "During this beta, Google may display a ‘Google hasn't verified this app’ warning before the normal consent screen."
+        "PrivacyGate uses Google's OAuth flow to let you authorize only the Drive "
+        "files you explicitly choose for local processing."
     )
     intro.setWordWrap(True)
     intro.setStyleSheet("color:#526C7D;font-size:11px;line-height:1.45;")
@@ -76,9 +76,8 @@ def _google_connection_notice(parent, provider: str, title: str) -> bool:
     warning_icon.setStyleSheet("color:#D84A3A;font-size:25px;font-weight:900;border:0;")
     warning_layout.addWidget(warning_icon)
     warning_text = QLabel(
-        "If you intentionally started this connection and trust this PrivacyGate beta build, "
-        "choose Advanced on Google's warning page and continue to AI PM LAB Privacy Gate. "
-        "You can cancel the connection at any time."
+        "Google handles sign-in and consent directly. PrivacyGate does not ask for "
+        "your Google password and does not request access to your entire Drive."
     )
     warning_text.setWordWrap(True)
     warning_text.setStyleSheet("color:#633A36;font-size:10px;font-weight:650;border:0;")
@@ -91,9 +90,9 @@ def _google_connection_notice(parent, provider: str, title: str) -> bool:
 
     if is_drive:
         points = (
-            "Read-only access to existing Google Drive files so you can browse and search them inside PrivacyGate before choosing a document.",
+            "Access only to the Google Drive files you explicitly choose for PrivacyGate.",
             "The file you choose is imported as a local working copy for Scan and Protect.",
-            "PrivacyGate does not create, modify, move or delete your original Google Drive files.",
+            "PrivacyGate does not browse the rest of your Drive in the background.",
             "Document content is not uploaded to a PrivacyGate document server for this workflow.",
         )
     else:

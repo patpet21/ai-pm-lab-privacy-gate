@@ -210,7 +210,7 @@ def install_google_provider_routes() -> None:
             button.setText("Open Google Drive")
             button.setStyleSheet(_primary_style())
             button.setToolTip(
-                "Choose Selected files only or optional Full Drive access, and manage Google accounts."
+                "Choose only the Google Drive files you explicitly authorize for PrivacyGate."
             )
             if not bool(button.property("drive_access_center_wired")):
                 try:
