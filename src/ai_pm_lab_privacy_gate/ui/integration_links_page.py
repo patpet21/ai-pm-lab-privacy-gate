@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from PySide6.QtCore import Qt, QUrl
-from PySide6.QtGui import QDesktopServices
+from PySide6.QtGui import QDesktopServices, QPixmap
 from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
@@ -17,8 +17,10 @@ from ai_pm_lab_privacy_gate.ui.public_links import (
     CHROME_EXTENSION_URL,
     EDGE_EXTENSION_URL,
     GMAIL_MARKETPLACE_URL,
+    MICROSOFT_STORE_URL,
     PRIVACYGATE_WEBSITE_URL,
 )
+from ai_pm_lab_privacy_gate.ui.resources import resource_path
 
 
 NAVY = "#062B4F"
@@ -42,7 +44,7 @@ def _button_style(enabled: bool = True) -> str:
 
 
 class IntegrationLinksPage(QWidget):
-    """Public add-ons and extensions that complement the PrivacyGate Desktop app."""
+    """Public add-ons, extensions and official PrivacyGate distribution links."""
 
     def __init__(self, main_window) -> None:
         super().__init__()
@@ -64,6 +66,7 @@ class IntegrationLinksPage(QWidget):
         button_text: str,
         url: str,
         note: str = "",
+        image_name: str = "",
     ) -> None:
         card = QFrame(objectName="PrivacyGateDistributionCard")
         card.setStyleSheet(
@@ -76,10 +79,30 @@ class IntegrationLinksPage(QWidget):
 
         top = QHBoxLayout()
         mark = QLabel()
-        mark.setFixedSize(38, 38)
+        mark.setFixedSize(68, 68)
         mark.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        mark.setPixmap(icon("external", color=PETROL, size=21).pixmap(21, 21))
-        mark.setStyleSheet("background:#EAF7F7;border:1px solid #CDE8E8;border-radius:9px;")
+
+        image_path = (
+            resource_path("resources", "integrations", image_name)
+            if image_name
+            else None
+        )
+        if image_path is not None and image_path.exists():
+            pixmap = QPixmap(str(image_path))
+            mark.setPixmap(
+                pixmap.scaled(
+                    62,
+                    62,
+                    Qt.AspectRatioMode.KeepAspectRatio,
+                    Qt.TransformationMode.SmoothTransformation,
+                )
+            )
+            mark.setStyleSheet("background:#FFFFFF;border:none;")
+        else:
+            mark.setPixmap(icon("external", color=PETROL, size=24).pixmap(24, 24))
+            mark.setStyleSheet(
+                "background:#EAF7F7;border:1px solid #CDE8E8;border-radius:10px;"
+            )
         top.addWidget(mark)
 
         names = QVBoxLayout()
@@ -134,8 +157,8 @@ class IntegrationLinksPage(QWidget):
         root.addWidget(title)
 
         subtitle = QLabel(
-            "Install PrivacyGate integrations for Gmail and supported browsers. "
-            "Store links open in your default browser; PrivacyGate Desktop remains local-first."
+            "Install PrivacyGate Desktop, the Gmail add-on and supported browser extensions. "
+            "Official store links open in your default browser."
         )
         subtitle.setWordWrap(True)
         subtitle.setStyleSheet(f"color:{MUTED};font-size:11px;")
@@ -153,30 +176,40 @@ class IntegrationLinksPage(QWidget):
 
         self._card(
             cards,
+            title="PrivacyGate Desktop",
+            description="Official Windows distribution of the PrivacyGate Desktop application.",
+            status="LIVE",
+            button_text="Get from Microsoft Store",
+            url=MICROSOFT_STORE_URL,
+            image_name="get-microsoft-store.png",
+        )
+        self._card(
+            cards,
             title="PrivacyGate for Gmail™",
             description="Google Workspace add-on for sending only the Gmail message you explicitly choose to PrivacyGate Desktop.",
             status="LIVE",
-            button_text="Open Google Workspace Marketplace",
+            button_text="Get Gmail add-on",
             url=GMAIL_MARKETPLACE_URL,
-            note="The Gmail add-on has been approved for publication on Google Workspace Marketplace.",
+            note="Approved and published on Google Workspace Marketplace.",
+            image_name="get-gmail-addon.png",
         )
         self._card(
             cards,
             title="PrivacyGate for Microsoft Edge",
             description="Browser Protection extension for pairing Edge with the local PrivacyGate Desktop bridge.",
-            status="LINK PENDING",
-            button_text="Open Microsoft Edge Add-ons",
+            status="LIVE",
+            button_text="Get Edge extension",
             url=EDGE_EXTENSION_URL,
-            note="The public Edge listing URL is ready to be inserted here as soon as it is confirmed.",
+            image_name="get-edge-extension.png",
         )
         self._card(
             cards,
             title="PrivacyGate for Chrome & Brave",
             description="Browser Protection extension distributed through the Chrome Web Store.",
-            status="LINK PENDING",
+            status="COMING NEXT",
             button_text="Open Chrome Web Store",
             url=CHROME_EXTENSION_URL,
-            note="Brave supports extensions from the Chrome Web Store, so it can use the same PrivacyGate extension listing.",
+            note="Brave uses Chrome Web Store extensions, so the same PrivacyGate listing will cover both browsers.",
         )
         self._card(
             cards,
